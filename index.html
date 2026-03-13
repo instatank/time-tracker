@@ -327,6 +327,33 @@ html, body {
 .top-act-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-act-count { color: var(--text-muted); font-size: 0.78rem; flex-shrink: 0; }
 
+/* ── Auth / Sync ── */
+.auth-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.auth-btn:hover { background: var(--border); color: var(--text); }
+.auth-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+  transition: background 0.4s;
+}
+
 /* Export */
 .export-row { display: flex; gap: 0.5rem; }
 .export-btn {
@@ -677,7 +704,11 @@ html, body {
       <button class="tab-btn active" onclick="switchTab('log')">Log</button>
       <button class="tab-btn" onclick="switchTab('stats')">Stats</button>
     </div>
-    <span class="countdown" id="countdown" title="Next prompt (click to log)" onclick="openModal()">—</span>
+    <div style="display:flex;align-items:center;gap:0.45rem;flex-shrink:0;">
+      <span class="sync-dot" id="sync-dot" title="Not signed in"></span>
+      <button class="auth-btn" id="auth-btn">🔑 Sign in</button>
+      <span class="countdown" id="countdown" title="Next prompt (click to log)" onclick="openModal()">—</span>
+    </div>
   </div>
 
   <!-- Content -->
@@ -1097,14 +1128,16 @@ function submitEntry() {
   const text = document.getElementById('entry-text').value.trim();
   if (!text) { document.getElementById('entry-text').focus(); return; }
   const entries = loadEntries();
-  entries.push({
+  const newEntry = {
     id:        genId(),
     timestamp: new Date().toISOString(),
     category:  selectedCat,
     text,
     source:    isListening ? 'voice' : 'text',
-  });
+  };
+  entries.push(newEntry);
   saveEntries(entries);
+  window.fbSaveEntry && window.fbSaveEntry(newEntry);
   closeModal();
   renderLog();
   if (currentTab === 'stats') renderStats();
@@ -1162,6 +1195,7 @@ function saveEdit() {
     entries[idx].text     = text;
     entries[idx].category = editCat;
     saveEntries(entries);
+    window.fbSaveEntry && window.fbSaveEntry(entries[idx]);
   }
   closeEdit();
   renderLog();
@@ -1171,6 +1205,7 @@ function saveEdit() {
 function deleteEntry(id) {
   if (!confirm('Delete this entry?')) return;
   saveEntries(loadEntries().filter(e => e.id !== id));
+  window.fbDeleteEntry && window.fbDeleteEntry(id);
   renderLog();
   if (currentTab === 'stats') renderStats();
 }
@@ -1575,5 +1610,141 @@ function hexAlpha(hex, alpha) {
   startCountdown();
 })();
 </script>
+
+<!-- ── Firebase Sync ── -->
+<script type="module">
+import { initializeApp }                          from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider,
+         signInWithPopup, signOut,
+         onAuthStateChanged }                     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+import { getFirestore, collection, doc,
+         setDoc, deleteDoc, onSnapshot }          from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyAxVCwVHFxRSHNXDhAoCGhj4Y1yfs6qUks",
+  authDomain:        "time-tracker-f07da.firebaseapp.com",
+  projectId:         "time-tracker-f07da",
+  storageBucket:     "time-tracker-f07da.firebasestorage.app",
+  messagingSenderId: "121620268176",
+  appId:             "1:121620268176:web:35250f2252023378f3c415",
+};
+
+const app      = initializeApp(firebaseConfig);
+const auth     = getAuth(app);
+const db       = getFirestore(app);
+const provider = new GoogleAuthProvider();
+const STORE    = 'tt_entries_v1';
+
+let unsubSnapshot = null;
+
+// ── Local storage helpers ─────────────────────────
+function readLocal() {
+  try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { return []; }
+}
+function writeLocal(entries) {
+  try { localStorage.setItem(STORE, JSON.stringify(entries)); } catch {}
+}
+
+// ── Sync status dot ───────────────────────────────
+function setSyncDot(status) {
+  const dot = document.getElementById('sync-dot');
+  if (!dot) return;
+  const colors = { idle: '#4a4a4a', syncing: '#f59e0b', ok: '#10b981', error: '#ef4444' };
+  const labels = { idle: 'Not signed in', syncing: 'Syncing…', ok: 'Synced ✓', error: 'Sync error' };
+  dot.style.background = colors[status];
+  dot.title = labels[status];
+}
+
+// ── Auth button UI ────────────────────────────────
+function updateAuthBtn(user) {
+  const btn = document.getElementById('auth-btn');
+  if (!btn) return;
+  if (user) {
+    btn.innerHTML = user.photoURL
+      ? `<img class="auth-avatar" src="${user.photoURL}"> ${(user.displayName || 'Me').split(' ')[0]}`
+      : (user.displayName || 'Me').split(' ')[0];
+    btn.title   = 'Tap to sign out';
+    btn.onclick = () => signOut(auth);
+  } else {
+    btn.innerHTML = '🔑 Sign in';
+    btn.title     = 'Sign in with Google to sync across devices';
+    btn.onclick   = () => signInWithPopup(auth, provider).catch(e => {
+      if (e.code === 'auth/unauthorized-domain') {
+        alert('Add this domain to Firebase:\nFirebase Console → Authentication → Settings → Authorized domains\n\n' + location.hostname);
+      }
+    });
+  }
+}
+
+// ── Real-time Firestore sync ──────────────────────
+async function startSync(uid) {
+  setSyncDot('syncing');
+  const colRef = collection(db, 'users', uid, 'entries');
+
+  // Push any local-only entries up to Firestore first
+  const local = readLocal();
+  if (local.length > 0) {
+    await Promise.all(
+      local.map(e => setDoc(doc(db, 'users', uid, 'entries', e.id), e).catch(console.error))
+    );
+  }
+
+  // Listen for any changes (from this device or others)
+  if (unsubSnapshot) unsubSnapshot();
+  unsubSnapshot = onSnapshot(colRef, snapshot => {
+    const remote   = snapshot.docs.map(d => d.data());
+    const localNow = readLocal();
+    // Merge: local fills in gaps, remote wins on conflicts
+    const map = {};
+    localNow.forEach(e => { map[e.id] = e; });
+    remote.forEach(e =>   { map[e.id] = e; });
+    const merged = Object.values(map)
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    writeLocal(merged);
+    window.renderLog();
+    if (document.getElementById('tab-stats').classList.contains('active')) {
+      window.renderStats();
+    }
+    setSyncDot('ok');
+  }, err => {
+    console.error('Firestore error:', err);
+    setSyncDot('error');
+  });
+}
+
+// ── Auth state changes ────────────────────────────
+onAuthStateChanged(auth, user => {
+  updateAuthBtn(user);
+  if (user) {
+    startSync(user.uid);
+  } else {
+    if (unsubSnapshot) { unsubSnapshot(); unsubSnapshot = null; }
+    setSyncDot('idle');
+  }
+});
+
+// ── Hooks called by main script ───────────────────
+window.fbSaveEntry = async entry => {
+  const user = auth.currentUser;
+  if (!user) return;
+  setSyncDot('syncing');
+  try {
+    await setDoc(doc(db, 'users', user.uid, 'entries', entry.id), entry);
+    setSyncDot('ok');
+  } catch (e) { console.error(e); setSyncDot('error'); }
+};
+
+window.fbDeleteEntry = async id => {
+  const user = auth.currentUser;
+  if (!user) return;
+  setSyncDot('syncing');
+  try {
+    await deleteDoc(doc(db, 'users', user.uid, 'entries', id));
+    setSyncDot('ok');
+  } catch (e) { console.error(e); setSyncDot('error'); }
+};
+</script>
+
 </body>
 </html>
