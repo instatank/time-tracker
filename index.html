@@ -1672,23 +1672,42 @@ function updateAuthBtn(user) {
       setSyncDot('syncing');
       btn.disabled  = true;
       btn.innerHTML = '⏳…';
+      document.getElementById('auth-error-banner')?.remove();
       try {
         await signInWithPopup(auth, provider);
-        // onAuthStateChanged handles the rest
+        // success — onAuthStateChanged handles the rest
       } catch (e) {
-        if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-          // Popup blocked → fall back to redirect
-          sessionStorage.setItem('tt_signing_in', '1');
-          signInWithRedirect(auth, provider).catch(err => {
-            sessionStorage.removeItem('tt_signing_in');
-            setSyncDot('error');
-            showAuthError(err.code + ': ' + err.message);
+        setSyncDot('error');
+        btn.disabled  = false;
+        updateAuthBtn(null);   // reset button label
+        // Surface EVERY error — no silent fallbacks
+        if (e.code === 'auth/popup-blocked') {
+          showAuthError(
+            '<strong>auth/popup-blocked</strong> — Chrome blocked the sign-in popup.<br>' +
+            'Allow popups for <code>' + location.hostname + '</code> in your browser, then try again.<br>' +
+            '<button id="tt-try-redirect" style="margin-top:0.5rem;padding:0.3rem 0.75rem;background:#3b82f6;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem">Try redirect sign-in instead</button>'
+          );
+          document.getElementById('tt-try-redirect')?.addEventListener('click', () => {
+            document.getElementById('auth-error-banner')?.remove();
+            sessionStorage.setItem('tt_signing_in', '1');
+            signInWithRedirect(auth, provider);
           });
+        } else if (e.code === 'auth/popup-closed-by-user') {
+          showAuthError(
+            '<strong>auth/popup-closed-by-user</strong> — The sign-in popup opened but closed immediately without completing.<br>' +
+            'This almost always means <code>' + location.hostname + '</code> is <strong>not yet added</strong> to Firebase Auth → Authorized Domains.<br><br>' +
+            '👉 Open <a href="https://console.firebase.google.com/project/time-tracker-f07da/authentication/settings" target="_blank" style="color:#fca5a5;text-decoration:underline">Firebase Console → Authentication → Settings → Authorized domains</a> and add exactly:<br>' +
+            '<code style="background:rgba(0,0,0,0.4);padding:2px 8px;border-radius:3px;font-size:0.9rem">' + location.hostname + '</code><br><br>' +
+            'Then refresh this page and try signing in again.'
+          );
+        } else if (e.code === 'auth/unauthorized-domain') {
+          showAuthError(
+            '<strong>auth/unauthorized-domain</strong> — Domain not authorized.<br>' +
+            'Add <code>' + location.hostname + '</code> to ' +
+            '<a href="https://console.firebase.google.com/project/time-tracker-f07da/authentication/settings" target="_blank" style="color:#fca5a5;text-decoration:underline">Firebase Auth → Settings → Authorized domains</a>, then try again.'
+          );
         } else {
-          setSyncDot('error');
-          btn.disabled  = false;
-          updateAuthButton(null);          // reset button
-          showAuthError(e.code + ': ' + e.message);
+          showAuthError('<strong>' + e.code + '</strong><br>' + e.message);
         }
       }
     };
@@ -1707,14 +1726,12 @@ getRedirectResult(auth).then(result => {
   if (result?.user) {
     window.toast && window.toast('✓ Signed in as ' + result.user.displayName?.split(' ')[0]);
   } else if (wasSigningIn) {
-    // Redirect happened but came back with no user and no error — surface a diagnostic
     setSyncDot('error');
     showAuthError(
-      'auth/redirect-returned-null — The sign-in redirect completed but returned no user. ' +
-      'This usually means the domain <strong>' + location.hostname + '</strong> is not in ' +
-      '<a href="https://console.firebase.google.com/project/time-tracker-f07da/authentication/settings" ' +
-      'target="_blank" style="color:#fca5a5">Firebase Auth → Settings → Authorized domains</a>. ' +
-      'Add it there and try again.'
+      '<strong>auth/redirect-no-user</strong> — Redirect returned but no user was signed in.<br>' +
+      'Domain <code>' + location.hostname + '</code> may not be in Firebase Auth authorized domains.<br>' +
+      'Check <a href="https://console.firebase.google.com/project/time-tracker-f07da/authentication/settings" ' +
+      'target="_blank" style="color:#fca5a5;text-decoration:underline">Firebase Console → Auth → Settings → Authorized domains</a>.'
     );
   }
 }).catch(e => {
@@ -1723,17 +1740,23 @@ getRedirectResult(auth).then(result => {
   showAuthError(e.code + ': ' + e.message);
 });
 
-function showAuthError(msg) {
-  const existing = document.getElementById('auth-error-banner');
-  if (existing) existing.remove();
-  const banner = document.createElement('div');
-  banner.id = 'auth-error-banner';
-  banner.style.cssText = 'background:#450a0a;color:#fca5a5;border:1px solid #ef4444;border-radius:8px;padding:0.65rem 0.9rem;margin:0.75rem 1rem 0;font-size:0.8rem;line-height:1.5;';
-  banner.innerHTML = `<strong>Sign-in failed</strong> — ${msg.includes('unauthorized-domain')
-    ? `Add <code style="background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px;">${location.hostname}</code> to <a href="https://console.firebase.google.com/project/time-tracker-f07da/authentication/settings" target="_blank" style="color:#fca5a5">Firebase Auth → Settings → Authorized domains</a>, then try again.`
-    : msg}`;
-  const header = document.querySelector('.header');
-  if (header) header.insertAdjacentElement('afterend', banner);
+function showAuthError(html) {
+  document.getElementById('auth-error-banner')?.remove();
+  const b = document.createElement('div');
+  b.id = 'auth-error-banner';
+  b.style.cssText = [
+    'position:fixed','top:0','left:0','right:0','z-index:99999',
+    'background:#450a0a','color:#fca5a5',
+    'border-bottom:3px solid #ef4444',
+    'padding:1rem 1.25rem','font-size:0.82rem','line-height:1.7',
+    'word-break:break-word','box-shadow:0 4px 24px rgba(0,0,0,0.7)'
+  ].join(';');
+  b.innerHTML =
+    '<button onclick="document.getElementById(\'auth-error-banner\').remove()" ' +
+    'style="float:right;background:rgba(255,255,255,0.15);border:none;border-radius:4px;' +
+    'color:#fca5a5;cursor:pointer;padding:2px 10px;font-size:1rem;margin-left:0.5rem">✕</button>' +
+    html;
+  document.body.prepend(b);
 }
 
 // ── Real-time Firestore sync ──────────────────────
