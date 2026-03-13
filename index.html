@@ -1684,17 +1684,34 @@ function updateAuthBtn(user) {
 
 // ── Handle redirect result on page load ──────────
 getRedirectResult(auth).then(result => {
+  sessionStorage.removeItem('tt_signing_in');
   if (result?.user) {
-    // onAuthStateChanged will fire automatically — nothing extra needed
+    window.toast && window.toast('✓ Signed in as ' + result.user.displayName?.split(' ')[0]);
   }
 }).catch(e => {
+  sessionStorage.removeItem('tt_signing_in');
   setSyncDot('error');
-  if (e.code === 'auth/unauthorized-domain') {
-    alert('Add this domain to Firebase Auth → Authorized domains:\n\n' + location.hostname);
-  } else if (e.code !== 'auth/cancelled-popup-request') {
-    console.error('Redirect sign-in error:', e.code, e.message);
-  }
+  showAuthError(e.code + ': ' + e.message);
 });
+
+// If we're returning from a redirect, show a loading state
+if (sessionStorage.getItem('tt_signing_in')) {
+  const btn = document.getElementById('auth-btn');
+  if (btn) { btn.innerHTML = '⏳ Signing in…'; btn.disabled = true; }
+}
+
+function showAuthError(msg) {
+  const existing = document.getElementById('auth-error-banner');
+  if (existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.id = 'auth-error-banner';
+  banner.style.cssText = 'background:#450a0a;color:#fca5a5;border:1px solid #ef4444;border-radius:8px;padding:0.65rem 0.9rem;margin:0.75rem 1rem 0;font-size:0.8rem;line-height:1.5;';
+  banner.innerHTML = `<strong>Sign-in failed</strong> — ${msg.includes('unauthorized-domain')
+    ? `Add <code style="background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px;">${location.hostname}</code> to <a href="https://console.firebase.google.com/project/time-tracker-f07da/authentication/settings" target="_blank" style="color:#fca5a5">Firebase Auth → Settings → Authorized domains</a>, then try again.`
+    : msg}`;
+  const header = document.querySelector('.header');
+  if (header) header.insertAdjacentElement('afterend', banner);
+}
 
 // ── Real-time Firestore sync ──────────────────────
 async function startSync(uid) {
