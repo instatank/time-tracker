@@ -1615,8 +1615,8 @@ function hexAlpha(hex, alpha) {
 <script type="module">
 import { initializeApp }                          from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider,
-         signInWithPopup, signOut,
-         onAuthStateChanged }                     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+         signInWithRedirect, getRedirectResult,
+         signOut, onAuthStateChanged }            from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 import { getFirestore, collection, doc,
          setDoc, deleteDoc, onSnapshot }          from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
@@ -1668,13 +1668,33 @@ function updateAuthBtn(user) {
   } else {
     btn.innerHTML = '🔑 Sign in';
     btn.title     = 'Sign in with Google to sync across devices';
-    btn.onclick   = () => signInWithPopup(auth, provider).catch(e => {
-      if (e.code === 'auth/unauthorized-domain') {
-        alert('Add this domain to Firebase:\nFirebase Console → Authentication → Settings → Authorized domains\n\n' + location.hostname);
-      }
-    });
+    btn.onclick   = () => {
+      setSyncDot('syncing');
+      signInWithRedirect(auth, provider).catch(e => {
+        setSyncDot('error');
+        if (e.code === 'auth/unauthorized-domain') {
+          alert('Add this domain to Firebase Auth → Authorized domains:\n\n' + location.hostname);
+        } else {
+          alert('Sign-in error: ' + e.message);
+        }
+      });
+    };
   }
 }
+
+// ── Handle redirect result on page load ──────────
+getRedirectResult(auth).then(result => {
+  if (result?.user) {
+    // onAuthStateChanged will fire automatically — nothing extra needed
+  }
+}).catch(e => {
+  setSyncDot('error');
+  if (e.code === 'auth/unauthorized-domain') {
+    alert('Add this domain to Firebase Auth → Authorized domains:\n\n' + location.hostname);
+  } else if (e.code !== 'auth/cancelled-popup-request') {
+    console.error('Redirect sign-in error:', e.code, e.message);
+  }
+});
 
 // ── Real-time Firestore sync ──────────────────────
 async function startSync(uid) {
