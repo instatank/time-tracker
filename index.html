@@ -1615,7 +1615,7 @@ function hexAlpha(hex, alpha) {
 <script type="module">
 import { initializeApp }                          from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider,
-         signInWithRedirect, getRedirectResult,
+         signInWithPopup, signInWithRedirect, getRedirectResult,
          signOut, onAuthStateChanged }            from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 import { getFirestore, collection, doc,
          setDoc, deleteDoc, onSnapshot }          from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
@@ -1668,37 +1668,60 @@ function updateAuthBtn(user) {
   } else {
     btn.innerHTML = '🔑 Sign in';
     btn.title     = 'Sign in with Google to sync across devices';
-    btn.onclick   = () => {
+    btn.onclick   = async () => {
       setSyncDot('syncing');
-      signInWithRedirect(auth, provider).catch(e => {
-        setSyncDot('error');
-        if (e.code === 'auth/unauthorized-domain') {
-          alert('Add this domain to Firebase Auth → Authorized domains:\n\n' + location.hostname);
+      btn.disabled  = true;
+      btn.innerHTML = '⏳…';
+      try {
+        await signInWithPopup(auth, provider);
+        // onAuthStateChanged handles the rest
+      } catch (e) {
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+          // Popup blocked → fall back to redirect
+          sessionStorage.setItem('tt_signing_in', '1');
+          signInWithRedirect(auth, provider).catch(err => {
+            sessionStorage.removeItem('tt_signing_in');
+            setSyncDot('error');
+            showAuthError(err.code + ': ' + err.message);
+          });
         } else {
-          alert('Sign-in error: ' + e.message);
+          setSyncDot('error');
+          btn.disabled  = false;
+          updateAuthButton(null);          // reset button
+          showAuthError(e.code + ': ' + e.message);
         }
-      });
+      }
     };
   }
 }
 
 // ── Handle redirect result on page load ──────────
+const wasSigningIn = sessionStorage.getItem('tt_signing_in');
+if (wasSigningIn) {
+  const btn = document.getElementById('auth-btn');
+  if (btn) { btn.innerHTML = '⏳ Signing in…'; btn.disabled = true; }
+}
+
 getRedirectResult(auth).then(result => {
   sessionStorage.removeItem('tt_signing_in');
   if (result?.user) {
     window.toast && window.toast('✓ Signed in as ' + result.user.displayName?.split(' ')[0]);
+  } else if (wasSigningIn) {
+    // Redirect happened but came back with no user and no error — surface a diagnostic
+    setSyncDot('error');
+    showAuthError(
+      'auth/redirect-returned-null — The sign-in redirect completed but returned no user. ' +
+      'This usually means the domain <strong>' + location.hostname + '</strong> is not in ' +
+      '<a href="https://console.firebase.google.com/project/time-tracker-f07da/authentication/settings" ' +
+      'target="_blank" style="color:#fca5a5">Firebase Auth → Settings → Authorized domains</a>. ' +
+      'Add it there and try again.'
+    );
   }
 }).catch(e => {
   sessionStorage.removeItem('tt_signing_in');
   setSyncDot('error');
   showAuthError(e.code + ': ' + e.message);
 });
-
-// If we're returning from a redirect, show a loading state
-if (sessionStorage.getItem('tt_signing_in')) {
-  const btn = document.getElementById('auth-btn');
-  if (btn) { btn.innerHTML = '⏳ Signing in…'; btn.disabled = true; }
-}
 
 function showAuthError(msg) {
   const existing = document.getElementById('auth-error-banner');
