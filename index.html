@@ -1577,11 +1577,11 @@ window.openAuth = function() {
       <button class="btn-signout" style="margin-top:0.75rem" onclick="doSignOut()">Sign out</button>
     `;
   } else if (pendingRedirect) {
-    // Page just reloaded after Google redirect — show waiting state
     body.innerHTML = `
       <div style="text-align:center;padding:1.5rem 0">
         <div style="font-size:1.5rem;margin-bottom:0.75rem">⏳</div>
-        <p style="color:var(--text2);font-size:0.88rem">Completing sign-in…</p>
+        <p style="color:var(--text2);font-size:0.88rem;margin-bottom:1rem">Completing sign-in…</p>
+        <button class="btn-ghost" onclick="cancelRedirect()">Cancel</button>
       </div>
     `;
   } else {
@@ -1611,6 +1611,11 @@ window.doSignIn = async function() {
     setAuthError(authErrMsg(err.code));
     if (btn) { btn.disabled = false; btn.innerHTML = GOOGLE_SVG + ' Continue with Google'; }
   }
+};
+
+window.cancelRedirect = function() {
+  sessionStorage.removeItem('dayos_redirect_pending');
+  openAuth(); // re-render sheet — now shows the sign-in button
 };
 
 window.doSignOut = async function() {
@@ -1770,31 +1775,31 @@ function mergeById(local, remote) {
 // Must call getRedirectResult() on every page load to collect the Google
 // sign-in result after a redirect. Errors here are real and must be shown.
 getRedirectResult(auth)
-  .then(result => {
-    // Success: onAuthStateChanged will fire and handle the user.
-    // Clear the pending flag so the "completing sign-in" UI goes away.
-    if (result?.user) sessionStorage.removeItem('dayos_redirect_pending');
+  .then(() => {
+    // Always clear — whether redirect succeeded, returned null, or wasn't a redirect.
+    // Leaving the flag set is what causes the "stuck on completing sign-in" bug.
+    sessionStorage.removeItem('dayos_redirect_pending');
   })
   .catch(err => {
     sessionStorage.removeItem('dayos_redirect_pending');
     if (err.code && err.code !== 'auth/no-current-user') {
       setSyncStatus('error');
-      const msg = authErrMsg(err.code);
-      toast('Sign-in failed: ' + msg, 4000);
-      console.error('[DayOS] Redirect sign-in error:', err.code, err.message);
+      toast('Sign-in failed: ' + authErrMsg(err.code), 4000);
+      console.error('[DayOS] Redirect error:', err.code, err.message);
     }
   });
 
-onAuthStateChanged(auth, async u => {
+onAuthStateChanged(auth, u => {
   user = u;
+  sessionStorage.removeItem('dayos_redirect_pending');
   if (u) {
-    sessionStorage.removeItem('dayos_redirect_pending');
-    await initialSync(u.uid);
-    closeSheets(); // auto-close auth sheet on success
+    closeSheets();
+    render(); // show app immediately — don't block on sync
+    initialSync(u.uid); // sync in background
   } else {
     setSyncStatus('idle');
+    render();
   }
-  render();
 });
 
 // ── Toast ─────────────────────────────────────────────────────
