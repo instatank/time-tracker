@@ -781,7 +781,7 @@ select option { background: var(--surface2); }
 <script type="module">
 import { initializeApp }                    from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
 import { getAuth, GoogleAuthProvider,
-         signInWithRedirect,
+         signInWithPopup, signInWithRedirect,
          getRedirectResult, signOut,
          onAuthStateChanged }               from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { getFirestore, collection, doc,
@@ -1599,17 +1599,24 @@ window.openAuth = function() {
 
 window.doSignIn = async function() {
   const btn = document.getElementById('btn-google-signin');
-  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to Google…'; }
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
 
-  // Always use redirect — popup is unreliable in modern browsers due to
-  // third-party cookie restrictions (Chrome, Safari) blocking the OAuth postMessage.
-  sessionStorage.setItem('dayos_redirect_pending', '1');
   try {
-    await signInWithRedirect(auth, new GoogleAuthProvider());
+    // Popup is the right default for desktop — fast, no page navigation.
+    // onAuthStateChanged fires after popup completes and handles everything.
+    await signInWithPopup(auth, new GoogleAuthProvider());
   } catch (err) {
-    sessionStorage.removeItem('dayos_redirect_pending');
-    setAuthError(authErrMsg(err.code));
-    if (btn) { btn.disabled = false; btn.innerHTML = GOOGLE_SVG + ' Continue with Google'; }
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+
+    if (err.code === 'auth/popup-blocked') {
+      // Only fall back to redirect when popup is explicitly blocked (e.g. mobile)
+      sessionStorage.setItem('dayos_redirect_pending', '1');
+      try { await signInWithRedirect(auth, new GoogleAuthProvider()); }
+      catch (e2) { sessionStorage.removeItem('dayos_redirect_pending'); setAuthError(authErrMsg(e2.code)); }
+    } else if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+      // popup-closed-by-user = they dismissed it themselves, no error message needed
+      setAuthError(authErrMsg(err.code));
+    }
   }
 };
 
