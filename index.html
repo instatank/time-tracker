@@ -663,9 +663,26 @@ select option { background: var(--surface2); }
   margin-top: 0.5rem;
   min-height: 1.2em;
 }
-.user-info { margin-bottom: 1rem; }
+.user-info { margin-bottom: 0.75rem; }
 .user-name { font-size: 1rem; font-weight: 600; }
 .user-email { font-size: 0.78rem; color: var(--text2); }
+.sync-panel {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  text-align: left;
+}
+.sync-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
+.sync-row:last-child { margin-bottom: 0; }
+.sync-key { font-size: 0.75rem; color: var(--text2); }
+.sync-val { font-size: 0.75rem; font-weight: 600; }
+.sync-val.ok     { color: var(--success); }
+.sync-val.error  { color: var(--danger); }
+.sync-val.syncing { color: var(--warn); }
+.sync-val.idle   { color: var(--text3); }
+.sync-err-msg { font-size: 0.75rem; color: var(--danger); margin-top: 0.5rem; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -1512,19 +1529,52 @@ function setAuthError(msg) {
   if (el) { el.textContent = msg; el.style.display = 'block'; }
 }
 
+// ── Firestore batch write (handles >500 docs by splitting) ────
+async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings) {
+  const ops = [
+    ...allBlocks.map(b   => ({ ref: doc(db, 'users', uid, 'blocks',   b.id), data: b })),
+    ...allCaptures.map(c => ({ ref: doc(db, 'users', uid, 'captures', c.id), data: c })),
+    ...Object.entries(allRatings).map(([date, r]) => ({
+      ref: doc(db, 'users', uid, 'ratings', date), data: { rating: r }
+    })),
+  ];
+  const CHUNK = 400;
+  for (let i = 0; i < ops.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    ops.slice(i, i + CHUNK).forEach(op => batch.set(op.ref, op.data));
+    await batch.commit();
+  }
+}
+
 // ── Auth sheet UI ──────────────────────────────────────────────
 window.openAuth = function() {
   const body = document.getElementById('auth-body');
   const pendingRedirect = sessionStorage.getItem('dayos_redirect_pending');
 
   if (user) {
+    const statusLabels = { ok: '✓ Synced', syncing: 'Syncing…', error: 'Error', idle: 'Not synced' };
+    const statusLabel = statusLabels[syncStatus] || syncStatus;
     body.innerHTML = `
       <div class="user-info">
         <div class="user-name">${esc(user.displayName || 'User')}</div>
         <div class="user-email">${esc(user.email || '')}</div>
       </div>
-      <p class="auth-desc">Your data syncs automatically across all your devices.</p>
-      <button class="btn-signout" onclick="doSignOut()">Sign out</button>
+      <div class="sync-panel">
+        <div class="sync-row">
+          <span class="sync-key">Cloud sync</span>
+          <span class="sync-val ${syncStatus}">${statusLabel}</span>
+        </div>
+        <div class="sync-row">
+          <span class="sync-key">Local data</span>
+          <span class="sync-val">${blocks.length} blocks · ${captures.length} captures</span>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="forcePushToCloud()">↑ Push local → cloud</button>
+        <button class="btn-ghost"    onclick="forcePullFromCloud()">↓ Pull cloud → local</button>
+      </div>
+      <div class="sync-err-msg" id="sync-sheet-err"></div>
+      <button class="btn-signout" style="margin-top:0.75rem" onclick="doSignOut()">Sign out</button>
     `;
   } else if (pendingRedirect) {
     // Page just reloaded after Google redirect — show waiting state
@@ -1572,6 +1622,72 @@ window.doSignOut = async function() {
   render();
 };
 
+// Push everything from localStorage → Firestore (use on the device that HAS the data)
+window.forcePushToCloud = async function() {
+  if (!user) return;
+  setSyncStatus('syncing');
+  openAuth(); // refresh sheet to show "Syncing…"
+  try {
+    await firestoreBatchWrite(user.uid, blocks, captures, ratings);
+    setSyncStatus('ok');
+    toast(`✓ Uploaded ${blocks.length} blocks & ${captures.length} captures to cloud`, 3500);
+    openAuth();
+  } catch (err) {
+    setSyncStatus('error');
+    const msg = (err.code === 'permission-denied' || err.message?.includes('permission'))
+      ? 'Permission denied — fix Firestore rules (see note below)'
+      : (err.message || 'Unknown error');
+    const el = document.getElementById('sync-sheet-err');
+    if (el) {
+      el.textContent = msg;
+      if (err.code === 'permission-denied') {
+        el.textContent += '\n\nFix: Firebase Console → Firestore → Rules → paste:\n\nrules_version = \'2\';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /users/{userId}/{document=**} {\n      allow read, write: if request.auth.uid == userId;\n    }\n  }\n}';
+        el.style.whiteSpace = 'pre-wrap';
+      }
+    }
+    toast('Upload failed: ' + msg, 5000);
+    console.error('[DayOS] Push error:', err);
+  }
+};
+
+// Pull everything from Firestore → localStorage (use on the device that NEEDS the data)
+window.forcePullFromCloud = async function() {
+  if (!user) return;
+  setSyncStatus('syncing');
+  openAuth();
+  try {
+    const [bSnap, cSnap, rSnap] = await Promise.all([
+      getDocs(collection(db, 'users', user.uid, 'blocks')),
+      getDocs(collection(db, 'users', user.uid, 'captures')),
+      getDocs(collection(db, 'users', user.uid, 'ratings')),
+    ]);
+    const remoteBlocks   = bSnap.docs.map(d => d.data());
+    const remoteCaptures = cSnap.docs.map(d => d.data());
+    const remoteRatings  = {};
+    rSnap.docs.forEach(d => { remoteRatings[d.id] = d.data().rating; });
+
+    // Merge: keep all local + all remote (local fills gaps, remote wins same ID)
+    blocks   = mergeById(blocks, remoteBlocks);
+    captures = mergeById(captures, remoteCaptures);
+    ratings  = { ...ratings, ...remoteRatings };
+    saveAll();
+
+    setSyncStatus('ok');
+    toast(`✓ Pulled ${blocks.length} blocks & ${captures.length} captures from cloud`, 3500);
+    openAuth();
+    render();
+  } catch (err) {
+    setSyncStatus('error');
+    const msg = (err.code === 'permission-denied')
+      ? 'Permission denied — fix Firestore security rules'
+      : (err.message || 'Unknown error');
+    const el = document.getElementById('sync-sheet-err');
+    if (el) el.textContent = msg;
+    toast('Pull failed: ' + msg, 5000);
+    console.error('[DayOS] Pull error:', err);
+  }
+};
+
 function setSyncStatus(s) {
   syncStatus = s;
   const dot = document.querySelector('.sync-dot');
@@ -1617,13 +1733,7 @@ async function initialSync(uid) {
     saveAll();
 
     // Upload everything (including local-only items) to Firestore
-    const batch = writeBatch(db);
-    mergedBlocks.forEach(b   => batch.set(doc(db, 'users', uid, 'blocks',   b.id), b));
-    mergedCaptures.forEach(c => batch.set(doc(db, 'users', uid, 'captures', c.id), c));
-    Object.entries(mergedRatings).forEach(([date, rating]) => {
-      batch.set(doc(db, 'users', uid, 'ratings', date), { rating });
-    });
-    await batch.commit();
+    await firestoreBatchWrite(uid, mergedBlocks, mergedCaptures, mergedRatings);
 
     setSyncStatus('ok');
 
@@ -1640,8 +1750,12 @@ async function initialSync(uid) {
     render();
   } catch (err) {
     setSyncStatus('error');
-    toast('Sync error — your local data is safe, will retry on reload');
-    console.error('Sync error', err);
+    const isPerms = err.code === 'permission-denied' || err.message?.includes('permission');
+    const msg = isPerms
+      ? 'Firestore permission denied — open Account and fix your security rules'
+      : 'Sync error — local data is safe. Open Account → Push local → cloud to retry.';
+    toast(msg, 5000);
+    console.error('[DayOS] initialSync error:', err.code, err.message);
   }
 }
 
