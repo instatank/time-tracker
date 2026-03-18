@@ -15,7 +15,16 @@
       "Bash(echo \"PATH: $HOME/.npm-global/bin\")",
       "Bash(~/.npm-global/bin/vercel --version)",
       "Bash(~/.npm-global/bin/vercel deploy --prod --yes)",
-      "Bash(~/.npm-global/bin/vercel deploy --prod --yes --name time-tracker)"
+      "Bash(~/.npm-global/bin/vercel deploy --prod --yes --name time-tracker)",
+      "Bash(git add index.html)",
+      "Bash(git push)",
+      "Bash(gh auth:*)",
+      "Bash(gh api:*)",
+      "Bash(curl -s http://localhost:8080)",
+      "Bash(git config:*)",
+      "Bash(git -C \"/Users/ankitanand/Time Management\" config --list)",
+      "Bash(git -C \"/Users/ankitanand/Time Management\" remote -v)",
+      "Bash(firebase --version)"
     ]
   }
 }
