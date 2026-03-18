@@ -1489,46 +1489,109 @@ window.openLogBlock = openLogBlock;
 window.openCapture = openCapture;
 window.openCaptureEdit = openCaptureEdit;
 
-// ── Auth ──────────────────────────────────────────────────────
+// ── Auth helpers ───────────────────────────────────────────────
+// On mobile or when installed as PWA, popups never work → always use redirect
+const isMobileBrowser = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const isPWAStandalone = window.matchMedia('(display-mode: standalone)').matches
+                        || window.navigator.standalone === true;
+const useRedirectFlow  = isMobileBrowser || isPWAStandalone;
+
+const GOOGLE_SVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>`;
+
+function authErrMsg(code) {
+  const map = {
+    'auth/popup-blocked':              'Popup was blocked — switching to redirect sign-in.',
+    'auth/popup-closed-by-user':       'Sign-in window was closed.',
+    'auth/cancelled-popup-request':    'Sign-in cancelled.',
+    'auth/unauthorized-domain':        'This domain is not authorized. Add it in Firebase Console → Authentication → Authorized Domains.',
+    'auth/network-request-failed':     'Network error — check your connection and try again.',
+    'auth/too-many-requests':          'Too many attempts — please wait a moment and try again.',
+    'auth/internal-error':             'Internal error — please try again.',
+    'auth/user-disabled':              'This account has been disabled.',
+  };
+  return map[code] || `Sign-in failed: ${code}`;
+}
+
+function setAuthError(msg) {
+  setSyncStatus('error');
+  const el = document.getElementById('auth-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+// ── Auth sheet UI ──────────────────────────────────────────────
 window.openAuth = function() {
   const body = document.getElementById('auth-body');
+  const pendingRedirect = sessionStorage.getItem('dayos_redirect_pending');
+
   if (user) {
     body.innerHTML = `
       <div class="user-info">
         <div class="user-name">${esc(user.displayName || 'User')}</div>
         <div class="user-email">${esc(user.email || '')}</div>
       </div>
-      <p class="auth-desc">Your data syncs automatically across devices.</p>
+      <p class="auth-desc">Your data syncs automatically across all your devices.</p>
       <button class="btn-signout" onclick="doSignOut()">Sign out</button>
+    `;
+  } else if (pendingRedirect) {
+    // Page just reloaded after Google redirect — show waiting state
+    body.innerHTML = `
+      <div style="text-align:center;padding:1.5rem 0">
+        <div style="font-size:1.5rem;margin-bottom:0.75rem">⏳</div>
+        <p style="color:var(--text2);font-size:0.88rem">Completing sign-in…</p>
+      </div>
     `;
   } else {
     body.innerHTML = `
-      <p class="auth-desc">Sign in to sync your data across all your devices.</p>
-      <button class="btn-google" onclick="doSignIn()">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+      <p class="auth-desc">Sign in to back up and sync your data across devices. Your existing entries will be preserved.</p>
+      <button class="btn-google" id="btn-google-signin" onclick="doSignIn()">
+        ${GOOGLE_SVG}
         Continue with Google
       </button>
-      <div class="auth-error" id="auth-error"></div>
+      <div class="auth-error" id="auth-error" style="display:none"></div>
     `;
   }
   openSheet('sheet-auth');
 };
 
 window.doSignIn = async function() {
-  try {
-    setSyncStatus('syncing');
-    const provider = new GoogleAuthProvider();
+  const btn = document.getElementById('btn-google-signin');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+  setSyncStatus('syncing');
+
+  const provider = new GoogleAuthProvider();
+
+  if (useRedirectFlow) {
+    // Mobile / PWA: redirect is the only reliable option
+    sessionStorage.setItem('dayos_redirect_pending', '1');
     try {
-      await signInWithPopup(auth, provider);
-    } catch (popupErr) {
-      if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/cancelled-popup-request') {
-        await signInWithRedirect(auth, provider);
-      } else { throw popupErr; }
+      await signInWithRedirect(auth, provider);
+    } catch (err) {
+      sessionStorage.removeItem('dayos_redirect_pending');
+      setAuthError(authErrMsg(err.code));
+      if (btn) { btn.disabled = false; btn.style.opacity = ''; }
     }
+    return;
+  }
+
+  // Desktop: try popup, fall back to redirect on block
+  try {
+    await signInWithPopup(auth, provider);
+    closeSheets();
   } catch (err) {
-    setSyncStatus('error');
-    const errEl = document.getElementById('auth-error');
-    if (errEl) errEl.textContent = err.message || 'Sign in failed';
+    const fallbackCodes = ['auth/popup-blocked', 'auth/cancelled-popup-request'];
+    if (fallbackCodes.includes(err.code)) {
+      sessionStorage.setItem('dayos_redirect_pending', '1');
+      try {
+        await signInWithRedirect(auth, provider);
+      } catch (e2) {
+        sessionStorage.removeItem('dayos_redirect_pending');
+        setAuthError(authErrMsg(e2.code));
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+      }
+    } else {
+      setAuthError(authErrMsg(err.code));
+      if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    }
   }
 };
 
@@ -1560,6 +1623,8 @@ async function syncCaptureDoc(c) {
 
 async function initialSync(uid) {
   setSyncStatus('syncing');
+  const localBlocksBefore   = blocks.length;
+  const localCapturesBefore = captures.length;
   try {
     const [bSnap, cSnap, rSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
@@ -1567,24 +1632,25 @@ async function initialSync(uid) {
       getDocs(collection(db, 'users', uid, 'ratings')),
     ]);
 
-    // Merge: remote wins for same ID, local fills gaps
-    const remoteBlocks = bSnap.docs.map(d => d.data());
+    // Merge strategy: local fills gaps, remote wins on same ID.
+    // This means all your local entries are ALWAYS kept — nothing is lost on sign-in.
+    const remoteBlocks   = bSnap.docs.map(d => d.data());
     const remoteCaptures = cSnap.docs.map(d => d.data());
-    const remoteRatings = {};
+    const remoteRatings  = {};
     rSnap.docs.forEach(d => { remoteRatings[d.id] = d.data().rating; });
 
-    const mergedBlocks = mergeById(blocks, remoteBlocks);
+    const mergedBlocks   = mergeById(blocks, remoteBlocks);
     const mergedCaptures = mergeById(captures, remoteCaptures);
-    const mergedRatings = { ...ratings, ...remoteRatings };
+    const mergedRatings  = { ...ratings, ...remoteRatings };
 
-    blocks = mergedBlocks;
+    blocks   = mergedBlocks;
     captures = mergedCaptures;
-    ratings = mergedRatings;
+    ratings  = mergedRatings;
     saveAll();
 
-    // Push any local-only items to Firestore
+    // Upload everything (including local-only items) to Firestore
     const batch = writeBatch(db);
-    mergedBlocks.forEach(b => batch.set(doc(db, 'users', uid, 'blocks', b.id), b));
+    mergedBlocks.forEach(b   => batch.set(doc(db, 'users', uid, 'blocks',   b.id), b));
     mergedCaptures.forEach(c => batch.set(doc(db, 'users', uid, 'captures', c.id), c));
     Object.entries(mergedRatings).forEach(([date, rating]) => {
       batch.set(doc(db, 'users', uid, 'ratings', date), { rating });
@@ -1592,9 +1658,21 @@ async function initialSync(uid) {
     await batch.commit();
 
     setSyncStatus('ok');
+
+    // Tell the user exactly what happened to their data
+    const localUploaded = mergedBlocks.length - remoteBlocks.length + mergedCaptures.length - remoteCaptures.length;
+    if (localBlocksBefore > 0 && remoteBlocks.length === 0) {
+      toast(`✓ Signed in — ${localBlocksBefore} blocks & ${localCapturesBefore} entries backed up`, 3500);
+    } else if (remoteBlocks.length > 0 || remoteCaptures.length > 0) {
+      toast(`✓ Synced — ${mergedBlocks.length} blocks, ${mergedCaptures.length} entries`, 3000);
+    } else {
+      toast(`✓ Signed in`);
+    }
+
     render();
   } catch (err) {
     setSyncStatus('error');
+    toast('Sync error — your local data is safe, will retry on reload');
     console.error('Sync error', err);
   }
 }
@@ -1607,12 +1685,30 @@ function mergeById(local, remote) {
 }
 
 // ── Auth state ────────────────────────────────────────────────
-getRedirectResult(auth).catch(() => {});
+// Must call getRedirectResult() on every page load to collect the Google
+// sign-in result after a redirect. Errors here are real and must be shown.
+getRedirectResult(auth)
+  .then(result => {
+    // Success: onAuthStateChanged will fire and handle the user.
+    // Clear the pending flag so the "completing sign-in" UI goes away.
+    if (result?.user) sessionStorage.removeItem('dayos_redirect_pending');
+  })
+  .catch(err => {
+    sessionStorage.removeItem('dayos_redirect_pending');
+    if (err.code && err.code !== 'auth/no-current-user') {
+      setSyncStatus('error');
+      const msg = authErrMsg(err.code);
+      toast('Sign-in failed: ' + msg, 4000);
+      console.error('[DayOS] Redirect sign-in error:', err.code, err.message);
+    }
+  });
 
 onAuthStateChanged(auth, async u => {
   user = u;
   if (u) {
+    sessionStorage.removeItem('dayos_redirect_pending');
     await initialSync(u.uid);
+    closeSheets(); // auto-close auth sheet on success
   } else {
     setSyncStatus('idle');
   }
