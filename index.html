@@ -704,6 +704,7 @@ select option { background: var(--surface2); }
     <div class="field">
       <label class="field-label">Duration</label>
       <div class="pill-row">
+        <button class="pill dur-pill" data-dur="15">15m</button>
         <button class="pill dur-pill" data-dur="30">30m</button>
         <button class="pill dur-pill" data-dur="45">45m</button>
         <button class="pill dur-pill" data-dur="60">60m</button>
@@ -717,8 +718,9 @@ select option { background: var(--surface2); }
       <div class="cat-grid" id="cat-grid"></div>
     </div>
     <div class="field">
-      <label class="field-label">Activity Label <span style="color:var(--danger)">*</span></label>
-      <input type="text" id="f-label" placeholder="e.g. Deep Work — feature X">
+      <label class="field-label">Activity Label</label>
+      <input type="text" id="f-label" placeholder="e.g. Meditation, Feature X…" list="label-suggestions" autocomplete="off">
+      <datalist id="label-suggestions"></datalist>
     </div>
     <div class="field">
       <label class="field-label">Note (optional)</label>
@@ -804,7 +806,6 @@ let unsubs = [];
 // ── Constants ─────────────────────────────────────────────────
 const CATS = [
   { id: 'deep_work', label: 'Deep Work', icon: '🎯', color: '#3b82f6' },
-  { id: 'admin',     label: 'Admin',     icon: '📋', color: '#8b5cf6' },
   { id: 'learning',  label: 'Learning',  icon: '📚', color: '#10b981' },
   { id: 'practice',  label: 'Practice',  icon: '🧘', color: '#f59e0b' },
   { id: 'routine',   label: 'Routine',   icon: '🏠', color: '#6366f1' },
@@ -1287,6 +1288,11 @@ function openLogBlock(blockId = null) {
   renderDurPills();
   renderEnergyPills();
 
+  // Populate autocomplete from past labels
+  const dl = document.getElementById('label-suggestions');
+  const unique = [...new Set(blocks.map(b => b.label).filter(Boolean))].sort();
+  dl.innerHTML = unique.map(l => `<option value="${esc(l)}">`).join('');
+
   openSheet('sheet-block');
   setTimeout(() => document.getElementById('f-label').focus(), 300);
 }
@@ -1305,7 +1311,7 @@ function renderDurPills() {
   document.querySelectorAll('.dur-pill').forEach(btn => {
     const v = parseInt(btn.dataset.dur);
     const isCustom = v === 0;
-    const isActive = isCustom ? (![30,45,60,90].includes(selDur)) : (v === selDur);
+    const isActive = isCustom ? (![15,30,45,60,90].includes(selDur)) : (v === selDur);
     btn.classList.toggle('active', isActive);
     if (isActive) btn.style.background = 'var(--accent)';
     else btn.style.background = '';
@@ -1345,7 +1351,6 @@ document.querySelectorAll('[data-energy]').forEach(btn => {
 
 window.saveBlock = function() {
   const label = document.getElementById('f-label').value.trim();
-  if (!label) { toast('Activity label is required'); return; }
 
   const timeVal = document.getElementById('f-time').value;
   const noteVal = document.getElementById('f-note').value.trim();
