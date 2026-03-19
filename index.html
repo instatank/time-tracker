@@ -817,6 +817,7 @@ const CTYPES = [
   { id: 'project', label: 'Project',    icon: '📁' },
   { id: 'insight', label: 'Insight',    icon: '✨' },
 ];
+const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
 const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1' };
 
 // ── State ─────────────────────────────────────────────────────
@@ -852,7 +853,6 @@ function saveAll() {
 
 // ── Utils ─────────────────────────────────────────────────────
 // ── IST timezone helpers ───────────────────────────────────────
-const TZ = 'Asia/Kolkata';
 function nowIST() { return new Date(new Date().toLocaleString('en-US', { timeZone: TZ })); }
 function nowISTIso() {
   const d = nowIST();
