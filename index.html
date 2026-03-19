@@ -534,7 +534,7 @@ select option { background: var(--surface2); }
 .pill.active { border-color: transparent; color: #fff; }
 .dur-pill { min-width: 48px; text-align: center; }
 
-.cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+.cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
 .cat-pill {
   padding: 0.4rem 0.25rem;
   border-radius: 8px;
@@ -717,10 +717,10 @@ select option { background: var(--surface2); }
       <label class="field-label">Category</label>
       <div class="cat-grid" id="cat-grid"></div>
     </div>
-    <div class="field">
+    <div class="field" style="position:relative">
       <label class="field-label">Activity Label</label>
-      <input type="text" id="f-label" placeholder="e.g. Meditation, Feature X…" list="label-suggestions" autocomplete="off">
-      <datalist id="label-suggestions"></datalist>
+      <input type="text" id="f-label" placeholder="e.g. Meditation, Feature X…" autocomplete="off" oninput="filterLabelSuggestions(this.value)" onblur="setTimeout(hideLabelSuggestions,150)">
+      <div id="label-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
     </div>
     <div class="field">
       <label class="field-label">Note (optional)</label>
@@ -1288,10 +1288,8 @@ function openLogBlock(blockId = null) {
   renderDurPills();
   renderEnergyPills();
 
-  // Populate autocomplete from past labels
-  const dl = document.getElementById('label-suggestions');
-  const unique = [...new Set(blocks.map(b => b.label).filter(Boolean))].sort();
-  dl.innerHTML = unique.map(l => `<option value="${esc(l)}">`).join('');
+  // Pre-build sorted unique labels for autocomplete
+  window._labelSuggestions = [...new Set(blocks.map(b => b.label).filter(Boolean))].sort();
 
   openSheet('sheet-block');
   setTimeout(() => document.getElementById('f-label').focus(), 300);
@@ -1331,6 +1329,26 @@ function renderEnergyPills() {
 }
 
 window.selCatFn = function(id) { selCat = id; renderCatGrid(); };
+
+window.filterLabelSuggestions = function(val) {
+  const dd = document.getElementById('label-dropdown');
+  const suggestions = window._labelSuggestions || [];
+  const q = val.trim().toLowerCase();
+  const matches = q ? suggestions.filter(l => l.toLowerCase().includes(q)) : suggestions;
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = matches.map(l => `<div style="padding:0.6rem 0.75rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border2)" ontouchstart="this.style.background='var(--surface3)'" onmousedown="pickLabel('${esc(l)}')">${esc(l)}</div>`).join('');
+  dd.style.display = 'block';
+};
+
+window.pickLabel = function(val) {
+  document.getElementById('f-label').value = val;
+  hideLabelSuggestions();
+};
+
+window.hideLabelSuggestions = function() {
+  const dd = document.getElementById('label-dropdown');
+  if (dd) dd.style.display = 'none';
+};
 
 // Dur pill clicks
 document.querySelectorAll('.dur-pill').forEach(btn => {
