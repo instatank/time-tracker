@@ -971,8 +971,8 @@ function renderMain() {
 // ── Today ─────────────────────────────────────────────────────
 function renderToday() {
   const d = todayStr();
-  const bks = blocks.filter(b => b.date === d).sort((a,b) => a.start_time.localeCompare(b.start_time));
-  const caps = captures.filter(c => c.timestamp.startsWith(d)).sort((a,b) => a.timestamp.localeCompare(b.timestamp));
+  const bks = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
+  const caps = captures.filter(c => c.timestamp.startsWith(d)).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
   const sc = dayScore(d);
   const r = ratings[d] || 0;
 
@@ -1175,7 +1175,7 @@ function renderCalendar() {
 }
 
 function renderDayBlocks(date) {
-  const bks = blocks.filter(b => b.date === date).sort((a,b) => a.start_time.localeCompare(b.start_time));
+  const bks = blocks.filter(b => b.date === date).sort((a,b) => b.start_time.localeCompare(a.start_time));
   const caps = captures.filter(c => c.timestamp.startsWith(date));
   if (!bks.length && !caps.length) return '<div class="empty">No data for this day.</div>';
   return [
