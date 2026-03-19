@@ -1,33 +1,19 @@
-const CACHE = 'dayos-v3';
-const SHELL = ['/index.html', '/manifest.json', '/icon.svg'];
+const CACHE = 'dayos-v4';
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {})));
-  self.skipWaiting();
-});
+// Install: become active immediately, don't wait for old SW to finish
+self.addEventListener('install', () => self.skipWaiting());
 
+// Activate: wipe all old caches, take control, then FORCE RELOAD all open
+// tabs so they escape any previous broken SW state
 self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+    await self.clients.claim();
+    const clients = await self.clients.matchAll({ type: 'window' });
+    await Promise.all(clients.map(c => c.navigate(c.url)));
+  })());
 });
 
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  const url = new URL(e.request.url);
-  // Only handle same-origin requests; let Firebase/CDN pass through normally
-  if (url.origin !== self.location.origin) return;
-
-  // Network-first: always try to get latest, fall back to cache if offline
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
-});
+// No fetch interception — requests go straight to network.
+// App always loads the latest version. Offline not needed for a personal tracker.
