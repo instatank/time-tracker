@@ -851,31 +851,47 @@ function saveAll() {
 }
 
 // ── Utils ─────────────────────────────────────────────────────
-function todayStr() { return new Date().toISOString().slice(0,10); }
+// ── IST timezone helpers ───────────────────────────────────────
+const TZ = 'Asia/Kolkata';
+function nowIST() { return new Date(new Date().toLocaleString('en-US', { timeZone: TZ })); }
+function nowISTIso() {
+  const d = nowIST();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' +
+         String(d.getDate()).padStart(2,'0') + 'T' +
+         String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' +
+         String(d.getSeconds()).padStart(2,'0');
+}
+function capDateIST(c) {
+  if (c.timestamp.endsWith('Z') || c.timestamp.includes('+'))
+    return new Date(c.timestamp).toLocaleDateString('en-CA', { timeZone: TZ });
+  return c.timestamp.slice(0, 10);
+}
+function todayStr() {
+  const d = nowIST();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function catById(id) { return CATS.find(c => c.id === id) || CATS[0]; }
 function ctypeById(id) { return CTYPES.find(c => c.id === id) || CTYPES[0]; }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtTime(iso) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true });
+  return new Date(iso).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true, timeZone: TZ });
 }
 function fmtDate(d) {
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' });
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone: TZ });
 }
 function addDays(dateStr, n) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0,10);
+  const [y, m, day] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m-1, day + n)).toISOString().slice(0,10);
 }
 function greeting() {
-  const h = new Date().getHours();
+  const h = nowIST().getHours();
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
 }
 function fmtDayHeader() {
-  return new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+  return new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', timeZone: TZ });
 }
 function timeToISO(dateStr, timeStr) {
   return `${dateStr}T${timeStr}:00`;
@@ -884,7 +900,7 @@ function timeToISO(dateStr, timeStr) {
 // ── Compute ───────────────────────────────────────────────────
 function dayScore(date) {
   const bks = blocks.filter(b => b.date === date);
-  const caps = captures.filter(c => c.timestamp.startsWith(date));
+  const caps = captures.filter(c => capDateIST(c) === date);
   const totalMin = bks.reduce((s, b) => s + (b.duration_min || 0), 0);
   const deepWorkMin = bks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0);
   const leakMin = bks.filter(b => b.category === 'leaks').reduce((s, b) => s + (b.duration_min || 0), 0);
@@ -908,7 +924,7 @@ function journalStreak() {
   let streak = 0;
   let d = todayStr();
   while (true) {
-    const hasCap = captures.some(c => c.timestamp.startsWith(d) && c.type === 'journal');
+    const hasCap = captures.some(c => capDateIST(c) === d && c.type === 'journal');
     if (!hasCap) break;
     streak++;
     d = addDays(d, -1);
@@ -972,7 +988,7 @@ function renderMain() {
 function renderToday() {
   const d = todayStr();
   const bks = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
-  const caps = captures.filter(c => c.timestamp.startsWith(d)).sort((a,b) => a.timestamp.localeCompare(b.timestamp));
+  const caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => a.timestamp.localeCompare(b.timestamp));
   const sc = dayScore(d);
   const r = ratings[d] || 0;
 
@@ -1101,7 +1117,7 @@ function renderJournal() {
 
 function renderCapFull(c) {
   const ct = ctypeById(c.type);
-  const date = c.timestamp.slice(0,10);
+  const date = capDateIST(c);
   const isToday = date === todayStr();
   const dateLabel = isToday ? `Today · ${fmtTime(c.timestamp)}` : `${fmtDate(date)} · ${fmtTime(c.timestamp)}`;
   return `
@@ -1137,7 +1153,7 @@ function renderCalendar() {
 
   // Collect dates with data (any blocks or captures)
   const datesWithBlocks = new Set(blocks.map(b => b.date));
-  const datesWithCaps   = new Set(captures.map(c => c.timestamp.slice(0,10)));
+  const datesWithCaps   = new Set(captures.map(c => capDateIST(c)));
 
   const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
   let cells = '';
@@ -1176,7 +1192,7 @@ function renderCalendar() {
 
 function renderDayBlocks(date) {
   const bks = blocks.filter(b => b.date === date).sort((a,b) => b.start_time.localeCompare(a.start_time));
-  const caps = captures.filter(c => c.timestamp.startsWith(date));
+  const caps = captures.filter(c => capDateIST(c) === date);
   if (!bks.length && !caps.length) return '<div class="empty">No data for this day.</div>';
   return [
     ...bks.map(renderBlock),
@@ -1255,7 +1271,7 @@ function openLogBlock(blockId = null) {
   const b = blockId ? blocks.find(x => x.id === blockId) : null;
 
   // Populate defaults
-  const now = new Date();
+  const now = nowIST();
   const defaultTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 
   document.getElementById('block-sheet-title').textContent = blockId ? 'Edit Block' : 'Log Block';
@@ -1412,7 +1428,7 @@ window.saveCapture = function() {
       toast('Entry updated');
     }
   } else {
-    const c = { id: uid(), timestamp: new Date().toISOString(), type: selCapType, body, project_tag: projectTag };
+    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag };
     captures.push(c);
     syncCaptureDoc(c);
     toast('Captured');
