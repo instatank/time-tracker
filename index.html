@@ -475,7 +475,9 @@ html, body {
   transition: transform 0.25s cubic-bezier(0.32,0.72,0,1);
   max-height: 92dvh;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
 }
 .sheet.open { transform: translateX(-50%) translateY(0); }
 .sheet-handle {
@@ -490,21 +492,22 @@ html, body {
   padding: 0.75rem 1rem 0.25rem;
   text-align: center;
 }
-.sheet-body { padding: 0.75rem 1rem 1.25rem; }
+.sheet-body { padding: 0.75rem 1rem 1.25rem; box-sizing: border-box; }
 
 /* ── Form elements ──────────────────────────────────────────── */
 .field { margin-bottom: 0.85rem; }
 .field-label {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.58rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--text2);
   text-transform: uppercase;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.3rem;
 }
 .field input, .field textarea, .field select {
   width: 100%;
+  box-sizing: border-box;
   background: var(--surface2);
   border: 1px solid var(--border2);
   border-radius: 8px;
@@ -518,7 +521,9 @@ html, body {
 .field input:focus, .field textarea:focus, .field select:focus {
   border-color: var(--accent);
 }
-.field textarea { resize: vertical; min-height: 80px; }
+.field textarea { resize: vertical; min-height: 44px; }
+.energy-row { display: flex; align-items: center; gap: 0.6rem; }
+.energy-row .field-label { margin-bottom: 0; white-space: nowrap; }
 .field select { appearance: none; }
 select option { background: var(--surface2); }
 
@@ -701,11 +706,9 @@ select option { background: var(--surface2); }
   <div class="sheet-title" id="block-sheet-title">Log Block</div>
   <div class="sheet-body">
     <div class="field">
-      <label class="field-label">Start Time</label>
       <input type="time" id="f-time">
     </div>
     <div class="field">
-      <label class="field-label">Duration</label>
       <div class="pill-row">
         <button class="pill dur-pill" data-dur="15">15m</button>
         <button class="pill dur-pill" data-dur="30">30m</button>
@@ -714,10 +717,9 @@ select option { background: var(--surface2); }
         <button class="pill dur-pill" data-dur="90">90m</button>
         <button class="pill dur-pill" data-dur="0">Custom</button>
       </div>
-      <input type="number" id="f-dur-custom" placeholder="Minutes" style="display:none;margin-top:0.5rem;width:100px">
+      <input type="number" id="f-dur-custom" placeholder="Minutes" style="display:none;margin-top:0.5rem;width:100px;box-sizing:border-box">
     </div>
     <div class="field">
-      <label class="field-label">Category</label>
       <div class="cat-grid" id="cat-grid"></div>
     </div>
     <div class="field" style="position:relative">
@@ -726,15 +728,17 @@ select option { background: var(--surface2); }
       <div id="label-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
     </div>
     <div class="field">
-      <label class="field-label">Note (optional)</label>
-      <textarea id="f-note" placeholder="Short context or observation…"></textarea>
+      <label class="field-label">Note</label>
+      <textarea id="f-note" placeholder="Short context…" style="min-height:44px"></textarea>
     </div>
     <div class="field">
-      <label class="field-label">Energy Level (optional)</label>
-      <div class="pill-row">
-        <button class="pill" data-energy="Low">Low</button>
-        <button class="pill" data-energy="Medium">Medium</button>
-        <button class="pill" data-energy="High">High</button>
+      <div class="energy-row">
+        <span class="field-label">Energy</span>
+        <div class="pill-row">
+          <button class="pill" data-energy="Low">Low</button>
+          <button class="pill" data-energy="Medium">Medium</button>
+          <button class="pill" data-energy="High">High</button>
+        </div>
       </div>
     </div>
     <div class="btn-row">
