@@ -49,14 +49,17 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  max-width: 100vw;
 }
 
 #root {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  width: 100%;
   max-width: 600px;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 /* ── Header ─────────────────────────────────────────────────── */
@@ -104,8 +107,10 @@ html, body {
 #main {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   padding-bottom: calc(var(--nav-h) + 1rem);
+  width: 100%;
 }
 
 /* ── Bottom nav ──────────────────────────────────────────────── */
@@ -138,7 +143,7 @@ html, body {
 .nav-btn svg { width: 22px; height: 22px; }
 
 /* ── Sections / cards ───────────────────────────────────────── */
-.view { padding: 1rem; }
+.view { padding: 1rem; width: 100%; box-sizing: border-box; overflow-x: hidden; }
 .section { margin-bottom: 1.25rem; }
 .sec-hdr {
   display: flex;
@@ -417,7 +422,7 @@ html, body {
   gap: 0.5rem;
   margin-bottom: 0.55rem;
 }
-.bar-lbl { font-size: 0.78rem; color: var(--text2); min-width: 110px; flex-shrink: 0; }
+.bar-lbl { font-size: 0.75rem; color: var(--text2); min-width: 72px; max-width: 72px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-track {
   flex: 1;
   height: 8px;
