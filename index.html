@@ -856,6 +856,7 @@ let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
 let journalFilter = 'all';
 let journalProjectFilter = null;
+let journalExpanded = false;
 let dashRange = 'week';
 let todayBksExpanded = false;
 let todayCapsExpanded = false;
@@ -1175,8 +1176,10 @@ function renderJournal() {
         <span class="prompt-arrow">→</span>
       </div>` : ''}
 
-    ${filtered.length ? filtered.map(renderCapFull).join('') :
-      `<div class="empty">${journalFilter === 'all' ? 'No captures yet.' : 'No ' + (typeLabel[journalFilter] || journalFilter) + ' entries yet.'}</div>`}
+    ${filtered.length
+      ? (journalExpanded ? filtered : filtered.slice(0, TODAY_PREVIEW)).map(renderCapFull).join('')
+        + (filtered.length > TODAY_PREVIEW ? moreBtn(journalExpanded, filtered.length - TODAY_PREVIEW, 'toggleJournal') : '')
+      : `<div class="empty">${journalFilter === 'all' ? 'No captures yet.' : 'No ' + (typeLabel[journalFilter] || journalFilter) + ' entries yet.'}</div>`}
   </div>`;
 }
 
@@ -1609,8 +1612,9 @@ window.setRating = function(date, val) {
 window.setTab = function(tab) { activeTab = tab; render(); };
 window.toggleTodayBks  = function() { todayBksExpanded  = !todayBksExpanded;  renderMain(); };
 window.toggleTodayCaps = function() { todayCapsExpanded = !todayCapsExpanded; renderMain(); };
-window.setJFilter = function(f) { journalFilter = f; journalProjectFilter = null; renderMain(); };
-window.setJProjectFilter = function(p) { journalProjectFilter = p; renderMain(); };
+window.setJFilter = function(f) { journalFilter = f; journalProjectFilter = null; journalExpanded = false; renderMain(); };
+window.setJProjectFilter = function(p) { journalProjectFilter = p; journalExpanded = false; renderMain(); };
+window.toggleJournal = function() { journalExpanded = !journalExpanded; renderMain(); };
 window.setDashRange = function(r) { dashRange = r; renderMain(); };
 window.setHistDate = function(d) { histDate = d; renderMain(); };
 window.calPrevMonth = function() { histCalMonth.setMonth(histCalMonth.getMonth() - 1); renderMain(); };
