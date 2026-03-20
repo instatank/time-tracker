@@ -756,9 +756,10 @@ select option { background: var(--surface2); }
     <div class="field">
       <textarea id="f-cap-body" placeholder="What's on your mind…" style="min-height:120px"></textarea>
     </div>
-    <div class="field" id="f-project-field" style="display:none">
+    <div class="field" id="f-project-field" style="display:none;position:relative">
       <label class="field-label">Project Tag</label>
-      <input type="text" id="f-project-tag" placeholder="project name">
+      <input type="text" id="f-project-tag" placeholder="project name" autocomplete="off" oninput="filterProjectSuggestions(this.value)" onblur="setTimeout(hideProjectSuggestions,150)">
+      <div id="project-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
     </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
@@ -1372,6 +1373,26 @@ window.hideLabelSuggestions = function() {
   if (dd) dd.style.display = 'none';
 };
 
+window.filterProjectSuggestions = function(val) {
+  const dd = document.getElementById('project-dropdown');
+  const suggestions = window._projectSuggestions || [];
+  const q = val.trim().toLowerCase();
+  const matches = q ? suggestions.filter(p => p.toLowerCase().includes(q)) : suggestions;
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = matches.map(p => `<div style="padding:0.6rem 0.75rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border2)" onmousedown="pickProject('${esc(p)}')" ontouchstart="this.style.background='var(--surface3)'">${esc(p)}</div>`).join('');
+  dd.style.display = 'block';
+};
+
+window.pickProject = function(val) {
+  document.getElementById('f-project-tag').value = val;
+  hideProjectSuggestions();
+};
+
+window.hideProjectSuggestions = function() {
+  const dd = document.getElementById('project-dropdown');
+  if (dd) dd.style.display = 'none';
+};
+
 // Dur pill clicks
 document.querySelectorAll('.dur-pill').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1424,6 +1445,7 @@ function openCapture(type = 'note') {
   document.getElementById('f-project-tag').value = '';
   renderCapTypeRow();
   toggleProjectField();
+  window._projectSuggestions = [...new Set(captures.filter(c => c.type === 'project').map(c => c.project_tag).filter(Boolean))].sort();
   openSheet('sheet-capture');
   setTimeout(() => document.getElementById('f-cap-body').focus(), 300);
 }
