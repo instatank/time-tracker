@@ -154,6 +154,16 @@ html, body {
 .sec-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; color: var(--text2); text-transform: uppercase; }
 .sec-meta  { font-size: 0.72rem; color: var(--text3); }
 
+/* ── More divider ───────────────────────────────────────────── */
+.more-btn {
+  width: 100%; display: flex; align-items: center; gap: 0.5rem;
+  background: none; border: none; cursor: pointer; padding: 0.45rem 0; margin-top: 0.1rem;
+}
+.more-btn-line { flex: 1; height: 1px; background: var(--border); transition: background 0.15s; }
+.more-btn-text { font-size: 0.7rem; color: var(--text3); white-space: nowrap; transition: color 0.15s; }
+.more-btn:active .more-btn-text, .more-btn:hover .more-btn-text { color: var(--accent); }
+.more-btn:active .more-btn-line, .more-btn:hover .more-btn-line { background: var(--accent); }
+
 /* ── Today view ─────────────────────────────────────────────── */
 .today-header { margin-bottom: 1rem; }
 .today-date { font-size: 1.1rem; font-weight: 600; }
@@ -844,6 +854,9 @@ let histCalMonth = new Date(); histCalMonth.setDate(1);
 let journalFilter = 'all';
 let journalProjectFilter = null;
 let dashRange = 'week';
+let todayBksExpanded = false;
+let todayCapsExpanded = false;
+const TODAY_PREVIEW = 3;
 let user = null;
 let syncStatus = 'idle';
 
@@ -1000,12 +1013,25 @@ function renderMain() {
 }
 
 // ── Today ─────────────────────────────────────────────────────
+function moreBtn(expanded, hidden, fn) {
+  return `<button class="more-btn" onclick="${fn}()">
+    <span class="more-btn-line"></span>
+    <span class="more-btn-text">${expanded ? '↑ show less' : `↓ ${hidden} more`}</span>
+    <span class="more-btn-line"></span>
+  </button>`;
+}
+
 function renderToday() {
   const d = todayStr();
-  const bks = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
-  const caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => a.timestamp.localeCompare(b.timestamp));
+  const bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
+  const caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
   const sc = dayScore(d);
   const r = ratings[d] || 0;
+
+  const visBks  = todayBksExpanded  ? bks  : bks.slice(0, TODAY_PREVIEW);
+  const visCaps = todayCapsExpanded ? caps : caps.slice(0, TODAY_PREVIEW);
+  const moreBks  = bks.length  - TODAY_PREVIEW;
+  const moreCaps = caps.length - TODAY_PREVIEW;
 
   return `<div class="view">
     <div class="section today-header">
@@ -1023,13 +1049,16 @@ function renderToday() {
         <span class="sec-title">Today's Log</span>
         <span class="sec-meta">${sc.totalHrs > 0 ? sc.totalHrs.toFixed(1) + 'h logged' : ''}</span>
       </div>
-      ${bks.length ? bks.map(renderBlock).join('') : '<div class="empty">No blocks yet — tap Log Block to start.</div>'}
+      ${bks.length
+        ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
+        : '<div class="empty">No blocks yet — tap Log Block to start.</div>'}
     </div>
 
     ${caps.length ? `
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Captures</span></div>
-      ${caps.map(renderCapPreview).join('')}
+      ${visCaps.map(renderCapPreview).join('')}
+      ${moreCaps > 0 ? moreBtn(todayCapsExpanded, moreCaps, 'toggleTodayCaps') : ''}
     </div>` : ''}
 
     <div class="section">
@@ -1575,6 +1604,8 @@ window.setRating = function(date, val) {
 
 // ── Navigation ────────────────────────────────────────────────
 window.setTab = function(tab) { activeTab = tab; render(); };
+window.toggleTodayBks  = function() { todayBksExpanded  = !todayBksExpanded;  renderMain(); };
+window.toggleTodayCaps = function() { todayCapsExpanded = !todayCapsExpanded; renderMain(); };
 window.setJFilter = function(f) { journalFilter = f; journalProjectFilter = null; renderMain(); };
 window.setJProjectFilter = function(p) { journalProjectFilter = p; renderMain(); };
 window.setDashRange = function(r) { dashRange = r; renderMain(); };
