@@ -2304,6 +2304,7 @@ async function initialSync(uid) {
       toast(`✓ Signed in`);
     }
 
+    autoLogSleep();
     render();
   } catch (err) {
     setSyncStatus('error');
@@ -2385,12 +2386,45 @@ function navIconDashboard() {
   </svg>`;
 }
 
+// ── Auto-log Sleep ────────────────────────────────────────────
+// Automatically logs 8h sleep (02:00–10:00) under Routine for each day.
+// Runs on init and after any sync. Skips if a sleep block already exists for that date.
+function autoLogSleep() {
+  const now = new Date();
+  const h = now.getHours();
+
+  // If it's between midnight and 10am, last night's sleep belongs to yesterday.
+  // Otherwise it belongs to today (already happened or will happen tonight).
+  const sleepDate = h < 10 ? addDays(todayStr(), -1) : todayStr();
+
+  const alreadyLogged = blocks.some(b =>
+    b.date === sleepDate && b.category === 'routine' && b.label === 'Sleep' && b._auto === true
+  );
+  if (alreadyLogged) return;
+
+  const b = {
+    id: uid(),
+    date: sleepDate,
+    start_time: '02:00',
+    duration_min: 480,
+    category: 'routine',
+    label: 'Sleep',
+    note: '',
+    energy_level: '',
+    _auto: true,
+  };
+  blocks.push(b);
+  saveLocal(SK.BLOCKS, blocks);
+  syncBlockDoc(b);
+}
+
 // ── Service Worker ────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
 // ── Init ──────────────────────────────────────────────────────
+autoLogSleep();
 render();
 </script>
 </body>
