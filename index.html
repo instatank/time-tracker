@@ -511,6 +511,12 @@ html, body {
 .metric-lbl { font-size: 0.72rem; color: var(--text2); margin-top: 3px; }
 
 /* ── Weekly Review ─────────────────────────────────────────── */
+.wr-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
 .wr-back {
   display: inline-flex;
   align-items: center;
@@ -521,13 +527,29 @@ html, body {
   border: none;
   cursor: pointer;
   padding: 0;
-  margin-bottom: 1rem;
 }
 .wr-back:hover { color: var(--text); }
-.wr-daterange {
+.wr-week-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.wr-week-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
   font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.15rem 0.5rem;
+}
+.wr-week-btn:disabled { color: var(--text3); cursor: default; }
+.wr-week-btn:not(:disabled):hover { background: var(--surface3); }
+.wr-daterange {
+  font-size: 0.95rem;
   font-weight: 700;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
 }
 .wr-section-title {
   font-size: 0.72rem;
@@ -1046,6 +1068,7 @@ let journalExpanded = false;
 let journalSearch = '';
 let dashRange = 'week';
 let showWeeklyReview = false;
+let weeklyReviewOffset = 0; // 0 = current week, -1 = last week, etc.
 let dashView = 'totals'; // 'totals' or 'overtime'
 let weeklyReviews = loadLocal('dayos_weekly_reviews_v1', {});
 let todayBksExpanded = false;
@@ -1698,7 +1721,8 @@ function getWeekStart(dateStr) {
 
 function renderWeeklyReview() {
   const td = todayStr();
-  const weekStart = getWeekStart(td);
+  const currentWeekStart = getWeekStart(td);
+  const weekStart = addDays(currentWeekStart, weeklyReviewOffset * 7);
   const weekEnd = addDays(weekStart, 6);
   const prevWeekStart = addDays(weekStart, -7);
 
@@ -1816,8 +1840,14 @@ function renderWeeklyReview() {
   const currentIntention = weeklyReviews[weekStart]?.intention || '';
 
   return `<div class="view">
-    <button class="wr-back" onclick="closeWeeklyReview()">← Back</button>
-    <div class="wr-daterange">${fmtRange(weekStart, weekEnd)}</div>
+    <div class="wr-nav-row">
+      <button class="wr-back" onclick="closeWeeklyReview()">← Back</button>
+      <div class="wr-week-nav">
+        <button class="wr-week-btn" onclick="shiftWeeklyReview(-1)">‹</button>
+        <span class="wr-daterange">${fmtRange(weekStart, weekEnd)}</span>
+        <button class="wr-week-btn" onclick="shiftWeeklyReview(1)" ${weeklyReviewOffset >= 0 ? 'disabled' : ''}>›</button>
+      </div>
+    </div>
 
     <div class="wr-section-title">The Week at a Glance</div>
     <div class="wr-stat"><span class="wr-stat-label">Total hours</span><span class="wr-stat-val">${totalHrs.toFixed(1)}h</span></div>
@@ -2116,7 +2146,7 @@ window.setRating = function(date, val) {
 };
 
 // ── Navigation ────────────────────────────────────────────────
-window.setTab = function(tab) { activeTab = tab; showWeeklyReview = false; render(); };
+window.setTab = function(tab) { activeTab = tab; showWeeklyReview = false; weeklyReviewOffset = 0; render(); };
 window.toggleTodayBks  = function() { todayBksExpanded  = !todayBksExpanded;  renderMain(); };
 window.toggleTodayCaps = function() { todayCapsExpanded = !todayCapsExpanded; renderMain(); };
 window.setJFilter = function(f) { journalFilter = f; journalProjectFilter = null; journalExpanded = false; renderMain(); };
@@ -2130,11 +2160,17 @@ window.setJSearch = function(q) {
 };
 window.setDashRange = function(r) { dashRange = r; renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
-window.openWeeklyReview = function() { showWeeklyReview = true; renderMain(); };
+window.openWeeklyReview = function() { showWeeklyReview = true; weeklyReviewOffset = 0; renderMain(); };
 window.closeWeeklyReview = function() { showWeeklyReview = false; renderMain(); };
+window.shiftWeeklyReview = function(dir) {
+  const next = weeklyReviewOffset + dir;
+  if (next > 0) return;
+  weeklyReviewOffset = next;
+  renderMain();
+};
 window.saveWeeklyIntention = function() {
   const intention = document.getElementById('wr-intention')?.value?.trim() || '';
-  const weekStart = getWeekStart(todayStr());
+  const weekStart = addDays(getWeekStart(todayStr()), weeklyReviewOffset * 7);
   if (!weeklyReviews[weekStart]) weeklyReviews[weekStart] = {};
   weeklyReviews[weekStart].intention = intention;
   saveLocal('dayos_weekly_reviews_v1', weeklyReviews);
@@ -2519,10 +2555,9 @@ function autoLogSleep() {
   const td = todayStr();
   const h = new Date().getHours();
 
-  // Dates that should have a sleep block:
-  // - Yesterday (last night's sleep, always applicable)
-  // - Today (only if past 10am, meaning sleep window has ended)
-  const dates = [addDays(td, -1)];
+  // Backfill the last 7 days; add today if past 10am.
+  const dates = [];
+  for (let i = 7; i >= 1; i--) dates.push(addDays(td, -i));
   if (h >= 10) dates.push(td);
 
   let changed = false;
