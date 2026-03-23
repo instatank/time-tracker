@@ -1046,6 +1046,7 @@ const CATS = [
   { id: 'leisure',   label: 'Leisure',   icon: '🎮', color: '#f97316' },
   { id: 'leaks',     label: 'Leaks',     icon: '🕳️', color: '#ef4444' },
 ];
+const SLEEP_CAT = { id: 'sleep', label: 'Sleep', icon: '😴', color: '#6366f1' };
 const CTYPES = [
   { id: 'note',    label: 'Quick Note', icon: '💭' },
   { id: 'journal', label: 'Journal',    icon: '📓' },
@@ -1146,7 +1147,7 @@ function timeToISO(dateStr, timeStr) {
 function dayScore(date) {
   const bks = blocks.filter(b => b.date === date);
   const caps = captures.filter(c => capDateIST(c) === date);
-  const totalMin = bks.reduce((s, b) => s + (b.duration_min || 0), 0);
+  const totalMin = bks.filter(b => b.category !== 'sleep').reduce((s, b) => s + (b.duration_min || 0), 0);
   const deepWorkMin = bks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0);
   const leakMin = bks.filter(b => b.category === 'leaks').reduce((s, b) => s + (b.duration_min || 0), 0);
   const practiceDone = bks.some(b => b.category === 'practice');
@@ -1162,6 +1163,7 @@ function dayScore(date) {
 function catBreakdown(bks) {
   const map = {};
   CATS.forEach(c => map[c.id] = 0);
+  map[SLEEP_CAT.id] = 0;
   bks.forEach(b => { map[b.category] = (map[b.category] || 0) + (b.duration_min || 0) / 60; });
   return map;
 }
@@ -1511,26 +1513,41 @@ function renderDashboard() {
   const startDate = addDays(td, -(n-1));
   const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td);
   const breakdown = catBreakdown(rangeBlocks);
+  const sleepHrs = breakdown[SLEEP_CAT.id] || 0;
+  const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
   const maxHrs = Math.max(...Object.values(breakdown), 0.1);
-  const totalHrs = Object.values(breakdown).reduce((a,b) => a+b, 0);
+  const totalHrs = wakingHrs; // exclude sleep from totals used for percentages
   const deepWorkHrs = breakdown['deep_work'] || 0;
   const leakHrs = breakdown['leaks'] || 0;
   const leakPct = totalHrs > 0 ? (leakHrs / totalHrs) * 100 : 0;
   const jStreak = journalStreak();
   const avgR = avgRating(startDate, td);
 
-  const bars = CATS.map(c => {
-    const hrs = breakdown[c.id] || 0;
-    const pct = totalHrs > 0 ? (hrs / maxHrs) * 100 : 0;
-    return `
-      <div class="bar-row">
-        <span class="bar-lbl">${c.icon} ${c.label}</span>
-        <div class="bar-track">
-          <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
-        </div>
-        <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
-      </div>`;
-  }).join('');
+  const bars = [
+    ...CATS.map(c => {
+      const hrs = breakdown[c.id] || 0;
+      const pct = maxHrs > 0 ? (hrs / maxHrs) * 100 : 0;
+      return `
+        <div class="bar-row">
+          <span class="bar-lbl">${c.icon} ${c.label}</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
+          </div>
+          <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
+        </div>`;
+    }),
+    (() => {
+      const pct = maxHrs > 0 ? (sleepHrs / maxHrs) * 100 : 0;
+      return `
+        <div class="bar-row">
+          <span class="bar-lbl">${SLEEP_CAT.icon} ${SLEEP_CAT.label}</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;background:${SLEEP_CAT.color}"></div>
+          </div>
+          <span class="bar-val">${sleepHrs > 0 ? sleepHrs.toFixed(1) + 'h' : '—'}</span>
+        </div>`;
+    })(),
+  ].join('');
 
   const leakClass = leakPct > 15 ? 'bad' : leakPct > 8 ? 'warn' : 'good';
 
@@ -1556,7 +1573,7 @@ function renderDashboard() {
       ${trendCallout}
     </div>` :
     `<div class="section">
-      <div class="sec-hdr"><span class="sec-title">Time by Category</span><span class="sec-meta">${totalHrs.toFixed(1)}h total</span></div>
+      <div class="sec-hdr"><span class="sec-title">Time by Category</span><span class="sec-meta">${totalHrs.toFixed(1)}h waking</span></div>
       <div class="bar-chart">${bars}</div>
     </div>`;
 
@@ -1632,22 +1649,23 @@ async function buildTrendChart(td, n) {
 
   let labels, datasets;
 
+  const allChartCats = [...CATS, SLEEP_CAT];
   if (dashRange === 'week') {
     // 7 days, by day
     labels = [];
     const dayData = {};
-    CATS.forEach(c => { dayData[c.id] = []; });
+    allChartCats.forEach(c => { dayData[c.id] = []; });
     for (let i = 6; i >= 0; i--) {
       const d = addDays(td, -i);
       const dt = new Date(d + 'T00:00:00');
       labels.push(dt.toLocaleDateString('en-US', { weekday: 'short' }));
       const dayBlocks = blocks.filter(b => b.date === d);
-      CATS.forEach(c => {
+      allChartCats.forEach(c => {
         const hrs = dayBlocks.filter(b => b.category === c.id).reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
         dayData[c.id].push(hrs);
       });
     }
-    datasets = CATS.map(c => ({
+    datasets = allChartCats.map(c => ({
       label: c.label,
       data: dayData[c.id],
       borderColor: c.color,
@@ -1660,19 +1678,19 @@ async function buildTrendChart(td, n) {
     // 4 weeks
     labels = [];
     const weekData = {};
-    CATS.forEach(c => { weekData[c.id] = []; });
+    allChartCats.forEach(c => { weekData[c.id] = []; });
     for (let w = 3; w >= 0; w--) {
       const wEnd = addDays(td, -w * 7);
       const wStart = addDays(wEnd, -6);
       const sd = new Date(wStart + 'T00:00:00');
       labels.push(sd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
       const wBlocks = blocks.filter(b => b.date >= wStart && b.date <= wEnd);
-      CATS.forEach(c => {
+      allChartCats.forEach(c => {
         const hrs = wBlocks.filter(b => b.category === c.id).reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
         weekData[c.id].push(hrs);
       });
     }
-    datasets = CATS.map(c => ({
+    datasets = allChartCats.map(c => ({
       label: c.label,
       data: weekData[c.id],
       borderColor: c.color,
@@ -1736,7 +1754,8 @@ function renderWeeklyReview() {
   // Gather week data
   const rangeBlocks = blocks.filter(b => b.date >= weekStart && b.date <= weekEnd);
   const breakdown = catBreakdown(rangeBlocks);
-  const totalHrs = Object.values(breakdown).reduce((a, b) => a + b, 0);
+  const sleepHrsWR = breakdown[SLEEP_CAT.id] || 0;
+  const totalHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
   const deepWorkHrs = breakdown['deep_work'] || 0;
   const leakHrs = breakdown['leaks'] || 0;
   const leakPct = totalHrs > 0 ? (leakHrs / totalHrs * 100) : 0;
@@ -1773,18 +1792,31 @@ function renderWeeklyReview() {
   }
 
   // Bars for breakdown
-  const bars = CATS.map(c => {
-    const hrs = breakdown[c.id] || 0;
-    const pct = totalHrs > 0 ? (hrs / maxHrs) * 100 : 0;
-    return `
-      <div class="bar-row">
-        <span class="bar-lbl">${c.icon} ${c.label}</span>
-        <div class="bar-track">
-          <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
-        </div>
-        <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
-      </div>`;
-  }).join('');
+  const bars = [
+    ...CATS.map(c => {
+      const hrs = breakdown[c.id] || 0;
+      const pct = maxHrs > 0 ? (hrs / maxHrs) * 100 : 0;
+      return `
+        <div class="bar-row">
+          <span class="bar-lbl">${c.icon} ${c.label}</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
+          </div>
+          <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
+        </div>`;
+    }),
+    (() => {
+      const pct = maxHrs > 0 ? (sleepHrsWR / maxHrs) * 100 : 0;
+      return `
+        <div class="bar-row">
+          <span class="bar-lbl">${SLEEP_CAT.icon} ${SLEEP_CAT.label}</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;background:${SLEEP_CAT.color}"></div>
+          </div>
+          <span class="bar-val">${sleepHrsWR > 0 ? sleepHrsWR.toFixed(1) + 'h' : '—'}</span>
+        </div>`;
+    })(),
+  ].join('');
 
   // Patterns (auto-generated observations)
   const observations = [];
@@ -1850,7 +1882,7 @@ function renderWeeklyReview() {
     </div>
 
     <div class="wr-section-title">The Week at a Glance</div>
-    <div class="wr-stat"><span class="wr-stat-label">Total hours</span><span class="wr-stat-val">${totalHrs.toFixed(1)}h</span></div>
+    <div class="wr-stat"><span class="wr-stat-label">Waking hours</span><span class="wr-stat-val">${totalHrs.toFixed(1)}h</span></div>
     <div class="bar-chart" style="margin-top:0.6rem">${bars}</div>
 
     ${bestDay ? `<div class="wr-best-day"><strong>Best day:</strong> ${bestDay.name}${bestDay.detail ? ' · ' + bestDay.detail : ''}</div>` : ''}
@@ -2549,9 +2581,24 @@ function navIconDashboard() {
 }
 
 // ── Auto-log Sleep ────────────────────────────────────────────
-// Automatically logs 8h sleep (02:00–10:00) under Routine for each day.
+// Migrate old sleep blocks from 'routine' to 'sleep' category
+function migrateSleepCategory() {
+  let changed = false;
+  blocks.forEach(b => {
+    if (b.category === 'routine' && b.label === 'Sleep') {
+      b.category = 'sleep';
+      syncBlockDoc(b);
+      changed = true;
+    }
+  });
+  if (changed) saveLocal(SK.BLOCKS, blocks);
+}
+
+// Automatically logs 8h sleep (02:00–10:00) as a separate sleep category for each day.
 // Runs on init and after any sync. Skips if a sleep block already exists for that date.
 function autoLogSleep() {
+  migrateSleepCategory();
+
   const td = todayStr();
   const h = new Date().getHours();
 
@@ -2563,7 +2610,7 @@ function autoLogSleep() {
   let changed = false;
   for (const sleepDate of dates) {
     const alreadyLogged = blocks.some(b =>
-      b.date === sleepDate && b.category === 'routine' && b.label === 'Sleep'
+      b.date === sleepDate && b.category === 'sleep' && b.label === 'Sleep'
     );
     if (alreadyLogged) continue;
 
@@ -2572,7 +2619,7 @@ function autoLogSleep() {
       date: sleepDate,
       start_time: '02:00',
       duration_min: 480,
-      category: 'routine',
+      category: 'sleep',
       label: 'Sleep',
       note: '',
       energy_level: '',
