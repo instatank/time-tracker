@@ -764,16 +764,6 @@ select option { background: var(--surface2); }
   font-size: 0.9rem;
   cursor: pointer;
 }
-.btn-danger {
-  padding: 0.75rem;
-  background: transparent;
-  color: var(--danger);
-  border: 1px solid var(--danger);
-  border-radius: 10px;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
 /* ── Options sheet ──────────────────────────────────────────── */
 .opt-btn {
   display: flex;
@@ -978,7 +968,7 @@ import { getAuth, GoogleAuthProvider,
          onAuthStateChanged }               from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { getFirestore, collection, doc,
          getDocs, getDoc, setDoc, deleteDoc,
-         onSnapshot, writeBatch }           from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+         writeBatch }                       from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 // ── Firebase ──────────────────────────────────────────────────
 const fbApp = initializeApp({
@@ -1153,10 +1143,10 @@ function renderNav() {
   `).join('');
 }
 
-function renderMain() {
+function renderMain(keepScroll) {
   if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
   const el = document.getElementById('main');
-  el.scrollTop = 0;
+  if (!keepScroll) el.scrollTop = 0;
   switch (activeTab) {
     case 'today':     el.innerHTML = renderToday(); break;
     case 'journal':   el.innerHTML = renderJournal(); break;
@@ -2000,7 +1990,7 @@ window.setTab = function(tab) { activeTab = tab; showWeeklyReview = false; rende
 window.setJFilter = function(f) { journalFilter = f; renderMain(); };
 window.setJSearch = function(q) {
   journalSearch = q;
-  renderMain();
+  renderMain(true);
   // Re-focus and restore cursor position after re-render
   const input = document.querySelector('.journal-search input');
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
@@ -2405,7 +2395,7 @@ function autoLogSleep() {
   let changed = false;
   for (const sleepDate of dates) {
     const alreadyLogged = blocks.some(b =>
-      b.date === sleepDate && b.category === 'routine' && b.label === 'Sleep' && b._auto === true
+      b.date === sleepDate && b.category === 'routine' && b.label === 'Sleep'
     );
     if (alreadyLogged) continue;
 
