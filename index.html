@@ -288,6 +288,7 @@ html, body {
 .tag-pill.tag-win { background: rgba(234,179,8,0.15); color: #eab308; }
 .tag-pill.tag-dft { background: rgba(59,130,246,0.15); color: #60a5fa; }
 .tag-pill.tag-insight { background: rgba(168,85,247,0.15); color: #a855f7; }
+.tag-pill.tag-1pct { background: rgba(16,185,129,0.15); color: #10b981; }
 
 /* ── DFT panel ─────────────────────────────────────────────── */
 .dft-panel {
@@ -1179,7 +1180,7 @@ function todayStr() {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function extractTags(text) {
-  const matches = text.match(/#[a-zA-Z0-9_]+/g);
+  const matches = text.match(/#[a-zA-Z0-9_%]+/g);
   if (!matches) return [];
   return [...new Set(matches.map(t => t.toLowerCase()))];
 }
@@ -1479,9 +1480,15 @@ function renderJournal() {
     </div>
 
     <div class="filter-row">
-      ${['all','journal','note','project','#win','#insight','#dft'].map(f => `
+      ${['all','journal','note','project'].map(f => `
         <button class="fpill ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
           ${f === 'all' ? 'All' : (typeLabel[f] || f)}
+        </button>`).join('')}
+    </div>
+    <div class="filter-row" style="margin-top:-0.5rem">
+      ${['#win','#insight','#dft','#1%'].map(f => `
+        <button class="fpill ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
+          ${f}
         </button>`).join('')}
     </div>
 
@@ -1507,7 +1514,7 @@ function renderJournal() {
 
 function renderTagPills(tags) {
   if (!tags || !tags.length) return '';
-  const special = { '#win': 'tag-win', '#dft': 'tag-dft', '#insight': 'tag-insight' };
+  const special = { '#win': 'tag-win', '#dft': 'tag-dft', '#insight': 'tag-insight', '#1%': 'tag-1pct' };
   return `<div class="tag-pills">${tags.map(t =>
     `<span class="tag-pill ${special[t] || ''}">${esc(t)}</span>`
   ).join('')}</div>`;
