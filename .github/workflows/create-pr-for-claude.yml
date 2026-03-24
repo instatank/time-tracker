@@ -1,44 +1,35 @@
-name: Create PR for Claude branches
+name: Auto-sync Claude branch to main
 on:
   push:
-    branches:
-      - 'claude/**'
+    branches: ['claude/**']
 
 jobs:
-  create-pr:
+  sync-to-main:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
-      contents: read
+      contents: write
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/checkout@v4
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const branch = context.ref.replace('refs/heads/', '');
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-            // Check if a PR already exists for this branch
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head: `${context.repo.owner}:${branch}`,
-              base: 'main',
-              state: 'open',
-            });
+      - name: Merge claude branch into main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-            if (prs.length > 0) {
-              console.log(`PR already exists: #${prs[0].number}`);
-              return;
-            }
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          git fetch origin "$BRANCH"
+          git merge "origin/$BRANCH" --ff-only \
+            || git merge "origin/$BRANCH" --no-ff -m "Auto-merge: $BRANCH"
+          git push origin main
 
-            // Create a new PR
-            const { data: pr } = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Claude: ${branch}`,
-              head: branch,
-              base: 'main',
-              body: 'Auto-created PR for Claude branch.',
-            });
-
-            console.log(`Created PR #${pr.number}: ${pr.html_url}`);
+      - name: Rebase claude branch onto updated main
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          git fetch origin main
+          git checkout "$BRANCH"
+          git rebase origin/main
+          git push --force-with-lease origin "$BRANCH"
