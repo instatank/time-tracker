@@ -323,12 +323,64 @@ html, body {
 }
 .dft-panel-input:focus { border-color: var(--accent); }
 .dft-panel-input::placeholder { color: var(--text3); }
+.dft-body {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 .dft-display {
+  flex: 1;
   font-size: 0.88rem;
   color: var(--text);
   font-weight: 500;
   padding: 0.3rem 0;
   cursor: pointer;
+  min-width: 0;
+}
+.dft-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.dft-tick-btn, .dft-skip-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  background: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+.dft-tick-btn { border-color: #22c55e; color: #22c55e; }
+.dft-tick-btn:hover { background: rgba(34,197,94,0.15); }
+.dft-skip-btn { border-color: #ef4444; color: #ef4444; }
+.dft-skip-btn:hover { background: rgba(239,68,68,0.15); }
+.dft-status-done {
+  font-size: 0.88rem;
+  color: #22c55e;
+  font-weight: 500;
+  padding: 0.15rem 0;
+}
+.dft-status-skipped {
+  font-size: 0.88rem;
+  color: var(--text3);
+  font-weight: 500;
+  padding: 0.15rem 0;
+  text-decoration: line-through;
+}
+.dft-skipped-label {
+  font-size: 0.65rem;
+  color: var(--text3);
+  font-weight: 400;
+  margin-left: 0.4rem;
+  text-decoration: none;
+  display: inline-block;
 }
 .dft-hint {
   font-size: 0.68rem;
@@ -1331,16 +1383,7 @@ function renderToday() {
       <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
     </div>
 
-    <div class="dft-panel">
-      <div class="dft-panel-hdr">
-        <span class="dft-panel-title">🎯 Daily Focus Task</span>
-        ${dfts[d] ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="clearDft()">clear</button>` : ''}
-      </div>
-      ${dfts[d]
-        ? `<div class="dft-display" onclick="editDft()">${esc(dfts[d])}</div>
-           <div class="dft-hint">Tap to edit · Use #dft in notes to link updates</div>`
-        : `<input class="dft-panel-input" placeholder="What's your #1 focus today?" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`}
-    </div>
+    ${renderDftPanel(d)}
 
     <div class="section">
       <div class="sec-hdr">
@@ -2281,27 +2324,114 @@ window.setRating = function(date, val) {
 };
 
 // ── DFT ──────────────────────────────────────────────────────
+function getDft(d) {
+  const v = dfts[d];
+  if (!v) return null;
+  if (typeof v === 'string') return { text: v, status: 'pending' };
+  return v;
+}
+
+function renderDftPanel(d) {
+  const dft = getDft(d);
+  const headerExtra = dft && dft.status === 'pending'
+    ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="clearDft()">clear</button>`
+    : '';
+  let body;
+  if (!dft) {
+    body = `<input class="dft-panel-input" placeholder="What's your #1 focus today?" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
+  } else if (dft.status === 'pending') {
+    body = `
+      <div class="dft-body">
+        <div class="dft-display" onclick="editDft()">${esc(dft.text)}</div>
+        <div class="dft-actions">
+          <button class="dft-tick-btn" onclick="doneDft()" title="Mark done">✓</button>
+          <button class="dft-skip-btn" onclick="skipDft()" title="Skip">✕</button>
+        </div>
+      </div>
+      <div class="dft-hint">Tap task to edit · ✓ done logs to journal · ✕ skips</div>`;
+  } else if (dft.status === 'done') {
+    body = `<div class="dft-status-done">✓ ${esc(dft.text)}</div>`;
+  } else {
+    body = `<div class="dft-status-skipped">${esc(dft.text)}<span class="dft-skipped-label">skipped</span></div>`;
+  }
+  return `
+    <div class="dft-panel">
+      <div class="dft-panel-hdr">
+        <span class="dft-panel-title">🎯 Daily Focus Task</span>
+        ${headerExtra}
+      </div>
+      ${body}
+    </div>`;
+}
+
 window.saveDft = function(val) {
   const text = val.trim();
-  if (!text) return;
-  dfts[todayStr()] = text;
+  const d = todayStr();
+  if (!text) { clearDft(); return; }
+  const existing = getDft(d);
+  dfts[d] = { text, status: existing && existing.status !== 'pending' ? existing.status : 'pending' };
   saveLocal('dayos_dfts_v1', dfts);
   renderMain();
 };
+
 window.editDft = function() {
   const d = todayStr();
+  const dft = getDft(d);
+  if (!dft || dft.status !== 'pending') return;
   const panel = document.querySelector('.dft-panel');
   if (!panel) return;
-  const cur = dfts[d] || '';
-  panel.querySelector('.dft-display').outerHTML =
-    `<input class="dft-panel-input" value="${esc(cur)}" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" onblur="saveDft(this.value)" autofocus />`;
+  const bodyEl = panel.querySelector('.dft-body');
+  if (!bodyEl) return;
+  bodyEl.outerHTML = `<input class="dft-panel-input" value="${esc(dft.text)}" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" onblur="saveDft(this.value)" autofocus />`;
   panel.querySelector('.dft-panel-input').focus();
 };
+
+window.doneDft = function() {
+  const d = todayStr();
+  const dft = getDft(d);
+  if (!dft) return;
+  dfts[d] = { text: dft.text, status: 'done' };
+  saveLocal('dayos_dfts_v1', dfts);
+  // Auto-capture to journal with #dft tag
+  const body = `✅ DFT done: ${dft.text} #dft`;
+  const c = { id: uid(), timestamp: nowISTIso(), type: 'note', body, project_tag: '', tags: extractTags(body) };
+  captures.push(c);
+  saveLocal(SK.CAPTURES, captures);
+  syncCaptureDoc(c);
+  toast('DFT marked done ✓');
+  render();
+};
+
+window.skipDft = function() {
+  const d = todayStr();
+  const dft = getDft(d);
+  if (!dft) return;
+  dfts[d] = { text: dft.text, status: 'skipped' };
+  saveLocal('dayos_dfts_v1', dfts);
+  toast('DFT skipped');
+  renderMain();
+};
+
 window.clearDft = function() {
   delete dfts[todayStr()];
   saveLocal('dayos_dfts_v1', dfts);
   renderMain();
 };
+
+function sweepOldDfts() {
+  const today = todayStr();
+  let changed = false;
+  Object.keys(dfts).forEach(d => {
+    if (d < today) {
+      const dft = getDft(d);
+      if (dft && dft.status === 'pending') {
+        dfts[d] = { text: dft.text, status: 'skipped' };
+        changed = true;
+      }
+    }
+  });
+  if (changed) saveLocal('dayos_dfts_v1', dfts);
+}
 
 // ── Navigation ────────────────────────────────────────────────
 window.setTab = function(tab) { activeTab = tab; showWeeklyReview = false; weeklyReviewOffset = 0; render(); };
@@ -2625,6 +2755,7 @@ async function initialSync(uid) {
     }
 
     autoLogSleep();
+    sweepOldDfts();
     render();
   } catch (err) {
     setSyncStatus('error');
@@ -2765,6 +2896,7 @@ if ('serviceWorker' in navigator) {
 
 // ── Init ──────────────────────────────────────────────────────
 autoLogSleep();
+sweepOldDfts();
 render();
 </script>
 </body>
