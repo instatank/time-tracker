@@ -275,6 +275,65 @@ html, body {
   text-overflow: ellipsis;
 }
 .project-tag { font-size: 0.7rem; color: var(--accent); }
+.tag-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 0.35rem; }
+.tag-pill {
+  font-size: 0.62rem;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--surface3);
+  color: var(--text3);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.tag-pill.tag-win { background: rgba(234,179,8,0.15); color: #eab308; }
+.tag-pill.tag-dft { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.tag-pill.tag-insight { background: rgba(168,85,247,0.15); color: #a855f7; }
+
+/* ── DFT panel ─────────────────────────────────────────────── */
+.dft-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.dft-panel-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.dft-panel-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text2);
+}
+.dft-panel-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.dft-panel-input:focus { border-color: var(--accent); }
+.dft-panel-input::placeholder { color: var(--text3); }
+.dft-display {
+  font-size: 0.88rem;
+  color: var(--text);
+  font-weight: 500;
+  padding: 0.3rem 0;
+  cursor: pointer;
+}
+.dft-hint {
+  font-size: 0.68rem;
+  color: var(--text3);
+  margin-top: 0.3rem;
+}
 
 /* ── Day score ──────────────────────────────────────────────── */
 .score-grid {
@@ -1051,8 +1110,9 @@ const CTYPES = [
   { id: 'note',    label: 'Quick Note', icon: '💭' },
   { id: 'journal', label: 'Journal',    icon: '📓' },
   { id: 'project', label: 'Project',    icon: '📁' },
-  { id: 'insight', label: 'Insight',    icon: '✨' },
 ];
+// Legacy: Insight type removed from selector but old entries still render gracefully
+const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
 const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1' };
 
@@ -1075,6 +1135,7 @@ let weeklyReviews = loadLocal('dayos_weekly_reviews_v1', {});
 let todayBksExpanded = false;
 let todayCapsExpanded = false;
 const TODAY_PREVIEW = 3;
+let dfts = loadLocal('dayos_dfts_v1', {}); // { 'YYYY-MM-DD': 'focus task text' }
 let user = null;
 let syncStatus = 'idle';
 
@@ -1117,8 +1178,13 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function extractTags(text) {
+  const matches = text.match(/#[a-zA-Z0-9_]+/g);
+  if (!matches) return [];
+  return [...new Set(matches.map(t => t.toLowerCase()))];
+}
 function catById(id) { return CATS.find(c => c.id === id) || CATS[0]; }
-function ctypeById(id) { return CTYPES.find(c => c.id === id) || CTYPES[0]; }
+function ctypeById(id) { return CTYPES.find(c => c.id === id) || LEGACY_CTYPES[id] || CTYPES[0]; }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true, timeZone: TZ });
@@ -1264,6 +1330,17 @@ function renderToday() {
       <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
     </div>
 
+    <div class="dft-panel">
+      <div class="dft-panel-hdr">
+        <span class="dft-panel-title">🎯 Daily Focus Task</span>
+        ${dfts[d] ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="clearDft()">clear</button>` : ''}
+      </div>
+      ${dfts[d]
+        ? `<div class="dft-display" onclick="editDft()">${esc(dfts[d])}</div>
+           <div class="dft-hint">Tap to edit · Use #dft in notes to link updates</div>`
+        : `<input class="dft-panel-input" placeholder="What's your #1 focus today?" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`}
+    </div>
+
     <div class="section">
       <div class="sec-hdr">
         <span class="sec-title">Today's Log</span>
@@ -1352,8 +1429,17 @@ function renderJournal() {
   const showMorning = h < 12;
   const showEvening = h >= 18;
   const typeLabel = { note: 'Quick Note', journal: 'Journal', project: 'Project', insight: 'Insight' };
+  const tagFilters = { '#win': '#win', '#insight': '#insight', '#dft': '#dft' };
+  const isTagFilter = journalFilter.startsWith('#');
 
-  let filtered = journalFilter === 'all' ? [...captures] : captures.filter(c => c.type === journalFilter);
+  let filtered;
+  if (journalFilter === 'all') {
+    filtered = [...captures];
+  } else if (isTagFilter) {
+    filtered = captures.filter(c => (c.tags || []).includes(journalFilter));
+  } else {
+    filtered = captures.filter(c => c.type === journalFilter);
+  }
 
   // Project sub-tab logic
   const projectCaptures = captures.filter(c => c.type === 'project');
@@ -1393,7 +1479,7 @@ function renderJournal() {
     </div>
 
     <div class="filter-row">
-      ${['all','note','journal','project','insight'].map(f => `
+      ${['all','journal','note','project','#win','#insight','#dft'].map(f => `
         <button class="fpill ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
           ${f === 'all' ? 'All' : (typeLabel[f] || f)}
         </button>`).join('')}
@@ -1419,6 +1505,14 @@ function renderJournal() {
   </div>`;
 }
 
+function renderTagPills(tags) {
+  if (!tags || !tags.length) return '';
+  const special = { '#win': 'tag-win', '#dft': 'tag-dft', '#insight': 'tag-insight' };
+  return `<div class="tag-pills">${tags.map(t =>
+    `<span class="tag-pill ${special[t] || ''}">${esc(t)}</span>`
+  ).join('')}</div>`;
+}
+
 function renderCapFull(c) {
   const ct = ctypeById(c.type);
   const date = capDateIST(c);
@@ -1433,6 +1527,7 @@ function renderCapFull(c) {
         <span class="cap-time">${dateLabel}</span>
       </div>
       <div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>
+      ${renderTagPills(c.tags)}
     </div>`;
 }
 
@@ -2099,16 +2194,17 @@ window.saveCapture = function() {
   const body = document.getElementById('f-cap-body').value.trim();
   if (!body) { toast('Capture cannot be empty'); return; }
   const projectTag = document.getElementById('f-project-tag').value.trim();
+  const tags = extractTags(body);
 
   if (editingCaptureId) {
     const idx = captures.findIndex(c => c.id === editingCaptureId);
     if (idx > -1) {
-      captures[idx] = { ...captures[idx], type: selCapType, body, project_tag: projectTag };
+      captures[idx] = { ...captures[idx], type: selCapType, body, project_tag: projectTag, tags };
       syncCaptureDoc(captures[idx]);
       toast('Entry updated');
     }
   } else {
-    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag };
+    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags };
     captures.push(c);
     syncCaptureDoc(c);
     toast('Captured');
@@ -2175,6 +2271,29 @@ window.setRating = function(date, val) {
   saveLocal(SK.RATINGS, ratings);
   if (user && ratings[date]) { setDoc(doc(db, 'users', user.uid, 'ratings', date), { rating: ratings[date] }).catch(() => {}); }
   render();
+};
+
+// ── DFT ──────────────────────────────────────────────────────
+window.saveDft = function(val) {
+  const text = val.trim();
+  if (!text) return;
+  dfts[todayStr()] = text;
+  saveLocal('dayos_dfts_v1', dfts);
+  renderMain();
+};
+window.editDft = function() {
+  const d = todayStr();
+  const panel = document.querySelector('.dft-panel');
+  if (!panel) return;
+  const cur = dfts[d] || '';
+  panel.querySelector('.dft-display').outerHTML =
+    `<input class="dft-panel-input" value="${esc(cur)}" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" onblur="saveDft(this.value)" autofocus />`;
+  panel.querySelector('.dft-panel-input').focus();
+};
+window.clearDft = function() {
+  delete dfts[todayStr()];
+  saveLocal('dayos_dfts_v1', dfts);
+  renderMain();
 };
 
 // ── Navigation ────────────────────────────────────────────────
