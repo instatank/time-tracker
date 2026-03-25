@@ -1232,9 +1232,10 @@ function todayStr() {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function extractTags(text) {
-  const matches = text.match(/#[a-zA-Z0-9_%]+/g);
+  // Match #Word or #Two Words (CapCase continuation) then strip spaces + lowercase
+  const matches = text.match(/#[a-zA-Z0-9_%]+(?:\s[A-Z][a-zA-Z0-9_%]*)*/g);
   if (!matches) return [];
-  return [...new Set(matches.map(t => t.toLowerCase()))];
+  return [...new Set(matches.map(t => t.toLowerCase().replace(/\s+/g, '')))];
 }
 function catById(id) { return CATS.find(c => c.id === id) || CATS[0]; }
 function ctypeById(id) { return CTYPES.find(c => c.id === id) || LEGACY_CTYPES[id] || CTYPES[0]; }
@@ -1485,11 +1486,18 @@ function renderJournal() {
     filtered = captures.filter(c => c.type === journalFilter);
   }
 
-  // Project sub-tab logic
+  // Project sub-tab logic (case-insensitive dedup + matching)
   const projectCaptures = captures.filter(c => c.type === 'project');
-  const projectNames = [...new Set(projectCaptures.map(c => c.project_tag).filter(Boolean))].sort();
+  const projMap = new Map(); // normKey → first original value seen
+  projectCaptures.forEach(c => {
+    if (!c.project_tag) return;
+    const k = c.project_tag.toLowerCase();
+    if (!projMap.has(k)) projMap.set(k, c.project_tag);
+  });
+  const projectNames = [...projMap.values()].sort();
   if (journalFilter === 'project' && journalProjectFilter) {
-    filtered = filtered.filter(c => c.project_tag === journalProjectFilter);
+    const normJPF = journalProjectFilter.toLowerCase();
+    filtered = filtered.filter(c => (c.project_tag || '').toLowerCase() === normJPF);
   }
 
   if (journalSearch.trim()) {
@@ -1525,7 +1533,7 @@ function renderJournal() {
     <div class="project-subtabs">
       <button class="proj-pill ${!journalProjectFilter ? 'active' : ''}" onclick="setJProjectFilter(null)">All Projects</button>
       ${projectNames.map(p => `
-        <button class="proj-pill ${journalProjectFilter===p ? 'active' : ''}" onclick="setJProjectFilter('${esc(p)}')">${esc(p)}</button>
+        <button class="proj-pill ${(journalProjectFilter||'').toLowerCase()===p.toLowerCase() ? 'active' : ''}" onclick="setJProjectFilter('${esc(p)}')">${esc(p)}</button>
       `).join('')}
     </div>` : '';
 
@@ -2238,7 +2246,12 @@ function openCapture(type = 'note') {
   document.getElementById('f-project-tag').value = '';
   renderCapTypeRow();
   toggleProjectField();
-  window._projectSuggestions = [...new Set(captures.filter(c => c.type === 'project').map(c => c.project_tag).filter(Boolean))].sort();
+  const _projSugMap = new Map();
+  captures.filter(c => c.type === 'project' && c.project_tag).forEach(c => {
+    const k = c.project_tag.toLowerCase();
+    if (!_projSugMap.has(k)) _projSugMap.set(k, c.project_tag);
+  });
+  window._projectSuggestions = [..._projSugMap.values()].sort();
   openSheet('sheet-capture');
   setTimeout(() => document.getElementById('f-cap-body').focus(), 300);
 }
@@ -2472,7 +2485,7 @@ function sweepOldDfts() {
 window.setTab = function(tab) { activeTab = tab; showWeeklyReview = false; weeklyReviewOffset = 0; render(); };
 window.toggleTodayBks  = function() { todayBksExpanded  = !todayBksExpanded;  renderMain(); };
 window.toggleTodayCaps = function() { todayCapsExpanded = !todayCapsExpanded; renderMain(); };
-window.setJFilter = function(f) { journalFilter = f; journalProjectFilter = null; journalExpanded = false; renderMain(); };
+window.setJFilter = function(f) { journalFilter = f.toLowerCase().replace(/\s+/g,''); journalProjectFilter = null; journalExpanded = false; renderMain(); };
 window.setJProjectFilter = function(p) { journalProjectFilter = p; journalExpanded = false; renderMain(); };
 window.toggleJournal = function() { journalExpanded = !journalExpanded; renderMain(); };
 window.setJSearch = function(q) {
