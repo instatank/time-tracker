@@ -1504,8 +1504,22 @@ function renderJournal() {
 
   filtered.sort((a,b) => b.timestamp.localeCompare(a.timestamp));
 
+  // For tag filters, also pull in activity blocks that contain the tag
+  let allItems; // unified list: { item, isBlock, sortKey }
+  if (isTagFilter) {
+    const taggedBlocks = blocks.filter(b =>
+      extractTags((b.label || '') + ' ' + (b.note || '')).includes(journalFilter)
+    );
+    allItems = [
+      ...filtered.map(c => ({ item: c, isBlock: false, sortKey: c.timestamp })),
+      ...taggedBlocks.map(b => ({ item: b, isBlock: true, sortKey: b.date + 'T' + (b.start_time || '00:00') }))
+    ].sort((a, z) => z.sortKey.localeCompare(a.sortKey));
+  } else {
+    allItems = filtered.map(c => ({ item: c, isBlock: false, sortKey: c.timestamp }));
+  }
+
   const hasSearch = journalSearch.length > 0;
-  const noResults = filtered.length === 0 && (hasSearch || journalFilter !== 'all');
+  const noResults = allItems.length === 0 && (hasSearch || journalFilter !== 'all');
 
   const projectSubTabs = journalFilter === 'project' && projectNames.length ? `
     <div class="project-subtabs">
@@ -1548,9 +1562,10 @@ function renderJournal() {
       </div>` : ''}
 
     ${noResults ? `<div class="empty">No results found.</div>` :
-      filtered.length
-        ? (journalExpanded ? filtered : filtered.slice(0, TODAY_PREVIEW)).map(renderCapFull).join('')
-          + (filtered.length > TODAY_PREVIEW ? moreBtn(journalExpanded, filtered.length - TODAY_PREVIEW, 'toggleJournal') : '')
+      allItems.length
+        ? (journalExpanded ? allItems : allItems.slice(0, TODAY_PREVIEW))
+            .map(e => e.isBlock ? renderBlockInJournal(e.item) : renderCapFull(e.item)).join('')
+          + (allItems.length > TODAY_PREVIEW ? moreBtn(journalExpanded, allItems.length - TODAY_PREVIEW, 'toggleJournal') : '')
         : `<div class="empty">${journalFilter === 'all' ? 'No captures yet.' : 'No ' + (typeLabel[journalFilter] || journalFilter) + ' entries yet.'}</div>`}
   </div>`;
 }
@@ -1578,6 +1593,26 @@ function renderCapFull(c) {
       </div>
       <div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>
       ${renderTagPills(c.tags)}
+    </div>`;
+}
+
+function renderBlockInJournal(b) {
+  const cat = catById(b.category);
+  const isToday = b.date === todayStr();
+  const timeStr = b.start_time ? ' · ' + fmtTime(b.date + 'T' + b.start_time) : '';
+  const dateLabel = isToday ? 'Today' + timeStr : fmtDate(b.date) + timeStr;
+  const blockTags = extractTags((b.label || '') + ' ' + (b.note || ''));
+  return `
+    <div class="capture-item" onclick="openBlockOpts('${b.id}')">
+      <div class="cap-meta">
+        <span class="cat-dot" style="background:${cat.color};width:8px;height:8px;border-radius:50%;display:inline-block"></span>
+        <span class="cap-type" style="color:${cat.color}">${esc(cat.label)}</span>
+        ${b.duration_min ? `<span class="block-dur">${b.duration_min}m</span>` : ''}
+        <span class="cap-time">${dateLabel}</span>
+      </div>
+      <div class="cap-body" style="margin-top:0.25rem">${esc(b.label)}</div>
+      ${b.note ? `<div class="cap-body" style="margin-top:0.1rem;color:var(--text2);font-size:0.8rem">${esc(b.note)}</div>` : ''}
+      ${renderTagPills(blockTags)}
     </div>`;
 }
 
@@ -2180,12 +2215,12 @@ window.saveBlock = function() {
   if (editingBlockId) {
     const idx = blocks.findIndex(b => b.id === editingBlockId);
     if (idx > -1) {
-      blocks[idx] = { ...blocks[idx], start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy };
+      blocks[idx] = { ...blocks[idx], start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, tags: extractTags(label + ' ' + noteVal) };
       syncBlockDoc(blocks[idx]);
       toast('Block updated');
     }
   } else {
-    const b = { id: uid(), date, start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy };
+    const b = { id: uid(), date, start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, tags: extractTags(label + ' ' + noteVal) };
     blocks.push(b);
     syncBlockDoc(b);
     toast('Block logged');
