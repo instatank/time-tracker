@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communication Style
+
+Before or after running any terminal command, always give a single plain-English sentence explaining what it does and why — assume the user has zero technical background.
+
 ## Project Overview
 
 **DayOS** — a personal time intelligence and journaling PWA. Single-page app (`index.html`) deployed on Vercel at `https://time-tracker-7a7l.vercel.app`. No build step, no package manager, no framework.
