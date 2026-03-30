@@ -587,6 +587,21 @@ html, body {
 }
 .range-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
 
+.day-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  gap: 0.5rem;
+}
+.day-nav-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  text-align: center;
+}
+
 .bar-chart { margin-bottom: 1.25rem; }
 .bar-row {
   display: flex;
@@ -1182,6 +1197,7 @@ let journalProjectFilter = null;
 let journalExpanded = false;
 let journalSearch = '';
 let dashRange = 'week';
+let dashDay = todayStr(); // selected date for Day view
 let showWeeklyReview = false;
 let weeklyReviewOffset = 0; // 0 = current week, -1 = last week, etc.
 let dashView = 'totals'; // 'totals' or 'overtime'
@@ -1710,6 +1726,91 @@ let _chartInstance = null;
 
 function renderDashboard() {
   const td = todayStr();
+
+  // ── Day view ────────────────────────────────────────────────
+  if (dashRange === 'day') {
+    const d = dashDay;
+    const dayBlocks = blocks.filter(b => b.date === d);
+    const breakdown = catBreakdown(dayBlocks);
+    const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
+    const skippedHrs = Math.max(0, 16 - wakingHrs);
+    const maxHrs = Math.max(...Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).map(([,v]) => v), skippedHrs, 0.1);
+    const sc = dayScore(d);
+    const r = ratings[d] || 0;
+    const leakClass = sc.leakHrs >= 1 ? 'bad' : sc.leakHrs > 0 ? 'warn' : 'good';
+    const dayLabel = new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+    const bars = [
+      ...CATS.map(c => {
+        const hrs = breakdown[c.id] || 0;
+        const pct = maxHrs > 0 ? (hrs / maxHrs) * 100 : 0;
+        return `
+          <div class="bar-row">
+            <span class="bar-lbl">${c.icon} ${c.label}</span>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
+            </div>
+            <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
+          </div>`;
+      }),
+      `<div class="bar-row">
+          <span class="bar-lbl">${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${maxHrs > 0 ? (skippedHrs / maxHrs) * 100 : 0}%;background:${SKIPPED_CAT.color}"></div>
+          </div>
+          <span class="bar-val">${skippedHrs > 0 ? skippedHrs.toFixed(1) + 'h' : '—'}</span>
+        </div>`,
+    ].join('');
+
+    return `<div class="view">
+      <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
+
+      <div class="range-toggle">
+        <button class="range-btn active" onclick="setDashRange('day')">Day</button>
+        <button class="range-btn" onclick="setDashRange('week')">Week</button>
+        <button class="range-btn" onclick="setDashRange('month')">Month</button>
+      </div>
+
+      <div class="day-nav">
+        <button class="cal-nav-btn" onclick="dashDayNav(-1)">‹</button>
+        <span class="day-nav-label">${dayLabel}</span>
+        <button class="cal-nav-btn" onclick="dashDayNav(1)" ${d >= td ? 'disabled style="opacity:0.3;cursor:default"' : ''}>›</button>
+      </div>
+
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Time by Category</span><span class="sec-meta">${wakingHrs.toFixed(1)}h waking</span></div>
+        <div class="bar-chart">${bars}</div>
+      </div>
+
+      <div class="section">
+        <div class="sec-hdr"><span class="sec-title">Day Score</span></div>
+        <div class="score-grid">
+          <div class="score-item">
+            <span class="score-val">${sc.deepWorkHrs.toFixed(1)}h</span>
+            <span class="score-label">Deep Work</span>
+          </div>
+          <div class="score-item">
+            <span class="score-val ${leakClass}">${sc.leakHrs.toFixed(1)}h</span>
+            <span class="score-label">Leaks</span>
+          </div>
+          <div class="score-item">
+            <span class="score-val ${sc.practiceDone ? 'good' : ''}">${sc.practiceDone ? '✓' : '–'}</span>
+            <span class="score-label">Practice</span>
+          </div>
+          <div class="score-item">
+            <span class="score-val ${sc.journalDone ? 'good' : ''}">${sc.journalDone ? '✓' : '–'}</span>
+            <span class="score-label">Journal</span>
+          </div>
+          <div class="score-item">
+            <span class="score-val ${r ? 'warn' : ''}">${r ? r + '★' : '–'}</span>
+            <span class="score-label">Rating</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ── Week / Month view ────────────────────────────────────────
   const n = dashRange === 'week' ? 7 : 30;
   const startDate = addDays(td, -(n-1));
   const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td);
@@ -1778,6 +1879,7 @@ function renderDashboard() {
     <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
 
     <div class="range-toggle">
+      <button class="range-btn" onclick="setDashRange('day')">Day</button>
       <button class="range-btn ${dashRange==='week'?'active':''}" onclick="setDashRange('week')">Week</button>
       <button class="range-btn ${dashRange==='month'?'active':''}" onclick="setDashRange('month')">Month</button>
     </div>
@@ -2549,8 +2651,9 @@ window.setJSearch = function(q) {
   const input = document.querySelector('.journal-search input');
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
 };
-window.setDashRange = function(r) { dashRange = r; renderMain(); };
+window.setDashRange = function(r) { dashRange = r; if (r === 'day') dashDay = todayStr(); renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
+window.dashDayNav = function(dir) { dashDay = addDays(dashDay, dir); renderMain(); };
 window.openWeeklyReview = function() { showWeeklyReview = true; weeklyReviewOffset = 0; renderMain(); };
 window.closeWeeklyReview = function() { showWeeklyReview = false; renderMain(); };
 window.shiftWeeklyReview = function(dir) {
