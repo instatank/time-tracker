@@ -2420,6 +2420,8 @@ function renderDftPanel(d) {
     ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="clearDft()">clear</button>`
     : dft && dft.status === 'done'
     ? `<button style="background:none;border:none;color:var(--accent);font-size:0.7rem;font-weight:600;cursor:pointer;padding:2px 6px" onclick="clearDft()">+ Add</button>`
+    : dft && dft.status === 'skipped'
+    ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="clearDft()">↺ Reset</button>`
     : '';
   let body;
   if (!dft) {
