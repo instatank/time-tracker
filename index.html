@@ -1488,7 +1488,7 @@ function renderJournal() {
   });
   const projectNames = [...projMap.values()].sort();
   // Set of known project hashtags, e.g. {'#timetracker', '#dayos'}
-  const knownProjectTags = new Set(projectNames.map(p => '#' + p.toLowerCase()));
+  const knownProjectTags = new Set(projectNames.map(p => '#' + p.toLowerCase().replace(/\s+/g, '')));
 
   let filtered;
   if (journalFilter === 'all') {
@@ -1509,7 +1509,7 @@ function renderJournal() {
     const normJPF = journalProjectFilter.toLowerCase();
     filtered = filtered.filter(c =>
       (c.project_tag || '').toLowerCase() === normJPF ||
-      (c.tags || []).includes('#' + normJPF)
+      (c.tags || []).includes('#' + normJPF.replace(/\s+/g, ''))
     );
   }
 
