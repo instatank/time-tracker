@@ -407,18 +407,30 @@ html, body {
   font-weight: 600;
   color: var(--text2);
 }
-.eod-saved-text {
-  font-size: 0.88rem;
-  color: var(--text);
-  line-height: 1.5;
-  padding: 0.1rem 0;
+.eod-saved-badge {
+  font-size: 0.65rem;
+  color: #22c55e;
+  font-weight: 600;
+  padding: 2px 8px;
+  border: 1px solid #22c55e;
+  border-radius: 999px;
+  background: rgba(34,197,94,0.1);
 }
-.eod-empty {
-  font-size: 0.82rem;
+.eod-body {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.eod-body .dft-panel-input {
+  flex: 1;
+  min-width: 0;
+}
+.eod-saved-status {
+  font-size: 0.68rem;
   color: var(--text3);
-  font-style: italic;
-  padding: 0.1rem 0;
+  margin-top: 0.35rem;
 }
+.eod-saved-status.dirty { color: var(--warn); }
 
 /* ── Day score ──────────────────────────────────────────────── */
 .score-grid {
@@ -1241,7 +1253,6 @@ let captures    = loadLocal(SK.CAPTURES, []);
 let ratings     = loadLocal(SK.RATINGS, {});
 let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { exercise_nutrition, mindset, relationship, pseudo_productivity, ruminating } }
 let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
-let eodEditing  = false;
 let activeTab = 'today';
 let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
@@ -1739,8 +1750,46 @@ function renderHistory() {
     <div class="hist-day-hdr">
       ${fmtDate(histDate)}${ratings[histDate] ? ' &nbsp;·&nbsp; ' + '★'.repeat(ratings[histDate]) : ''}
     </div>
+    ${renderDayEod(histDate)}
+    ${renderDayLifeRatings(histDate)}
     ${renderDayBlocks(histDate)}
   </div>`;
+}
+
+// Read-only EOD snapshot for a past day (no editing in history view)
+function renderDayEod(date) {
+  const text = eodNotes[date];
+  if (!text) return '';
+  return `
+    <div class="section">
+      <div class="sec-hdr"><span class="sec-title">📝 EOD Review</span></div>
+      <div class="eod-saved-text" style="padding:0.35rem 0.65rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:0.9rem">${esc(text)}</div>
+    </div>`;
+}
+
+// Read-only life-ratings snapshot for a past day
+function renderDayLifeRatings(date) {
+  const lr = lifeRatings[date];
+  if (!lr) return '';
+  const rows = [
+    ['exercise_nutrition',  'Exercise & Nutrition'],
+    ['mindset',             'Mindset'],
+    ['relationship',        'Relationship'],
+    ['pseudo_productivity', 'Pseudo-Productivity'],
+    ['ruminating',          'Ruminating'],
+  ].filter(([k]) => lr[k] > 0);
+  if (!rows.length) return '';
+  return `
+    <div class="section">
+      <div class="sec-hdr"><span class="sec-title">Daily Check-in</span></div>
+      <div class="life-ratings-grid">
+        ${rows.map(([k, label]) => `
+          <div class="life-rating-row">
+            <span class="life-rating-label">${label}</span>
+            <span style="color:var(--warn);font-size:1rem;letter-spacing:1px">${'★'.repeat(lr[k])}${'<span style="color:var(--text3)">★</span>'.repeat(5 - lr[k])}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
 }
 
 function renderCalendar() {
@@ -1751,9 +1800,17 @@ function renderCalendar() {
   const td = todayStr();
   const monthLabel = histCalMonth.toLocaleDateString('en-US', { month:'long', year:'numeric' });
 
-  // Collect dates with data (any blocks or captures)
+  // Collect dates with data (blocks, captures, ratings, life-ratings, or EOD)
   const datesWithBlocks = new Set(blocks.map(b => b.date));
   const datesWithCaps   = new Set(captures.map(c => capDateIST(c)));
+  const datesWithExtras = new Set([
+    ...Object.keys(ratings).filter(d => ratings[d] > 0),
+    ...Object.keys(lifeRatings).filter(d => {
+      const v = lifeRatings[d] || {};
+      return Object.values(v).some(x => x > 0);
+    }),
+    ...Object.keys(eodNotes).filter(d => eodNotes[d]),
+  ]);
 
   const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
   let cells = '';
@@ -1768,14 +1825,16 @@ function renderCalendar() {
     const isSelected = dateStr === histDate;
     const hasBk = datesWithBlocks.has(dateStr);
     const hasCp = datesWithCaps.has(dateStr);
-    const hasData = hasBk || hasCp;
+    const hasEx = datesWithExtras.has(dateStr);
+    const hasData = hasBk || hasCp || hasEx;
     const dotsBk = hasBk ? `<span class="cal-dot" style="background:var(--accent)"></span>` : '';
     const dotsCp = hasCp ? `<span class="cal-dot" style="background:var(--success)"></span>` : '';
+    const dotsEx = (hasEx && !hasBk && !hasCp) ? `<span class="cal-dot" style="background:var(--warn)"></span>` : '';
     cells += `
       <div class="cal-day ${isToday?'today-cell':''} ${isSelected?'selected':''} ${hasData?'has-data':''}"
            onclick="setHistDate('${dateStr}')">
         ${d}
-        <div class="cal-dots">${dotsBk}${dotsCp}</div>
+        <div class="cal-dots">${dotsBk}${dotsCp}${dotsEx}</div>
       </div>`;
   }
 
@@ -1793,7 +1852,10 @@ function renderCalendar() {
 function renderDayBlocks(date) {
   const bks = blocks.filter(b => b.date === date).sort((a,b) => b.start_time.localeCompare(a.start_time));
   const caps = captures.filter(c => capDateIST(c) === date);
-  if (!bks.length && !caps.length) return '<div class="empty">No data for this day.</div>';
+  const hasExtras = (ratings[date] > 0) || !!eodNotes[date] ||
+    Object.values(lifeRatings[date] || {}).some(v => v > 0);
+  if (!bks.length && !caps.length && !hasExtras) return '<div class="empty">No data for this day.</div>';
+  if (!bks.length && !caps.length) return '';
   return [
     ...bks.map(renderBlock),
     ...(caps.length ? [`<div class="sec-hdr" style="margin-top:0.75rem"><span class="sec-title">Captures</span></div>`, ...caps.map(renderCapPreview)] : [])
@@ -2728,48 +2790,67 @@ function sweepOldDfts() {
 }
 
 // ── EOD Review ────────────────────────────────────────────────
+// Persistent input with green ✓ tick. User can edit freely through the day;
+// whatever value is in localStorage/Firestore at day's end is what's captured
+// for that date (data is keyed by date → last write naturally wins).
 function renderEodPanel(d) {
   const saved = eodNotes[d] || '';
-  const editBtn = saved
-    ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="editEodNote()">✎ edit</button>`
+  const savedBadge = saved
+    ? `<span class="eod-saved-badge">✓ Saved</span>`
     : '';
-  let body;
-  if (!saved || eodEditing) {
-    body = `<input class="dft-panel-input" id="eod-input" placeholder="Key takeaway for today…"
-      value="${esc(saved)}"
-      onkeydown="if(event.key==='Enter'){saveEodNote(this.value)}"
-      onblur="saveEodNote(this.value)" />
-    ${saved && eodEditing ? `<div style="font-size:0.68rem;color:var(--text3);margin-top:0.3rem">Press Enter or tap away to save · <span style="cursor:pointer;color:var(--text3);text-decoration:underline" onclick="cancelEodEdit()">cancel</span></div>` : ''}`;
-  } else {
-    body = `<div class="eod-saved-text">${esc(saved)}</div>`;
-  }
   return `
     <div class="eod-panel">
       <div class="eod-panel-hdr">
         <span class="eod-panel-title">📝 EOD Review</span>
-        ${editBtn}
+        ${savedBadge}
       </div>
-      ${body}
+      <div class="eod-body">
+        <input class="dft-panel-input" id="eod-input"
+          placeholder="Key takeaway for today…"
+          value="${esc(saved)}"
+          oninput="markEodDirty()"
+          onkeydown="if(event.key==='Enter'){saveEodFromInput()}" />
+        <div class="dft-actions">
+          <button class="dft-tick-btn" onclick="saveEodFromInput()" title="Save">✓</button>
+        </div>
+      </div>
+      <div class="eod-saved-status" id="eod-status">
+        ${saved ? 'Saved — edit anytime, tap ✓ to update.' : 'Type your one-liner, tap ✓ to save.'}
+      </div>
     </div>`;
 }
+
+// Visual-only dirty indicator (no re-render — avoids stealing focus while typing)
+window.markEodDirty = function() {
+  const saved = eodNotes[todayStr()] || '';
+  const inp = document.getElementById('eod-input');
+  const status = document.getElementById('eod-status');
+  if (!inp || !status) return;
+  const dirty = inp.value !== saved;
+  status.textContent = dirty ? 'Unsaved changes — tap ✓ to save.' : (saved ? 'Saved — edit anytime, tap ✓ to update.' : 'Type your one-liner, tap ✓ to save.');
+  status.classList.toggle('dirty', dirty);
+};
+
+window.saveEodFromInput = function() {
+  const inp = document.getElementById('eod-input');
+  if (!inp) return;
+  saveEodNote(inp.value);
+};
 
 window.saveEodNote = function(val) {
   const text = val.trim();
   const d = todayStr();
-  if (text === (eodNotes[d] || '')) { eodEditing = false; renderMain(); return; } // no change
-  if (text) {
-    eodNotes[d] = text;
-  } else {
-    delete eodNotes[d];
-  }
-  eodEditing = false;
+  if (text === (eodNotes[d] || '')) { renderMain(true); return; } // no change
+  if (text) eodNotes[d] = text;
+  else      delete eodNotes[d];
   saveLocal(SK.EOD, eodNotes);
-  if (user) { setDoc(doc(db, 'users', user.uid, 'eod', d), { text }).catch(() => {}); }
-  renderMain();
+  if (user) {
+    if (text) setDoc(doc(db, 'users', user.uid, 'eod', d), { text }).catch(() => {});
+    else      deleteDoc(doc(db, 'users', user.uid, 'eod', d)).catch(() => {});
+  }
+  toast(text ? 'EOD saved ✓' : 'EOD cleared');
+  renderMain(true); // keep scroll position (panel is at bottom of Today page)
 };
-
-window.editEodNote = function() { eodEditing = true; renderMain(); setTimeout(() => { const el = document.getElementById('eod-input'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 30); };
-window.cancelEodEdit = function() { eodEditing = false; renderMain(); };
 
 // ── Navigation ────────────────────────────────────────────────
 window.setTab = function(tab) { activeTab = tab; showWeeklyReview = false; weeklyReviewOffset = 0; render(); };
