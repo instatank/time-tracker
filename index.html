@@ -454,18 +454,18 @@ html, body {
 .star-btn:active { transform: scale(1.2); }
 
 /* ── Life Ratings ───────────────────────────────────────────── */
-.life-ratings-grid { display: flex; flex-direction: column; gap: 0.55rem; }
+.life-ratings-grid { display: flex; flex-direction: column; gap: 0.7rem; }
 .life-rating-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.life-rating-label { font-size: 0.82rem; color: var(--text2); flex: 1; }
-.life-star-row { display: flex; gap: 0.2rem; }
+.life-rating-label { font-size: 0.88rem; color: var(--text2); flex: 1; }
+.life-star-row { display: flex; gap: 0.5rem; }
 .life-star-btn {
-  font-size: 1.25rem;
+  font-size: 1.6rem;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text3);
   transition: color 0.1s, transform 0.1s;
-  padding: 0 1px;
+  padding: 0;
   line-height: 1;
 }
 .life-star-btn.filled { color: var(--warn); }
@@ -2584,7 +2584,7 @@ window.setRating = function(date, val) {
   ratings[date] = ratings[date] === val ? 0 : val; // tap same star = clear
   saveLocal(SK.RATINGS, ratings);
   if (user && ratings[date]) { setDoc(doc(db, 'users', user.uid, 'ratings', date), { rating: ratings[date] }).catch(() => {}); }
-  render();
+  renderMain(true); // keep scroll position
 };
 
 window.setLifeRating = function(date, metric, val) {
@@ -2594,7 +2594,7 @@ window.setLifeRating = function(date, metric, val) {
   if (user) {
     setDoc(doc(db, 'users', user.uid, 'life_ratings', date), lifeRatings[date]).catch(() => {});
   }
-  render();
+  renderMain(true); // keep scroll position
 };
 
 // ── DFT ──────────────────────────────────────────────────────
