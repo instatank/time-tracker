@@ -421,6 +421,24 @@ html, body {
 .star-btn.filled { color: var(--warn); }
 .star-btn:active { transform: scale(1.2); }
 
+/* ── Life Ratings ───────────────────────────────────────────── */
+.life-ratings-grid { display: flex; flex-direction: column; gap: 0.55rem; }
+.life-rating-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.life-rating-label { font-size: 0.82rem; color: var(--text2); flex: 1; }
+.life-star-row { display: flex; gap: 0.2rem; }
+.life-star-btn {
+  font-size: 1.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text3);
+  transition: color 0.1s, transform 0.1s;
+  padding: 0 1px;
+  line-height: 1;
+}
+.life-star-btn.filled { color: var(--warn); }
+.life-star-btn:active { transform: scale(1.2); }
+
 /* ── Journal view ───────────────────────────────────────────── */
 .filter-row {
   display: flex;
@@ -1183,12 +1201,13 @@ const CTYPES = [
 // Legacy: Insight type removed from selector but old entries still render gracefully
 const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1' };
 
 // ── State ─────────────────────────────────────────────────────
-let blocks   = loadLocal(SK.BLOCKS, []);
-let captures = loadLocal(SK.CAPTURES, []);
-let ratings  = loadLocal(SK.RATINGS, {});
+let blocks      = loadLocal(SK.BLOCKS, []);
+let captures    = loadLocal(SK.CAPTURES, []);
+let ratings     = loadLocal(SK.RATINGS, {});
+let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { exercise_nutrition, mindset, relationship, pseudo_productivity, ruminating } }
 let activeTab = 'today';
 let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
@@ -1226,6 +1245,7 @@ function saveAll() {
   saveLocal(SK.BLOCKS, blocks);
   saveLocal(SK.CAPTURES, captures);
   saveLocal(SK.RATINGS, ratings);
+  saveLocal(SK.LIFE_RATINGS, lifeRatings);
 }
 
 // ── Utils ─────────────────────────────────────────────────────
@@ -1448,6 +1468,28 @@ function renderToday() {
         ${[1,2,3,4,5].map(i => `
           <button class="star-btn ${r >= i ? 'filled' : ''}" onclick="setRating('${d}', ${i})">★</button>
         `).join('')}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-hdr"><span class="sec-title">Daily Check-in</span></div>
+      <div class="life-ratings-grid">
+        ${[
+          ['exercise_nutrition',  'Exercise & Nutrition'],
+          ['mindset',             'Mindset'],
+          ['relationship',        'Relationship'],
+          ['pseudo_productivity', 'Pseudo-Productivity'],
+          ['ruminating',          'Ruminating'],
+        ].map(([key, label]) => {
+          const val = (lifeRatings[d] || {})[key] || 0;
+          const stars = [1,2,3,4,5].map(i =>
+            `<button class="life-star-btn ${val >= i ? 'filled' : ''}" onclick="setLifeRating('${d}','${key}',${i})">★</button>`
+          ).join('');
+          return `<div class="life-rating-row">
+            <span class="life-rating-label">${label}</span>
+            <div class="life-star-row">${stars}</div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
   </div>`;
@@ -2508,6 +2550,16 @@ window.setRating = function(date, val) {
   render();
 };
 
+window.setLifeRating = function(date, metric, val) {
+  if (!lifeRatings[date]) lifeRatings[date] = {};
+  lifeRatings[date][metric] = lifeRatings[date][metric] === val ? 0 : val; // tap same star = clear
+  saveLocal(SK.LIFE_RATINGS, lifeRatings);
+  if (user) {
+    setDoc(doc(db, 'users', user.uid, 'life_ratings', date), lifeRatings[date]).catch(() => {});
+  }
+  render();
+};
+
 // ── DFT ──────────────────────────────────────────────────────
 function getDft(d) {
   const v = dfts[d];
@@ -2718,12 +2770,15 @@ function setAuthError(msg) {
 }
 
 // ── Firestore batch write (handles >500 docs by splitting) ────
-async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings) {
+async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allLifeRatings = {}) {
   const ops = [
     ...allBlocks.map(b   => ({ ref: doc(db, 'users', uid, 'blocks',   b.id), data: b })),
     ...allCaptures.map(c => ({ ref: doc(db, 'users', uid, 'captures', c.id), data: c })),
     ...Object.entries(allRatings).map(([date, r]) => ({
       ref: doc(db, 'users', uid, 'ratings', date), data: { rating: r }
+    })),
+    ...Object.entries(allLifeRatings).map(([date, lr]) => ({
+      ref: doc(db, 'users', uid, 'life_ratings', date), data: lr
     })),
   ];
   const CHUNK = 400;
@@ -2829,7 +2884,7 @@ window.forcePushToCloud = async function() {
   openAuth();
   console.log('[DayOS] Push → UID:', user.uid, '| blocks:', blocks.length, '| captures:', captures.length);
   try {
-    await firestoreBatchWrite(user.uid, blocks, captures, ratings);
+    await firestoreBatchWrite(user.uid, blocks, captures, ratings, lifeRatings);
 
     // ── Verification: confirm at least one doc actually landed on the server ──
     if (blocks.length > 0) {
@@ -2868,21 +2923,25 @@ window.forcePullFromCloud = async function() {
   openAuth();
   console.log('[DayOS] Pull → UID:', user.uid);
   try {
-    const [bSnap, cSnap, rSnap] = await Promise.all([
+    const [bSnap, cSnap, rSnap, lrSnap] = await Promise.all([
       getDocs(collection(db, 'users', user.uid, 'blocks')),
       getDocs(collection(db, 'users', user.uid, 'captures')),
       getDocs(collection(db, 'users', user.uid, 'ratings')),
+      getDocs(collection(db, 'users', user.uid, 'life_ratings')),
     ]);
-    const remoteBlocks   = bSnap.docs.map(d => d.data());
-    const remoteCaptures = cSnap.docs.map(d => d.data());
-    const remoteRatings  = {};
+    const remoteBlocks      = bSnap.docs.map(d => d.data());
+    const remoteCaptures    = cSnap.docs.map(d => d.data());
+    const remoteRatings     = {};
     rSnap.docs.forEach(d => { remoteRatings[d.id] = d.data().rating; });
+    const remoteLifeRatings = {};
+    lrSnap.docs.forEach(d => { remoteLifeRatings[d.id] = d.data(); });
     console.log('[DayOS] Pull raw from Firestore → blocks:', remoteBlocks.length, '| captures:', remoteCaptures.length);
 
     // Merge: keep all local + all remote (local fills gaps, remote wins same ID)
-    blocks   = mergeById(blocks, remoteBlocks);
-    captures = mergeById(captures, remoteCaptures);
-    ratings  = { ...ratings, ...remoteRatings };
+    blocks      = mergeById(blocks, remoteBlocks);
+    captures    = mergeById(captures, remoteCaptures);
+    ratings     = { ...ratings, ...remoteRatings };
+    lifeRatings = { ...lifeRatings, ...remoteLifeRatings };
     saveAll();
 
     setSyncStatus('ok');
@@ -2923,30 +2982,35 @@ async function initialSync(uid) {
   const localBlocksBefore   = blocks.length;
   const localCapturesBefore = captures.length;
   try {
-    const [bSnap, cSnap, rSnap] = await Promise.all([
+    const [bSnap, cSnap, rSnap, lrSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
       getDocs(collection(db, 'users', uid, 'captures')),
       getDocs(collection(db, 'users', uid, 'ratings')),
+      getDocs(collection(db, 'users', uid, 'life_ratings')),
     ]);
 
     // Merge strategy: local fills gaps, remote wins on same ID.
     // This means all your local entries are ALWAYS kept — nothing is lost on sign-in.
-    const remoteBlocks   = bSnap.docs.map(d => d.data());
-    const remoteCaptures = cSnap.docs.map(d => d.data());
-    const remoteRatings  = {};
+    const remoteBlocks      = bSnap.docs.map(d => d.data());
+    const remoteCaptures    = cSnap.docs.map(d => d.data());
+    const remoteRatings     = {};
     rSnap.docs.forEach(d => { remoteRatings[d.id] = d.data().rating; });
+    const remoteLifeRatings = {};
+    lrSnap.docs.forEach(d => { remoteLifeRatings[d.id] = d.data(); });
 
-    const mergedBlocks   = mergeById(blocks, remoteBlocks);
-    const mergedCaptures = mergeById(captures, remoteCaptures);
-    const mergedRatings  = { ...ratings, ...remoteRatings };
+    const mergedBlocks      = mergeById(blocks, remoteBlocks);
+    const mergedCaptures    = mergeById(captures, remoteCaptures);
+    const mergedRatings     = { ...ratings, ...remoteRatings };
+    const mergedLifeRatings = { ...lifeRatings, ...remoteLifeRatings };
 
-    blocks   = mergedBlocks;
-    captures = mergedCaptures;
-    ratings  = mergedRatings;
+    blocks      = mergedBlocks;
+    captures    = mergedCaptures;
+    ratings     = mergedRatings;
+    lifeRatings = mergedLifeRatings;
     saveAll();
 
     // Upload everything (including local-only items) to Firestore
-    await firestoreBatchWrite(uid, mergedBlocks, mergedCaptures, mergedRatings);
+    await firestoreBatchWrite(uid, mergedBlocks, mergedCaptures, mergedRatings, mergedLifeRatings);
 
     setSyncStatus('ok');
 
