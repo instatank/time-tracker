@@ -1251,7 +1251,20 @@ const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 
 let blocks      = loadLocal(SK.BLOCKS, []);
 let captures    = loadLocal(SK.CAPTURES, []);
 let ratings     = loadLocal(SK.RATINGS, {});
-let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { exercise_nutrition, mindset, relationship, pseudo_productivity, ruminating } }
+let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { habit_stacking, exercise_nutrition, mindset, relationship, pseudo_productivity } }
+// One-time migration: rename legacy 'ruminating' field → 'habit_stacking' (kept only if habit_stacking not already set)
+(function migrateRuminating() {
+  let changed = false;
+  Object.keys(lifeRatings).forEach(d => {
+    const r = lifeRatings[d];
+    if (r && r.ruminating != null) {
+      if (r.habit_stacking == null) r.habit_stacking = r.ruminating;
+      delete r.ruminating;
+      changed = true;
+    }
+  });
+  if (changed) saveLocal(SK.LIFE_RATINGS, lifeRatings);
+})();
 let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
 let activeTab = 'today';
 let histDate  = todayStr();
@@ -1521,11 +1534,11 @@ function renderToday() {
       <div class="sec-hdr"><span class="sec-title">Daily Check-in</span></div>
       <div class="life-ratings-grid">
         ${[
+          ['habit_stacking',      'Habit Stacking'],
           ['exercise_nutrition',  'Exercise & Nutrition'],
           ['mindset',             'Mindset'],
           ['relationship',        'Relationship'],
           ['pseudo_productivity', 'Pseudo-Productivity'],
-          ['ruminating',          'Ruminating'],
         ].map(([key, label]) => {
           const val = (lifeRatings[d] || {})[key] || 0;
           const stars = [1,2,3,4,5].map(i =>
@@ -1772,11 +1785,11 @@ function renderDayLifeRatings(date) {
   const lr = lifeRatings[date];
   if (!lr) return '';
   const rows = [
+    ['habit_stacking',      'Habit Stacking'],
     ['exercise_nutrition',  'Exercise & Nutrition'],
     ['mindset',             'Mindset'],
     ['relationship',        'Relationship'],
     ['pseudo_productivity', 'Pseudo-Productivity'],
-    ['ruminating',          'Ruminating'],
   ].filter(([k]) => lr[k] > 0);
   if (!rows.length) return '';
   return `
