@@ -1122,7 +1122,17 @@ select option { background: var(--surface2); }
   <div class="sheet-title" id="block-sheet-title">Log Block</div>
   <div class="sheet-body">
     <div class="field">
-      <input type="time" id="f-time" step="900">
+      <div style="display:flex;gap:0.4rem;align-items:center;">
+        <select id="f-time-hour" style="flex:1;"></select>
+        <span style="color:var(--text);font-weight:600;">:</span>
+        <select id="f-time-min" style="flex:1;">
+          <option value="00">00</option>
+          <option value="15">15</option>
+          <option value="30">30</option>
+          <option value="45">45</option>
+        </select>
+      </div>
+      <input type="hidden" id="f-time">
     </div>
     <div class="field">
       <div class="pill-row">
@@ -2382,6 +2392,28 @@ function renderWeeklyReview() {
   </div>`;
 }
 
+// ── Time selects: populate hours + sync hidden input ──────────
+(function initTimeSelects() {
+  const hSel = document.getElementById('f-time-hour');
+  hSel.innerHTML = Array.from({length:24}, (_, i) => {
+    const v = String(i).padStart(2,'0');
+    return `<option value="${v}">${v}</option>`;
+  }).join('');
+  const mSel = document.getElementById('f-time-min');
+  const hidden = document.getElementById('f-time');
+  const sync = () => { hidden.value = `${hSel.value}:${mSel.value}`; };
+  hSel.addEventListener('change', sync);
+  mSel.addEventListener('change', sync);
+})();
+
+function setTimeValue(timeStr) {
+  const [hh, mm] = (timeStr || '00:00').split(':');
+  const snapped = String(Math.round(parseInt(mm || 0) / 15) * 15 % 60).padStart(2, '0');
+  document.getElementById('f-time-hour').value = hh;
+  document.getElementById('f-time-min').value = snapped;
+  document.getElementById('f-time').value = `${hh}:${snapped}`;
+}
+
 // ── Sheet: Log Block ──────────────────────────────────────────
 function openLogBlock(blockId = null) {
   editingBlockId = blockId;
@@ -2392,7 +2424,7 @@ function openLogBlock(blockId = null) {
   const defaultTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 
   document.getElementById('block-sheet-title').textContent = blockId ? 'Edit Block' : 'Log Block';
-  document.getElementById('f-time').value = b ? b.start_time : defaultTime;
+  setTimeValue(b ? b.start_time : defaultTime);
   document.getElementById('f-label').value = b ? b.label : '';
   document.getElementById('f-note').value  = b ? (b.note || '') : '';
 
