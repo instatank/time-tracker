@@ -952,97 +952,6 @@ html, body {
 .field select { appearance: none; }
 select option { background: var(--surface2); }
 
-/* ── Time drum picker ───────────────────────────────────────── */
-.time-drum-wrap { position: relative; }
-.time-drum-toggle {
-  width: 100%;
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 500;
-  padding: 0.7rem 0.9rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-family: inherit;
-  transition: border-color 0.15s;
-}
-.time-drum-toggle:focus { border-color: var(--accent); outline: none; }
-.drum-chevron {
-  color: var(--text2);
-  font-size: 0.85rem;
-  transition: transform 0.2s;
-}
-.time-drum-wrap.open .drum-chevron { transform: rotate(180deg); }
-.time-drum { display: none; margin-top: 0.5rem; }
-.time-drum-wrap.open .time-drum { display: flex; }
-.drum-center-line {
-  position: absolute;
-  left: 8px; right: 8px;
-  top: 50%; transform: translateY(-50%);
-  height: 40px;
-  background: var(--surface3);
-  border-radius: 8px;
-  pointer-events: none;
-  z-index: 1;
-}
-.time-drum {
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  height: 132px;
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: 8px;
-  overflow: hidden;
-  position: relative;
-}
-.time-drum::before, .time-drum::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0;
-  height: 44px;
-  z-index: 3;
-  pointer-events: none;
-}
-.time-drum::before { top: 0; background: linear-gradient(to bottom, var(--surface2) 30%, transparent); }
-.time-drum::after  { bottom: 0; background: linear-gradient(to top, var(--surface2) 30%, transparent); }
-.drum-col {
-  flex: 1;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  position: relative;
-  z-index: 2;
-}
-.drum-col::-webkit-scrollbar { display: none; }
-.drum-spacer { height: 44px; flex-shrink: 0; }
-.drum-item {
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  font-weight: 500;
-  color: var(--text);
-  scroll-snap-align: center;
-}
-.drum-sep {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  font-size: 1.4rem;
-  font-weight: 600;
-  color: var(--text);
-  flex-shrink: 0;
-  position: relative;
-  z-index: 4;
-}
 
 .pill-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .pill {
@@ -1213,19 +1122,7 @@ select option { background: var(--surface2); }
   <div class="sheet-title" id="block-sheet-title">Log Block</div>
   <div class="sheet-body">
     <div class="field">
-      <input type="hidden" id="f-time">
-      <div class="time-drum-wrap" id="time-drum-wrap">
-        <button type="button" class="time-drum-toggle" onclick="toggleDrum()">
-          <span id="drum-display">--:--</span>
-          <span class="drum-chevron">▾</span>
-        </button>
-        <div class="time-drum">
-          <div class="drum-center-line"></div>
-          <div class="drum-col" id="drum-hour"></div>
-          <div class="drum-sep">:</div>
-          <div class="drum-col" id="drum-min"></div>
-        </div>
-      </div>
+      <input type="time" id="f-time" step="900">
     </div>
     <div class="field">
       <div class="pill-row">
@@ -2485,83 +2382,6 @@ function renderWeeklyReview() {
   </div>`;
 }
 
-// ── Time drum picker ──────────────────────────────────────────
-(function initTimeDrum() {
-  const ITEM_H = 44;
-  const MINS = ['00', '15', '30', '45'];
-  const HOURS = Array.from({length:24}, (_, i) => String(i).padStart(2,'0'));
-
-  function buildCol(col, items) {
-    col.innerHTML =
-      '<div class="drum-spacer"></div>' +
-      items.map(v => `<div class="drum-item" data-val="${v}">${v}</div>`).join('') +
-      '<div class="drum-spacer"></div>';
-  }
-
-  function scrollToVal(col, val) {
-    const idx = Array.from(col.querySelectorAll('.drum-item')).findIndex(el => el.dataset.val === val);
-    if (idx >= 0) col.scrollTop = idx * ITEM_H;
-  }
-
-  function getVal(col) {
-    const items = col.querySelectorAll('.drum-item');
-    const idx = Math.min(Math.round(col.scrollTop / ITEM_H), items.length - 1);
-    return items[idx]?.dataset.val || '00';
-  }
-
-  function updateDrumDisplay() {
-    const display = document.getElementById('drum-display');
-    if (display) display.textContent = document.getElementById('f-time').value || '--:--';
-  }
-
-  function syncHidden() {
-    const h = document.getElementById('drum-hour');
-    const m = document.getElementById('drum-min');
-    if (h && m) {
-      document.getElementById('f-time').value = `${getVal(h)}:${getVal(m)}`;
-      updateDrumDisplay();
-    }
-  }
-
-  // Wire scroll listeners once at startup
-  document.addEventListener('DOMContentLoaded', () => {
-    let t;
-    ['drum-hour', 'drum-min'].forEach(id => {
-      document.getElementById(id)?.addEventListener('scroll', () => {
-        clearTimeout(t); t = setTimeout(syncHidden, 80);
-      }, { passive: true });
-    });
-  });
-
-  window.setDrumTime = function(timeStr) {
-    const [hh, rawMm] = (timeStr || '00:00').split(':');
-    const snappedMin = String(Math.round(parseInt(rawMm || 0) / 15) * 15 % 60).padStart(2, '0');
-    document.getElementById('f-time').value = `${hh}:${snappedMin}`;
-    updateDrumDisplay();
-    // Collapse drum on (re)set
-    document.getElementById('time-drum-wrap')?.classList.remove('open');
-  };
-
-  window.toggleDrum = function() {
-    const wrap = document.getElementById('time-drum-wrap');
-    const opening = !wrap.classList.contains('open');
-    wrap.classList.toggle('open');
-    if (!opening) return;
-
-    const hourCol = document.getElementById('drum-hour');
-    const minCol  = document.getElementById('drum-min');
-    if (!hourCol.querySelector('.drum-item')) {
-      buildCol(hourCol, HOURS);
-      buildCol(minCol, MINS);
-    }
-    const [hh, mm] = (document.getElementById('f-time').value || '00:00').split(':');
-    requestAnimationFrame(() => {
-      scrollToVal(hourCol, hh);
-      scrollToVal(minCol, mm);
-    });
-  };
-})();
-
 // ── Sheet: Log Block ──────────────────────────────────────────
 function openLogBlock(blockId = null) {
   editingBlockId = blockId;
@@ -2572,6 +2392,7 @@ function openLogBlock(blockId = null) {
   const defaultTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 
   document.getElementById('block-sheet-title').textContent = blockId ? 'Edit Block' : 'Log Block';
+  document.getElementById('f-time').value = b ? b.start_time : defaultTime;
   document.getElementById('f-label').value = b ? b.label : '';
   document.getElementById('f-note').value  = b ? (b.note || '') : '';
 
@@ -2587,10 +2408,7 @@ function openLogBlock(blockId = null) {
   window._labelSuggestions = [...new Set(blocks.map(b => b.label).filter(Boolean))].sort();
 
   openSheet('sheet-block');
-  setTimeout(() => {
-    setDrumTime(b ? b.start_time : defaultTime);
-    document.getElementById('f-label').focus();
-  }, 50);
+  setTimeout(() => document.getElementById('f-label').focus(), 300);
 }
 
 function renderCatGrid() {
