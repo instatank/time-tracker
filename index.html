@@ -954,6 +954,31 @@ select option { background: var(--surface2); }
 
 /* ── Time drum picker ───────────────────────────────────────── */
 .time-drum-wrap { position: relative; }
+.time-drum-toggle {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+.time-drum-toggle:focus { border-color: var(--accent); outline: none; }
+.drum-chevron {
+  color: var(--text2);
+  font-size: 0.85rem;
+  transition: transform 0.2s;
+}
+.time-drum-wrap.open .drum-chevron { transform: rotate(180deg); }
+.time-drum { display: none; margin-top: 0.5rem; }
+.time-drum-wrap.open .time-drum { display: flex; }
 .drum-center-line {
   position: absolute;
   left: 8px; right: 8px;
@@ -1189,7 +1214,11 @@ select option { background: var(--surface2); }
   <div class="sheet-body">
     <div class="field">
       <input type="hidden" id="f-time">
-      <div class="time-drum-wrap">
+      <div class="time-drum-wrap" id="time-drum-wrap">
+        <button type="button" class="time-drum-toggle" onclick="toggleDrum()">
+          <span id="drum-display">--:--</span>
+          <span class="drum-chevron">▾</span>
+        </button>
         <div class="time-drum">
           <div class="drum-center-line"></div>
           <div class="drum-col" id="drum-hour"></div>
@@ -2480,10 +2509,18 @@ function renderWeeklyReview() {
     return items[idx]?.dataset.val || '00';
   }
 
+  function updateDrumDisplay() {
+    const display = document.getElementById('drum-display');
+    if (display) display.textContent = document.getElementById('f-time').value || '--:--';
+  }
+
   function syncHidden() {
     const h = document.getElementById('drum-hour');
     const m = document.getElementById('drum-min');
-    if (h && m) document.getElementById('f-time').value = `${getVal(h)}:${getVal(m)}`;
+    if (h && m) {
+      document.getElementById('f-time').value = `${getVal(h)}:${getVal(m)}`;
+      updateDrumDisplay();
+    }
   }
 
   // Wire scroll listeners once at startup
@@ -2497,20 +2534,30 @@ function renderWeeklyReview() {
   });
 
   window.setDrumTime = function(timeStr) {
-    const hourCol = document.getElementById('drum-hour');
-    const minCol  = document.getElementById('drum-min');
-    if (!hourCol || !minCol) return;
-
     const [hh, rawMm] = (timeStr || '00:00').split(':');
     const snappedMin = String(Math.round(parseInt(rawMm || 0) / 15) * 15 % 60).padStart(2, '0');
+    document.getElementById('f-time').value = `${hh}:${snappedMin}`;
+    updateDrumDisplay();
+    // Collapse drum on (re)set
+    document.getElementById('time-drum-wrap')?.classList.remove('open');
+  };
 
-    buildCol(hourCol, HOURS);
-    buildCol(minCol, MINS);
+  window.toggleDrum = function() {
+    const wrap = document.getElementById('time-drum-wrap');
+    const opening = !wrap.classList.contains('open');
+    wrap.classList.toggle('open');
+    if (!opening) return;
 
+    const hourCol = document.getElementById('drum-hour');
+    const minCol  = document.getElementById('drum-min');
+    if (!hourCol.querySelector('.drum-item')) {
+      buildCol(hourCol, HOURS);
+      buildCol(minCol, MINS);
+    }
+    const [hh, mm] = (document.getElementById('f-time').value || '00:00').split(':');
     requestAnimationFrame(() => {
       scrollToVal(hourCol, hh);
-      scrollToVal(minCol, snappedMin);
-      syncHidden();
+      scrollToVal(minCol, mm);
     });
   };
 })();
