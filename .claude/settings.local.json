@@ -1,4 +1,19 @@
 {
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(npm run build*)",
+            "command": "git pull --rebase origin \"$(git branch --show-current)\" 2>&1",
+            "statusMessage": "Pulling latest changes before build..."
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(git init)",
