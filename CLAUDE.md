@@ -90,11 +90,12 @@ Firestore path: `users/{uid}/blocks/{id}`, `users/{uid}/captures/{id}`, `users/{
 When the user types the session recap commands, generate a session recap using this exact structure.
 Keep it brief, plain English, no jargon without explanation.
 The user is a non-technical founder learning by building — prioritize conceptual understanding over syntax.
+**Scope: cover only what happened in this session — not the full project history or prior sessions.**
 
 ## Session Recap Commands
 
 ### wrap and teach
-Generate a structured session recap. Plain English only — no jargon without a brief explanation. User is a non-technical founder learning by building.
+Generate a structured session recap covering only this session. Plain English only — no jargon without a brief explanation. User is a non-technical founder learning by building.
 
 **SESSION WRAP — [date]**
 
@@ -114,4 +115,4 @@ Generate a structured session recap. Plain English only — no jargon without a 
 ---
 
 ### summarize learnings
-3–5 bullet points. What was built, what was learned. One line each. No headers, no padding.
+3–5 bullet points covering only this session. What was built, what was learned. One line each. No headers, no padding.
