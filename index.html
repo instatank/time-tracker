@@ -600,25 +600,27 @@ html, body {
   font-size: 0.85rem;
 }
 
-/* ── Projects tab: + New Session dashed button ────────────────── */
+/* ── Projects tab: + New Session / + Log Learning solid button ── */
 .new-session-btn {
   width: 100%;
-  padding: 0.7rem 0.9rem;
-  border: 1.5px dashed var(--border2);
-  background: transparent;
-  color: var(--text2);
-  font-size: 0.88rem;
-  font-weight: 500;
+  padding: 0.9rem 1rem;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
   border-radius: var(--r);
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-  margin-bottom: 0.75rem;
+  transition: opacity 0.15s, transform 0.08s;
+  margin-bottom: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  box-shadow: 0 2px 6px rgba(59,130,246,0.18);
 }
-.new-session-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(59,130,246,0.05);
-}
+.new-session-btn:hover  { opacity: 0.92; }
+.new-session-btn:active { opacity: 0.82; transform: scale(0.99); }
 
 /* ── Session cards ───────────────────────────────────────────── */
 .session-card {
@@ -668,6 +670,29 @@ html, body {
   color: var(--accent);
   border-color: var(--accent);
   background: rgba(59,130,246,0.06);
+}
+.card-delete-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.card-delete-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(239,68,68,0.08);
+}
+.card-delete-btn.armed {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(239,68,68,0.15);
+  font-weight: 600;
 }
 .session-section {
   margin-top: 0.6rem;
@@ -1961,6 +1986,31 @@ function tapOrDoubleTap(key, single, double) {
     }, TAP_DBL_MS);
   }
 }
+
+// ── Tap-to-confirm delete pattern ─────────────────────────────
+// First tap arms the delete (button turns red + toast); a second tap within
+// CONFIRM_MS actually performs it. Otherwise the pending delete expires quietly.
+const _pendingDeletes = new Map(); // key -> timeoutId
+const DELETE_CONFIRM_MS = 3000;
+function armOrConfirmDelete(key, doDelete) {
+  if (_pendingDeletes.has(key)) {
+    clearTimeout(_pendingDeletes.get(key));
+    _pendingDeletes.delete(key);
+    doDelete();
+  } else {
+    const t = setTimeout(() => {
+      _pendingDeletes.delete(key);
+      // Reset button appearance if it's still on screen
+      const btn = document.querySelector(`[data-delkey="${key}"]`);
+      if (btn) { btn.classList.remove('armed'); btn.textContent = '🗑'; }
+    }, DELETE_CONFIRM_MS);
+    _pendingDeletes.set(key, t);
+    // Visual feedback — swap icon/label
+    const btn = document.querySelector(`[data-delkey="${key}"]`);
+    if (btn) { btn.classList.add('armed'); btn.textContent = '⚠ confirm'; }
+    toast('Tap again to delete', 3000);
+  }
+}
 function extractTags(text) {
   // Match #Word or #Two Words (CapCase continuation) then strip spaces + lowercase
   const matches = text.match(/#[a-zA-Z0-9_%]+(?:\s[A-Z][a-zA-Z0-9_%]*)*/g);
@@ -2712,11 +2762,15 @@ function renderSessionCard(s) {
   }
 
   const projEsc = esc(s.projectName).replace(/'/g, "\\'");
+  const delKey = 'sess-' + s.id;
   return `
     <div class="session-card" onclick="sessionCardTap('${s.id}','${projEsc}')">
       <div class="session-card-hdr">
         <span class="session-date">${dateLabel}</span>
-        <button class="card-edit-btn" onclick="event.stopPropagation();openEditSession('${s.id}','${projEsc}')" title="Edit session">✎ Edit</button>
+        <div style="display:flex;gap:0.35rem;flex-shrink:0">
+          <button class="card-edit-btn" onclick="event.stopPropagation();openEditSession('${s.id}','${projEsc}')" title="Edit session">✎ Edit</button>
+          <button class="card-delete-btn" data-delkey="${delKey}" onclick="event.stopPropagation();deleteSession('${s.id}','${projEsc}')" title="Delete session">🗑</button>
+        </div>
       </div>
       ${bodyParts.join('')}
       ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
@@ -2731,6 +2785,34 @@ window.sessionCardTap = function(sessionId, projectName) {
     () => toggleSessionExpand(sessionId),
     () => openEditSession(sessionId, projectName)
   );
+};
+
+window.deleteSession = function(sessionId, projectName) {
+  armOrConfirmDelete('sess-' + sessionId, () => {
+    // Remove from local
+    const list = sessions[projectName] || [];
+    const idx = list.findIndex(x => x.id === sessionId);
+    if (idx === -1) { toast('Session not found'); return; }
+    const removed = list[idx];
+    list.splice(idx, 1);
+    sessions[projectName] = list;
+    saveLocal(SK.SESSIONS, sessions);
+    // Clear back-link on any linked block (keep the block itself — it may be meaningful on Today)
+    if (removed.linkedBlockId) {
+      const bIdx = blocks.findIndex(b => b.id === removed.linkedBlockId);
+      if (bIdx > -1 && blocks[bIdx].linkedSessionId === sessionId) {
+        blocks[bIdx] = { ...blocks[bIdx], linkedSessionId: '' };
+        saveLocal(SK.BLOCKS, blocks);
+        syncBlockDoc(blocks[bIdx]);
+      }
+    }
+    // Remove from cloud
+    if (user) {
+      deleteDoc(doc(db, 'sessions', user.uid, projectName, sessionId)).catch(() => {});
+    }
+    toast('✓ Session deleted');
+    renderMain(true);
+  });
 };
 
 window.toggleSessionExpand = function(id) {
@@ -3133,6 +3215,7 @@ function renderLearningCard(e) {
     `<span class="tag-pill ${tagClassFor(t)}" style="font-size:0.7rem;padding:2px 8px">${esc(t)}</span>`
   ).join('');
 
+  const delKey = 'learn-' + e.id;
   return `
     <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="learningCardTap('${e.id}')">
       <div class="learning-card-hdr">
@@ -3140,9 +3223,10 @@ function renderLearningCard(e) {
           <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
           <span class="learning-type-badge">${esc(e.sourceType || '—')}</span>
         </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:0.35rem;flex-shrink:0">
           <span class="learning-date">${dateLabel}</span>
           <button class="card-edit-btn" onclick="event.stopPropagation();openEditLearning('${e.id}')" title="Edit entry">✎</button>
+          <button class="card-delete-btn" data-delkey="${delKey}" onclick="event.stopPropagation();deleteLearning('${e.id}')" title="Delete entry">🗑</button>
         </div>
       </div>
       <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
@@ -3161,6 +3245,20 @@ window.learningCardTap = function(entryId) {
     () => toggleLearningExpand(entryId),
     () => openEditLearning(entryId)
   );
+};
+
+window.deleteLearning = function(entryId) {
+  armOrConfirmDelete('learn-' + entryId, () => {
+    const idx = learning.findIndex(e => e.id === entryId);
+    if (idx === -1) { toast('Entry not found'); return; }
+    learning.splice(idx, 1);
+    saveLocal(SK.LEARNING, learning);
+    if (user) {
+      deleteDoc(doc(db, 'learning', user.uid, 'entries', entryId)).catch(() => {});
+    }
+    toast('✓ Learning deleted');
+    renderMain(true);
+  });
 };
 
 window.setLearningFilter = function(f) {
