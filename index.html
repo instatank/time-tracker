@@ -650,6 +650,25 @@ html, body {
   border-radius: 999px;
   border: 1px solid var(--border2);
 }
+
+/* ── Edit button (session & learning cards) ───────────────────── */
+.card-edit-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.card-edit-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(59,130,246,0.06);
+}
 .session-section {
   margin-top: 0.6rem;
   font-size: 0.85rem;
@@ -1855,6 +1874,8 @@ let learningLoadedFromCloud = false;
 let selLearningType     = '';                          // current form source type
 let learningFormNotesOpen = false;                     // whether the "Full notes" textarea is expanded in the form
 let editingLearningId   = null;
+let editingSessionId    = null;
+let editingSessionProject = null;
 let activeTab = 'today';
 let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
@@ -1922,6 +1943,24 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+// Generic tap-or-double-tap router (mobile-safe — avoids the unreliable dblclick event).
+// Single tap runs `single` after a short delay; a second tap within the window cancels
+// the pending single-tap and runs `double` instead.
+const _tapTimers = {};
+const TAP_DBL_MS = 260;
+function tapOrDoubleTap(key, single, double) {
+  if (_tapTimers[key]) {
+    clearTimeout(_tapTimers[key]);
+    delete _tapTimers[key];
+    double();
+  } else {
+    _tapTimers[key] = setTimeout(() => {
+      delete _tapTimers[key];
+      single();
+    }, TAP_DBL_MS);
+  }
+}
 function extractTags(text) {
   // Match #Word or #Two Words (CapCase continuation) then strip spaces + lowercase
   const matches = text.match(/#[a-zA-Z0-9_%]+(?:\s[A-Z][a-zA-Z0-9_%]*)*/g);
@@ -2657,34 +2696,42 @@ function renderSessionCard(s) {
     if (preview) bodyParts.push(`<div class="session-preview">${esc(preview)}</div>`);
   }
 
-  // Link affordance / linked indicator
+  // Link affordance / linked indicator (also carries duration now that header shows edit instead)
   let linkRow = '';
   if (s.linkedBlockId) {
     const linked = blocks.find(b => b.id === s.linkedBlockId);
-    const timeHint = linked ? ` · ${linked.start_time || ''} · ${linked.duration_min || 0}m` : '';
+    const timeHint = linked ? ` · ${linked.start_time || ''} · ${linked.duration_min || 0}m` : ` · ${s.durationMin || 0}m`;
     linkRow = `<div class="session-link-row">
       <span class="session-linked-badge">🔗 Linked to block${timeHint}</span>
     </div>`;
   } else {
     linkRow = `<div class="session-link-row">
-      <span style="color:var(--text3)">Not linked to a block</span>
+      <span style="color:var(--text3)">Not linked · ${s.durationMin || 0}m planned</span>
       <button class="session-link-btn" onclick="openLinkBlockPicker('${s.id}','${esc(s.projectName).replace(/'/g, "\\'")}',event)">🔗 Link to block</button>
     </div>`;
   }
 
+  const projEsc = esc(s.projectName).replace(/'/g, "\\'");
   return `
-    <div class="session-card" onclick="toggleSessionExpand('${s.id}')">
+    <div class="session-card" onclick="sessionCardTap('${s.id}','${projEsc}')">
       <div class="session-card-hdr">
         <span class="session-date">${dateLabel}</span>
-        <span class="session-dur">${s.durationMin || 0}m</span>
+        <button class="card-edit-btn" onclick="event.stopPropagation();openEditSession('${s.id}','${projEsc}')" title="Edit session">✎ Edit</button>
       </div>
       ${bodyParts.join('')}
       ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
-      ${!expanded && (s.before || s.during || s.after) ? '<div class="session-expand-hint">Tap to expand</div>' : ''}
+      ${!expanded && (s.before || s.during || s.after) ? '<div class="session-expand-hint">Tap to expand · double-tap to edit</div>' : ''}
       ${linkRow}
     </div>
   `;
 }
+
+window.sessionCardTap = function(sessionId, projectName) {
+  tapOrDoubleTap('sess-' + sessionId,
+    () => toggleSessionExpand(sessionId),
+    () => openEditSession(sessionId, projectName)
+  );
+};
 
 window.toggleSessionExpand = function(id) {
   if (expandedSessions.has(id)) expandedSessions.delete(id);
@@ -2697,6 +2744,8 @@ let selSessionDur = 60;  // default
 
 window.openNewSession = function() {
   if (!selectedProject) { toast('Select a project first'); return; }
+  editingSessionId = null;
+  editingSessionProject = null;
   // Reset form
   document.getElementById('f-sess-before').value = '';
   document.getElementById('f-sess-during').value = '';
@@ -2710,6 +2759,36 @@ window.openNewSession = function() {
   sessionTagCustomOpen = false;
   renderTagPicker('session');
   document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
+  document.getElementById('sheet-session').classList.add('open');
+  document.getElementById('backdrop').classList.add('visible');
+};
+
+window.openEditSession = function(sessionId, projectName) {
+  const list = sessions[projectName] || [];
+  const s = list.find(x => x.id === sessionId);
+  if (!s) { toast('Session not found'); return; }
+  editingSessionId = sessionId;
+  editingSessionProject = projectName;
+  // Prefill fields
+  document.getElementById('f-sess-before').value = s.before || '';
+  document.getElementById('f-sess-during').value = s.during || '';
+  document.getElementById('f-sess-after').value  = s.after  || '';
+  const stdDurs = [30, 45, 60, 90, 120];
+  if (stdDurs.includes(s.durationMin)) {
+    selSessionDur = s.durationMin;
+    document.getElementById('f-sess-dur-custom').style.display = 'none';
+    document.getElementById('f-sess-dur-custom').value = '';
+  } else {
+    selSessionDur = 0; // custom sentinel
+    document.getElementById('f-sess-dur-custom').style.display = 'block';
+    document.getElementById('f-sess-dur-custom').value = s.durationMin || '';
+  }
+  renderSessionDurPills();
+  // Prefill tag picker with existing tags
+  sessionFormTags = new Set((s.tags || []).map(normalizeTag).filter(Boolean));
+  sessionTagCustomOpen = false;
+  renderTagPicker('session');
+  document.getElementById('session-sheet-title').textContent = `Edit Session · ${projectName}`;
   document.getElementById('sheet-session').classList.add('open');
   document.getElementById('backdrop').classList.add('visible');
 };
@@ -2763,7 +2842,9 @@ window.insertReviewPrefix = function(prefix) {
 };
 
 window.saveSession = async function() {
-  if (!selectedProject) { toast('No project selected'); return; }
+  const isEdit = !!editingSessionId;
+  const activeProject = isEdit ? editingSessionProject : selectedProject;
+  if (!activeProject) { toast('No project selected'); return; }
 
   // Resolve duration (Custom → read number input)
   let duration = selSessionDur;
@@ -2787,9 +2868,47 @@ window.saveSession = async function() {
   // Silent parse of Review field → structured buckets. Raw `after` text is kept intact.
   const review = parseReviewText(after);
 
+  // ── EDIT PATH: update in-place, preserve existing link + createdAt ──
+  if (isEdit) {
+    const list = sessions[activeProject] || [];
+    const idx = list.findIndex(x => x.id === editingSessionId);
+    if (idx === -1) { toast('Session not found'); closeSheets(); return; }
+    const existing = list[idx];
+    const updated = {
+      ...existing,
+      before, during, after,
+      durationMin: duration,
+      done:    review.done,
+      pending: review.pending,
+      learned: review.learned,
+      tags,
+      // linkedBlockId, projectName, date, createdAt all preserved from `existing`
+    };
+    list[idx] = updated;
+    sessions[activeProject] = list;
+    saveLocal(SK.SESSIONS, sessions);
+    syncSessionDoc(updated);
+    // If linked, keep the block's duration in sync with the edited session
+    if (updated.linkedBlockId) {
+      const bIdx = blocks.findIndex(b => b.id === updated.linkedBlockId);
+      if (bIdx > -1 && blocks[bIdx].duration_min !== duration) {
+        blocks[bIdx] = { ...blocks[bIdx], duration_min: duration };
+        saveLocal(SK.BLOCKS, blocks);
+        syncBlockDoc(blocks[bIdx]);
+      }
+    }
+    editingSessionId = null;
+    editingSessionProject = null;
+    closeSheets();
+    toast('✓ Session updated');
+    render();
+    return;
+  }
+
+  // ── NEW PATH (original behavior) ──
   const s = {
     id: uid(),
-    projectName: selectedProject,
+    projectName: activeProject,
     date: todayStr(),
     before, during, after,
     durationMin: duration,
@@ -2802,7 +2921,7 @@ window.saveSession = async function() {
   };
 
   // ── Direction 1: auto-link to an existing time block ──
-  const match = findAutoLinkBlock(selectedProject);
+  const match = findAutoLinkBlock(activeProject);
   let toastMsg = '✓ Session saved';
   if (match) {
     s.linkedBlockId = match.id;
@@ -2824,11 +2943,11 @@ window.saveSession = async function() {
       start_time: startTime,
       duration_min: duration,
       category: 'deep_work',
-      label: selectedProject,
+      label: activeProject,
       note: '',
       energy_level: '',
-      projectTag: selectedProject,
-      tags: extractTags(selectedProject),
+      projectTag: activeProject,
+      tags: extractTags(activeProject),
       autoFromSession: true,          // flag: so we can distinguish auto-created blocks
       linkedSessionId: s.id,
     };
@@ -2839,8 +2958,8 @@ window.saveSession = async function() {
     toastMsg = '✓ Session saved + time block auto-logged';
   }
 
-  if (!sessions[selectedProject]) sessions[selectedProject] = [];
-  sessions[selectedProject].push(s);
+  if (!sessions[activeProject]) sessions[activeProject] = [];
+  sessions[activeProject].push(s);
   saveLocal(SK.SESSIONS, sessions);
   syncSessionDoc(s);
 
@@ -3015,13 +3134,16 @@ function renderLearningCard(e) {
   ).join('');
 
   return `
-    <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="toggleLearningExpand('${e.id}')">
+    <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="learningCardTap('${e.id}')">
       <div class="learning-card-hdr">
         <div class="learning-source-group">
           <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
           <span class="learning-type-badge">${esc(e.sourceType || '—')}</span>
         </div>
-        <span class="learning-date">${dateLabel}</span>
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0">
+          <span class="learning-date">${dateLabel}</span>
+          <button class="card-edit-btn" onclick="event.stopPropagation();openEditLearning('${e.id}')" title="Edit entry">✎</button>
+        </div>
       </div>
       <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
       ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
@@ -3033,6 +3155,13 @@ function renderLearningCard(e) {
     </div>
   `;
 }
+
+window.learningCardTap = function(entryId) {
+  tapOrDoubleTap('learn-' + entryId,
+    () => toggleLearningExpand(entryId),
+    () => openEditLearning(entryId)
+  );
+};
 
 window.setLearningFilter = function(f) {
   learningFilter = f;
@@ -3059,6 +3188,34 @@ window.openNewLearning = function() {
   renderLearningTypeRow();
   renderTagPicker('learning');
   document.getElementById('learning-sheet-title').textContent = 'Log Learning';
+  openSheet('sheet-learning');
+  setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
+};
+
+window.openEditLearning = function(entryId) {
+  const e = learning.find(x => x.id === entryId);
+  if (!e) { toast('Entry not found'); return; }
+  editingLearningId = entryId;
+  document.getElementById('f-learn-source').value   = e.sourceName || '';
+  document.getElementById('f-learn-takeaway').value = e.takeaway   || '';
+  const notesEl = document.getElementById('f-learn-notes');
+  const notesBtn = document.getElementById('f-learn-notes-toggle');
+  notesEl.value = e.fullNotes || '';
+  if (e.fullNotes) {
+    notesEl.style.display = 'block';
+    notesBtn.textContent = '▾ Hide full notes';
+    learningFormNotesOpen = true;
+  } else {
+    notesEl.style.display = 'none';
+    notesBtn.textContent = '▸ Add full notes';
+    learningFormNotesOpen = false;
+  }
+  selLearningType = e.sourceType || '';
+  learningFormTags = new Set((e.tags || []).map(normalizeTag).filter(Boolean));
+  learningTagCustomOpen = false;
+  renderLearningTypeRow();
+  renderTagPicker('learning');
+  document.getElementById('learning-sheet-title').textContent = 'Edit Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
 };
@@ -3117,7 +3274,8 @@ window.saveLearning = function() {
       : nowISTIso(),
   };
 
-  if (editingLearningId) {
+  const isEdit = !!editingLearningId;
+  if (isEdit) {
     const idx = learning.findIndex(e => e.id === editingLearningId);
     if (idx > -1) learning[idx] = entry;
   } else {
@@ -3125,9 +3283,10 @@ window.saveLearning = function() {
   }
   saveLocal(SK.LEARNING, learning);
   syncLearningDoc(entry);
+  editingLearningId = null;
 
   closeSheets();
-  toast('✓ Learning saved');
+  toast(isEdit ? '✓ Learning updated' : '✓ Learning saved');
   renderMain(true);
 };
 
