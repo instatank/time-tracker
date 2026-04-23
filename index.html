@@ -727,6 +727,66 @@ html, body {
 .session-field-label.before { color: #6b9fe8; }
 .session-field-label.during { color: #5fb97a; }
 .session-field-label.after  { color: #d4a45a; }
+
+/* ── Review chips & parsed groups ─────────────────────────────── */
+.review-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.45rem;
+}
+.review-chip {
+  font-size: 0.74rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.08s;
+  line-height: 1.3;
+}
+.review-chip:active { transform: scale(0.96); }
+.review-chip.chip-done    { background: #1a2e0a; color: #7bc44a; }
+.review-chip.chip-pending { background: #2a1a08; color: #d4922a; }
+.review-chip.chip-learned { background: #1e1440; color: #8b7fdd; }
+
+/* Grouped review display (saved session cards, expanded) */
+.review-group { margin-top: 0.5rem; }
+.review-group-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+.review-group.done    .review-group-label { color: #7bc44a; }
+.review-group.pending .review-group-label { color: #d4922a; }
+.review-group.learned .review-group-label { color: #8b7fdd; }
+.review-group ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+.review-group li {
+  font-size: 0.86rem;
+  color: var(--text);
+  line-height: 1.45;
+  padding: 0.05rem 0;
+}
+.review-group.done    li::marker { color: #7bc44a; }
+.review-group.pending li::marker { color: #d4922a; }
+.review-group.learned li::marker { color: #8b7fdd; }
+.review-extra {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.82rem;
+  color: var(--text2);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
 .session-field-label.neutral { color: var(--text2); }
 
 /* ── Session ↔ block link affordances ─────────────────────────── */
@@ -1663,7 +1723,13 @@ select option { background: var(--surface2); }
     </div>
     <div class="field">
       <label class="session-field-label after">Review</label>
-      <textarea class="session-textarea" id="f-sess-after" placeholder="Note learnings, what's done and pending"></textarea>
+      <div class="review-chips">
+        <button type="button" class="review-chip chip-done"    onclick="insertReviewPrefix('✓')">✓ Done</button>
+        <button type="button" class="review-chip chip-pending" onclick="insertReviewPrefix('>')">⏳ Pending</button>
+        <button type="button" class="review-chip chip-learned" onclick="insertReviewPrefix('*')">💡 Learned</button>
+      </div>
+      <textarea class="session-textarea" id="f-sess-after" placeholder="Note learnings, what's done and pending.
+Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save."></textarea>
     </div>
     <div class="field">
       <label class="session-field-label neutral">Duration</label>
@@ -2525,6 +2591,52 @@ function renderSessionsList(projectName) {
   `;
 }
 
+// Render the Review body — grouped (Done / Pending / Learned) when structured items exist;
+// falls back to raw after text. Legacy sessions without stored arrays are parsed on the fly.
+function renderReviewBody(s) {
+  let done = s.done, pending = s.pending, learned = s.learned, extras = null;
+  const hasStored = (Array.isArray(done) && done.length) ||
+                    (Array.isArray(pending) && pending.length) ||
+                    (Array.isArray(learned) && learned.length);
+  if (!hasStored) {
+    // Legacy (or unstructured) session — parse on the fly
+    const p = parseReviewText(s.after || '');
+    done = p.done; pending = p.pending; learned = p.learned; extras = p.extras;
+  } else {
+    // If arrays are stored, still re-parse to grab any unstructured extras
+    const p = parseReviewText(s.after || '');
+    extras = p.extras;
+  }
+  const groups = [];
+  if (done && done.length) {
+    groups.push(`<div class="review-group done">
+      <span class="review-group-label">✓ Done</span>
+      <ul>${done.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    </div>`);
+  }
+  if (pending && pending.length) {
+    groups.push(`<div class="review-group pending">
+      <span class="review-group-label">⏳ Pending</span>
+      <ul>${pending.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    </div>`);
+  }
+  if (learned && learned.length) {
+    groups.push(`<div class="review-group learned">
+      <span class="review-group-label">💡 Learned</span>
+      <ul>${learned.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    </div>`);
+  }
+  // Structured categories + any unstructured leftover lines
+  if (groups.length) {
+    const extrasHtml = (extras && extras.length)
+      ? `<div class="review-extra">${esc(extras.join('\n'))}</div>`
+      : '';
+    return groups.join('') + extrasHtml;
+  }
+  // No structured items — fall through to raw text
+  return esc(s.after || '');
+}
+
 function renderSessionCard(s) {
   const expanded = expandedSessions.has(s.id);
   const dateLabel = fmtDate(s.date || (s.createdAt || '').slice(0,10));
@@ -2537,7 +2649,7 @@ function renderSessionCard(s) {
   if (expanded) {
     if (s.before) bodyParts.push(`<div class="session-section"><span class="session-section-label before">Goals and Intentions</span>${esc(s.before)}</div>`);
     if (s.during) bodyParts.push(`<div class="session-section"><span class="session-section-label during">Session Notes</span>${esc(s.during)}</div>`);
-    if (s.after)  bodyParts.push(`<div class="session-section"><span class="session-section-label after">Review</span>${esc(s.after)}</div>`);
+    if (s.after)  bodyParts.push(`<div class="session-section"><span class="session-section-label after">Review</span>${renderReviewBody(s)}</div>`);
     if (!bodyParts.length) bodyParts.push(`<div class="session-section" style="color:var(--text3);font-style:italic">No notes captured.</div>`);
   } else {
     // Collapsed preview: show first non-empty of before/during/after
@@ -2612,6 +2724,44 @@ function renderSessionDurPills() {
   if (custom) custom.style.display = ![30,45,60,90,120].includes(selSessionDur) ? 'block' : 'none';
 }
 
+// ── Review prefix parser (silent structure on the after field) ──
+// ✓ / done:   → done[]
+// > / pending:→ pending[]
+// * / learned:→ learned[]
+// Lines without prefix remain as "extra" unstructured content (kept verbatim in raw `after`).
+function parseReviewText(text) {
+  const out = { done: [], pending: [], learned: [], extras: [] };
+  if (!text) return out;
+  const lines = String(text).split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    let m;
+    if      ((m = line.match(/^(?:✓|done:)\s*(.+)$/i)))     out.done.push(m[1].trim());
+    else if ((m = line.match(/^(?:>|pending:)\s*(.+)$/i)))  out.pending.push(m[1].trim());
+    else if ((m = line.match(/^(?:\*|learned:)\s*(.+)$/i))) out.learned.push(m[1].trim());
+    else                                                     out.extras.push(line);
+  }
+  return out;
+}
+
+// Cursor-aware prefix insertion for the Review textarea quick-tag chips
+window.insertReviewPrefix = function(prefix) {
+  const ta = document.getElementById('f-sess-after');
+  if (!ta) return;
+  ta.focus();
+  const start = ta.selectionStart;
+  const end   = ta.selectionEnd;
+  const val   = ta.value;
+  // If not at start of a line, drop to a new line first
+  const needsNL = start > 0 && val[start - 1] !== '\n';
+  const insertion = (needsNL ? '\n' : '') + prefix + ' ';
+  ta.value = val.slice(0, start) + insertion + val.slice(end);
+  const newPos = start + insertion.length;
+  ta.setSelectionRange(newPos, newPos);
+  ta.focus();
+};
+
 window.saveSession = async function() {
   if (!selectedProject) { toast('No project selected'); return; }
 
@@ -2634,12 +2784,18 @@ window.saveSession = async function() {
   // Persist any new non-prepopulated tags to history
   addToTagHistory(tags);
 
+  // Silent parse of Review field → structured buckets. Raw `after` text is kept intact.
+  const review = parseReviewText(after);
+
   const s = {
     id: uid(),
     projectName: selectedProject,
     date: todayStr(),
     before, during, after,
     durationMin: duration,
+    done:    review.done,
+    pending: review.pending,
+    learned: review.learned,
     tags,
     linkedBlockId: null,
     createdAt: nowISTIso(),
