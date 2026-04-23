@@ -775,6 +775,131 @@ html, body {
 .link-block-label { color: var(--text); font-size: 0.88rem; font-weight: 500; }
 .link-block-meta { color: var(--text3); font-size: 0.72rem; }
 
+/* ── Projects tab: sub-tab toggle (Projects / Learning) ───────── */
+.subtab-toggle {
+  display: flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  margin-bottom: 0.75rem;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+.subtab-btn {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.subtab-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+/* ── Learning sub-tab ─────────────────────────────────────────── */
+.learning-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.learning-card:hover { border-color: var(--border2); }
+.learning-card-hdr {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.learning-source-group { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; flex: 1; min-width: 0; }
+.learning-source-name {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.learning-type-badge {
+  font-size: 0.66rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid var(--border);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.learning-date {
+  color: var(--text3);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.learning-takeaway {
+  color: var(--text);
+  font-size: 0.87rem;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+}
+.learning-card.expanded .learning-takeaway {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+.learning-notes {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.82rem;
+  color: var(--text2);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.learning-notes-indicator {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--text3);
+  margin-top: 0.45rem;
+}
+.learning-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text3);
+  font-size: 0.85rem;
+}
+
+/* ── Learning form: collapsible "Full notes" trigger ────────── */
+.learning-notes-toggle {
+  display: inline-block;
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0.3rem 0;
+  transition: color 0.15s;
+}
+.learning-notes-toggle:hover { color: var(--accent); }
+
 .journal-search {
   position: relative;
   margin-bottom: 0.75rem;
@@ -1490,6 +1615,39 @@ select option { background: var(--surface2); }
   <div class="sheet-body" id="link-block-body"></div>
 </div>
 
+<!-- Sheet: New Learning Entry (Projects → Learning sub-tab) -->
+<div id="sheet-learning" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="learning-sheet-title">Log Learning</div>
+  <div class="sheet-body">
+    <div class="field">
+      <label class="session-field-label neutral">Source Name</label>
+      <input type="text" id="f-learn-source" placeholder="e.g. Claude Code in Action, All-In Podcast..." autocomplete="off">
+    </div>
+    <div class="field">
+      <label class="session-field-label neutral">Source Type</label>
+      <div class="pill-row" id="learn-type-row"></div>
+    </div>
+    <div class="field">
+      <label class="session-field-label neutral">Key Takeaway</label>
+      <textarea class="session-textarea" id="f-learn-takeaway" placeholder="The essential thing you're taking away — 1 to 3 lines." style="min-height:72px"></textarea>
+    </div>
+    <div class="field" id="f-learn-notes-wrap">
+      <button type="button" class="learning-notes-toggle" id="f-learn-notes-toggle" onclick="toggleLearningFormNotes()">▸ Add full notes</button>
+      <textarea class="session-textarea" id="f-learn-notes" placeholder="Detailed notes, references, anything worth keeping..." style="min-height:100px;display:none;margin-top:0.4rem"></textarea>
+    </div>
+    <div class="field">
+      <label class="session-field-label neutral">Tags</label>
+      <div class="tag-picker" id="learning-tag-picker"></div>
+      <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> inside your text are captured automatically.</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
+      <button class="btn-primary" onclick="saveLearning()">Save Entry</button>
+    </div>
+  </div>
+</div>
+
 <!-- Sheet: New Session (Projects tab) -->
 <div id="sheet-session" class="sheet">
   <div class="sheet-handle"></div>
@@ -1583,7 +1741,7 @@ const CTYPES = [
 // Legacy: Insight type removed from selector but old entries still render gracefully
 const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -1617,8 +1775,20 @@ let tagHistory         = loadLocal(SK.TAG_HISTORY, []); // user's custom tag his
 // Per-form tag picker state (each form maintains its own Set so they don't collide)
 let sessionFormTags    = new Set();
 let captureFormTags    = new Set();
-let sessionTagCustomOpen = false;
-let captureTagCustomOpen = false;
+let learningFormTags   = new Set();
+let sessionTagCustomOpen  = false;
+let captureTagCustomOpen  = false;
+let learningTagCustomOpen = false;
+
+// ── Learning (Projects → Learning sub-tab) ────────────────────
+let learning            = loadLocal(SK.LEARNING, []); // LearningEntry[]
+let projectsSubTab      = 'projects';                  // 'projects' | 'learning'
+let learningFilter      = 'all';                       // 'all' | a tag e.g. '#ai'
+let expandedLearning    = new Set();                   // entryIds currently expanded in list
+let learningLoadedFromCloud = false;
+let selLearningType     = '';                          // current form source type
+let learningFormNotesOpen = false;                     // whether the "Full notes" textarea is expanded in the form
+let editingLearningId   = null;
 let activeTab = 'today';
 let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
@@ -1663,6 +1833,7 @@ function saveAll() {
   saveLocal(SK.PROJECTS, projects);
   saveLocal(SK.SESSIONS, sessions);
   saveLocal(SK.TAG_HISTORY, tagHistory);
+  saveLocal(SK.LEARNING, learning);
 }
 
 // ── Utils ─────────────────────────────────────────────────────
@@ -2087,29 +2258,51 @@ function tagClassFor(tag) {
   return '';
 }
 
-// ── Shared two-layer tag picker (sessions + captures) ─────────
-// ctx is 'session' or 'capture'. Each context owns its own selected-Set and
-// customOpen boolean (declared in state section). All DOM containers are keyed
-// by ctx ('session-tag-picker' / 'capture-tag-picker').
-const TAG_PREPOPULATED_BASE = ['#win', '#insight', '#pending', '#dft'];
+// ── Shared two-layer tag picker (sessions + captures + learning) ──
+// ctx is 'session' | 'capture' | 'learning'. Each context owns its own selected-Set,
+// customOpen boolean, DOM container id, and base pre-populated tags.
+const TAG_PREPOPULATED_BASE = ['#win', '#insight', '#pending', '#dft']; // universal — excluded from tagHistory
+
+const TAG_PICKER_CONFIG = {
+  session: {
+    containerId: 'session-tag-picker',
+    base: ['#win', '#insight', '#pending', '#dft'],
+    includeProjectTag: true,
+  },
+  capture: {
+    containerId: 'capture-tag-picker',
+    base: ['#win', '#insight', '#pending', '#dft'],
+    includeProjectTag: false,
+  },
+  learning: {
+    containerId: 'learning-tag-picker',
+    base: ['#ai', '#trading', '#building', '#uot', '#mindset', '#insight'],
+    includeProjectTag: false,
+  },
+};
 
 function tagPickerState(ctx) {
-  if (ctx === 'session') return { set: sessionFormTags, open: sessionTagCustomOpen, containerId: 'session-tag-picker' };
-  return                        { set: captureFormTags, open: captureTagCustomOpen, containerId: 'capture-tag-picker' };
+  const cfg = TAG_PICKER_CONFIG[ctx] || TAG_PICKER_CONFIG.session;
+  const runtime =
+    ctx === 'session'  ? { set: sessionFormTags,  open: sessionTagCustomOpen  } :
+    ctx === 'learning' ? { set: learningFormTags, open: learningTagCustomOpen } :
+                         { set: captureFormTags,  open: captureTagCustomOpen  };
+  return { ...cfg, ...runtime };
 }
 function setTagCustomOpen(ctx, v) {
-  if (ctx === 'session') sessionTagCustomOpen = v;
-  else                   captureTagCustomOpen = v;
+  if      (ctx === 'session')  sessionTagCustomOpen  = v;
+  else if (ctx === 'learning') learningTagCustomOpen = v;
+  else                         captureTagCustomOpen  = v;
 }
 
 function renderTagPicker(ctx) {
-  const { set, open, containerId } = tagPickerState(ctx);
+  const { set, open, containerId, base, includeProjectTag } = tagPickerState(ctx);
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  // Build ordered pill list: base prepopulated → [current project tag if session] → user's tag history
-  const pre = TAG_PREPOPULATED_BASE.slice();
-  if (ctx === 'session' && selectedProject) {
+  // Build ordered pill list: context base → [current project tag if session] → user's tag history
+  const pre = base.slice();
+  if (includeProjectTag && selectedProject) {
     pre.push('#' + selectedProject.toLowerCase().replace(/\s+/g, ''));
   }
   const seen = new Set(pre);
@@ -2269,6 +2462,18 @@ function renderBlockInJournal(b) {
 
 // ── Projects ──────────────────────────────────────────────────
 function renderProjects() {
+  // Sub-tab toggle (Projects | Learning) at the top — always visible
+  const toggle = `
+    <div class="subtab-toggle">
+      <button class="subtab-btn ${projectsSubTab === 'projects' ? 'active' : ''}" onclick="setProjectsSubTab('projects')">Projects</button>
+      <button class="subtab-btn ${projectsSubTab === 'learning' ? 'active' : ''}" onclick="setProjectsSubTab('learning')">Learning</button>
+    </div>`;
+
+  if (projectsSubTab === 'learning') {
+    return `<div class="view">${toggle}${renderLearningSub()}</div>`;
+  }
+
+  // ── Projects sub-tab (original) ──
   const pills = projects.map(p => `
     <button class="proj-pill-lg ${p === selectedProject ? 'active' : ''}"
             onclick="selectProject('${esc(p).replace(/'/g, "\\'")}')">${esc(p)}</button>
@@ -2292,6 +2497,7 @@ function renderProjects() {
     : renderSessionsList(selectedProject);
 
   return `<div class="view">
+    ${toggle}
     <div class="proj-scroller">
       ${pills}
       ${newPill}
@@ -2299,6 +2505,11 @@ function renderProjects() {
     ${content}
   </div>`;
 }
+
+window.setProjectsSubTab = function(t) {
+  projectsSubTab = t;
+  renderMain();
+};
 
 // ── Session list + cards ─────────────────────────────────────
 function renderSessionsList(projectName) {
@@ -2598,6 +2809,192 @@ async function loadSessionsFromCloud(uid, projectName) {
     if (activeTab === 'projects' && selectedProject === projectName) renderMain(true);
   } catch (err) {
     console.error('[DayOS] Sessions load error:', err);
+  }
+}
+
+// ── Learning sub-tab ──────────────────────────────────────────
+const LEARNING_TYPES = ['Course', 'Book', 'Podcast', 'Video', 'Article', 'Other'];
+const LEARNING_FILTER_PILLS = ['#ai', '#trading', '#building', '#uot', '#mindset'];
+
+function renderLearningSub() {
+  // Lazy-load from cloud once per mount
+  if (user && !learningLoadedFromCloud) {
+    learningLoadedFromCloud = true;
+    loadLearningFromCloud(user.uid);
+  }
+
+  // Filter pill row (neutral gray pills with blue-accent active state — same as project pills)
+  const pills = ['all', ...LEARNING_FILTER_PILLS].map(f => {
+    const active = learningFilter === f;
+    const label = f === 'all' ? 'All' : f;
+    return `<button class="proj-pill-lg ${active ? 'active' : ''}"
+      onclick="setLearningFilter('${f}')">${esc(label)}</button>`;
+  }).join('');
+
+  // Filter entries
+  const filtered = learning
+    .filter(e => learningFilter === 'all' || (e.tags || []).includes(learningFilter))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  const cards = filtered.length
+    ? filtered.map(renderLearningCard).join('')
+    : `<div class="learning-empty">
+         ${learning.length
+           ? `No entries matching <strong style="color:var(--text)">${esc(learningFilter)}</strong>.`
+           : `No learning entries yet.<br>Tap + Log Learning to start capturing takeaways.`}
+       </div>`;
+
+  return `
+    <div class="proj-scroller">${pills}</div>
+    <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
+    ${cards}
+  `;
+}
+
+function renderLearningCard(e) {
+  const expanded = expandedLearning.has(e.id);
+  const dateLabel = fmtDate(e.date || (e.createdAt || '').slice(0, 10));
+  const tagPills = (e.tags || []).map(t =>
+    `<span class="tag-pill ${tagClassFor(t)}" style="font-size:0.7rem;padding:2px 8px">${esc(t)}</span>`
+  ).join('');
+
+  return `
+    <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="toggleLearningExpand('${e.id}')">
+      <div class="learning-card-hdr">
+        <div class="learning-source-group">
+          <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
+          <span class="learning-type-badge">${esc(e.sourceType || '—')}</span>
+        </div>
+        <span class="learning-date">${dateLabel}</span>
+      </div>
+      <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
+      ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
+      ${e.fullNotes
+        ? (expanded
+            ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
+            : `<span class="learning-notes-indicator">▸ notes</span>`)
+        : ''}
+    </div>
+  `;
+}
+
+window.setLearningFilter = function(f) {
+  learningFilter = f;
+  renderMain(true);
+};
+
+window.toggleLearningExpand = function(id) {
+  if (expandedLearning.has(id)) expandedLearning.delete(id);
+  else                           expandedLearning.add(id);
+  renderMain(true);
+};
+
+window.openNewLearning = function() {
+  editingLearningId = null;
+  document.getElementById('f-learn-source').value   = '';
+  document.getElementById('f-learn-takeaway').value = '';
+  document.getElementById('f-learn-notes').value    = '';
+  document.getElementById('f-learn-notes').style.display = 'none';
+  document.getElementById('f-learn-notes-toggle').textContent = '▸ Add full notes';
+  selLearningType = '';
+  learningFormNotesOpen = false;
+  learningFormTags = new Set();
+  learningTagCustomOpen = false;
+  renderLearningTypeRow();
+  renderTagPicker('learning');
+  document.getElementById('learning-sheet-title').textContent = 'Log Learning';
+  openSheet('sheet-learning');
+  setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
+};
+
+function renderLearningTypeRow() {
+  document.getElementById('learn-type-row').innerHTML = LEARNING_TYPES.map(t => `
+    <button type="button" class="pill ${selLearningType === t ? 'active' : ''}"
+            style="${selLearningType === t ? 'background:var(--accent);border-color:var(--accent);color:#fff' : ''}"
+            onclick="selLearningTypeFn('${t}')">${esc(t)}</button>
+  `).join('');
+}
+
+window.selLearningTypeFn = function(t) {
+  selLearningType = t;
+  renderLearningTypeRow();
+};
+
+window.toggleLearningFormNotes = function() {
+  learningFormNotesOpen = !learningFormNotesOpen;
+  const ta = document.getElementById('f-learn-notes');
+  const btn = document.getElementById('f-learn-notes-toggle');
+  if (learningFormNotesOpen) {
+    ta.style.display = 'block';
+    btn.textContent = '▾ Hide full notes';
+    setTimeout(() => ta.focus(), 20);
+  } else {
+    ta.style.display = 'none';
+    btn.textContent = ta.value.trim() ? '▸ Notes (tap to expand)' : '▸ Add full notes';
+  }
+};
+
+window.saveLearning = function() {
+  const sourceName = document.getElementById('f-learn-source').value.trim();
+  const takeaway   = document.getElementById('f-learn-takeaway').value.trim();
+  const fullNotes  = document.getElementById('f-learn-notes').value.trim();
+
+  if (!sourceName)       { toast('Source name is required'); document.getElementById('f-learn-source').focus(); return; }
+  if (!selLearningType)  { toast('Pick a source type'); return; }
+  if (!takeaway)         { toast('Key takeaway is required'); document.getElementById('f-learn-takeaway').focus(); return; }
+
+  // Layer 1 (pill) + Layer 2 (inline #hashtag from takeaway + notes). Merge + dedupe.
+  const inlineTags = extractTags(takeaway + ' ' + fullNotes);
+  const tags = [...new Set([...learningFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
+  addToTagHistory(tags);
+
+  const entry = {
+    id: editingLearningId || uid(),
+    sourceName,
+    sourceType: selLearningType,
+    takeaway,
+    fullNotes: fullNotes || null,
+    tags,
+    date: todayStr(),
+    createdAt: editingLearningId
+      ? (learning.find(e => e.id === editingLearningId)?.createdAt || nowISTIso())
+      : nowISTIso(),
+  };
+
+  if (editingLearningId) {
+    const idx = learning.findIndex(e => e.id === editingLearningId);
+    if (idx > -1) learning[idx] = entry;
+  } else {
+    learning.push(entry);
+  }
+  saveLocal(SK.LEARNING, learning);
+  syncLearningDoc(entry);
+
+  closeSheets();
+  toast('✓ Learning saved');
+  renderMain(true);
+};
+
+// Firestore sync
+async function syncLearningDoc(e) {
+  if (!user) return;
+  try { await setDoc(doc(db, 'learning', user.uid, 'entries', e.id), e); } catch {}
+}
+
+async function loadLearningFromCloud(uid) {
+  try {
+    const snap = await getDocs(collection(db, 'learning', uid, 'entries'));
+    const remote = snap.docs.map(d => d.data());
+    if (!remote.length) return;
+    // Merge: remote wins on same id
+    const byId = {};
+    learning.forEach(e => { byId[e.id] = e; });
+    remote.forEach(e => { byId[e.id] = e; });
+    learning = Object.values(byId);
+    saveLocal(SK.LEARNING, learning);
+    if (activeTab === 'projects' && projectsSubTab === 'learning') renderMain(true);
+  } catch (err) {
+    console.error('[DayOS] Learning load error:', err);
   }
 }
 
