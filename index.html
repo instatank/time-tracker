@@ -557,6 +557,135 @@ html, body {
   font-size: 0.85rem;
 }
 
+/* ── Projects tab: + New Session dashed button ────────────────── */
+.new-session-btn {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1.5px dashed var(--border2);
+  background: transparent;
+  color: var(--text2);
+  font-size: 0.88rem;
+  font-weight: 500;
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  margin-bottom: 0.75rem;
+}
+.new-session-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(59,130,246,0.05);
+}
+
+/* ── Session cards ───────────────────────────────────────────── */
+.session-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.session-card:hover { border-color: var(--border2); }
+.session-card-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+.session-date {
+  color: var(--text);
+  font-weight: 500;
+}
+.session-dur {
+  color: var(--text2);
+  font-size: 0.78rem;
+  background: var(--surface2);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+}
+.session-section {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.session-section-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.2rem;
+}
+.session-section-label.before  { color: #6b9fe8; }   /* muted blue */
+.session-section-label.during  { color: #5fb97a; }   /* muted green */
+.session-section-label.after   { color: #d4a45a; }   /* muted amber */
+.session-preview {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.session-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+.session-tag {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid var(--border);
+}
+.session-expand-hint {
+  font-size: 0.7rem;
+  color: var(--text3);
+  margin-top: 0.45rem;
+}
+
+/* ── New Session form ────────────────────────────────────────── */
+.session-textarea {
+  width: 100%;
+  min-height: 64px;
+  box-sizing: border-box;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+}
+.session-textarea:focus { border-color: var(--accent); }
+.session-textarea::placeholder { color: var(--text3); }
+.session-field-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.3rem;
+}
+.session-field-label.before { color: #6b9fe8; }
+.session-field-label.during { color: #5fb97a; }
+.session-field-label.after  { color: #d4a45a; }
+.session-field-label.neutral { color: var(--text2); }
+
 .journal-search {
   position: relative;
   margin-bottom: 0.75rem;
@@ -1256,6 +1385,47 @@ select option { background: var(--surface2); }
   <div class="sheet-body" id="opts-body"></div>
 </div>
 
+<!-- Sheet: New Session (Projects tab) -->
+<div id="sheet-session" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="session-sheet-title">New Session</div>
+  <div class="sheet-body">
+    <div class="field">
+      <label class="session-field-label before">Before</label>
+      <textarea class="session-textarea" id="f-sess-before" placeholder="What do you want to accomplish?"></textarea>
+    </div>
+    <div class="field">
+      <label class="session-field-label during">During</label>
+      <textarea class="session-textarea" id="f-sess-during" placeholder="Notes as you go..."></textarea>
+    </div>
+    <div class="field">
+      <label class="session-field-label after">After</label>
+      <textarea class="session-textarea" id="f-sess-after" placeholder="What got done? What's pending?"></textarea>
+    </div>
+    <div class="field">
+      <label class="session-field-label neutral">Duration</label>
+      <div class="pill-row">
+        <button class="pill sess-dur-pill" data-dur="30">30m</button>
+        <button class="pill sess-dur-pill" data-dur="45">45m</button>
+        <button class="pill sess-dur-pill active" data-dur="60">60m</button>
+        <button class="pill sess-dur-pill" data-dur="90">90m</button>
+        <button class="pill sess-dur-pill" data-dur="120">120m</button>
+        <button class="pill sess-dur-pill" data-dur="0">Custom</button>
+      </div>
+      <input type="number" id="f-sess-dur-custom" placeholder="Minutes" style="display:none;margin-top:0.5rem;width:110px;box-sizing:border-box">
+    </div>
+    <div class="field">
+      <label class="session-field-label neutral">Tags</label>
+      <input type="text" id="f-sess-tags" placeholder="comma, separated, tags" autocomplete="off">
+      <div style="font-size:0.68rem;color:var(--text3);margin-top:0.25rem">Temporary — full tagging UI arrives in a later step.</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
+      <button class="btn-primary" onclick="saveSession()">Save Session</button>
+    </div>
+  </div>
+</div>
+
 <!-- Sheet: Auth -->
 <div id="sheet-auth" class="sheet auth-sheet">
   <div class="sheet-handle"></div>
@@ -1308,7 +1478,7 @@ const CTYPES = [
 // Legacy: Insight type removed from selector but old entries still render gracefully
 const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -1335,6 +1505,9 @@ let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
 let projects        = loadLocal(SK.PROJECTS, DEFAULT_PROJECTS.slice()); // string[]
 let selectedProject = projects[0] || null;
 let projectCreating = false;
+let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
+let expandedSessions   = new Set();                  // sessionIds currently expanded in list view
+let sessionsLoadedFor  = new Set();                  // projectNames whose sessions we've already fetched this mount
 let activeTab = 'today';
 let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
@@ -1376,6 +1549,7 @@ function saveAll() {
   saveLocal(SK.LIFE_RATINGS, lifeRatings);
   saveLocal(SK.EOD, eodNotes);
   saveLocal(SK.PROJECTS, projects);
+  saveLocal(SK.SESSIONS, sessions);
 }
 
 // ── Utils ─────────────────────────────────────────────────────
@@ -1841,12 +2015,15 @@ function renderProjects() {
          onblur="createProjectFromInput()" />`
     : `<button class="proj-pill-lg new-pill" onclick="startProjectCreate()">+ new</button>`;
 
+  // Kick off lazy cloud load for this project's sessions (fires once per project per mount)
+  if (selectedProject && user && !sessionsLoadedFor.has(selectedProject)) {
+    sessionsLoadedFor.add(selectedProject);
+    loadSessionsFromCloud(user.uid, selectedProject);
+  }
+
   const content = !selectedProject
     ? `<div class="proj-empty">Create a project to get started.</div>`
-    : `<div class="proj-empty">
-         Sessions for <strong style="color:var(--text)">${esc(selectedProject)}</strong> will appear here.<br>
-         <span style="opacity:0.7">(Session log + New Session coming next.)</span>
-       </div>`;
+    : renderSessionsList(selectedProject);
 
   return `<div class="view">
     <div class="proj-scroller">
@@ -1855,6 +2032,163 @@ function renderProjects() {
     </div>
     ${content}
   </div>`;
+}
+
+// ── Session list + cards ─────────────────────────────────────
+function renderSessionsList(projectName) {
+  const list = (sessions[projectName] || []).slice().sort((a, b) =>
+    (b.createdAt || '').localeCompare(a.createdAt || '')
+  );
+  const cards = list.length
+    ? list.map(renderSessionCard).join('')
+    : `<div class="proj-empty" style="padding:1.5rem 1rem">No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.</div>`;
+  return `
+    <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
+    ${cards}
+  `;
+}
+
+function renderSessionCard(s) {
+  const expanded = expandedSessions.has(s.id);
+  const dateLabel = fmtDate(s.date || (s.createdAt || '').slice(0,10));
+  const tagPills = (s.tags || []).map(t =>
+    `<span class="session-tag">${esc(t.startsWith('#') ? t : '#' + t)}</span>`
+  ).join('');
+
+  const bodyParts = [];
+  if (expanded) {
+    if (s.before) bodyParts.push(`<div class="session-section"><span class="session-section-label before">Before</span>${esc(s.before)}</div>`);
+    if (s.during) bodyParts.push(`<div class="session-section"><span class="session-section-label during">During</span>${esc(s.during)}</div>`);
+    if (s.after)  bodyParts.push(`<div class="session-section"><span class="session-section-label after">After</span>${esc(s.after)}</div>`);
+    if (!bodyParts.length) bodyParts.push(`<div class="session-section" style="color:var(--text3);font-style:italic">No notes captured.</div>`);
+  } else {
+    // Collapsed preview: show first non-empty of before/during/after
+    const preview = s.before || s.during || s.after || '';
+    if (preview) bodyParts.push(`<div class="session-preview">${esc(preview)}</div>`);
+  }
+
+  return `
+    <div class="session-card" onclick="toggleSessionExpand('${s.id}')">
+      <div class="session-card-hdr">
+        <span class="session-date">${dateLabel}</span>
+        <span class="session-dur">${s.durationMin || 0}m</span>
+      </div>
+      ${bodyParts.join('')}
+      ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
+      ${!expanded && (s.before || s.during || s.after) ? '<div class="session-expand-hint">Tap to expand</div>' : ''}
+    </div>
+  `;
+}
+
+window.toggleSessionExpand = function(id) {
+  if (expandedSessions.has(id)) expandedSessions.delete(id);
+  else                           expandedSessions.add(id);
+  renderMain(true);
+};
+
+// ── New Session form ─────────────────────────────────────────
+let selSessionDur = 60;  // default
+
+window.openNewSession = function() {
+  if (!selectedProject) { toast('Select a project first'); return; }
+  // Reset form
+  document.getElementById('f-sess-before').value = '';
+  document.getElementById('f-sess-during').value = '';
+  document.getElementById('f-sess-after').value  = '';
+  document.getElementById('f-sess-tags').value   = '';
+  document.getElementById('f-sess-dur-custom').style.display = 'none';
+  document.getElementById('f-sess-dur-custom').value = '';
+  selSessionDur = 60;
+  renderSessionDurPills();
+  document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
+  document.getElementById('sheet-session').classList.add('open');
+  document.getElementById('backdrop').classList.add('visible');
+};
+
+function renderSessionDurPills() {
+  document.querySelectorAll('.sess-dur-pill').forEach(btn => {
+    const v = parseInt(btn.dataset.dur);
+    const active = (v === selSessionDur) || (v === 0 && ![30,45,60,90,120].includes(selSessionDur));
+    btn.classList.toggle('active', active);
+  });
+  const custom = document.getElementById('f-sess-dur-custom');
+  if (custom) custom.style.display = ![30,45,60,90,120].includes(selSessionDur) ? 'block' : 'none';
+}
+
+window.saveSession = async function() {
+  if (!selectedProject) { toast('No project selected'); return; }
+
+  // Resolve duration (Custom → read number input)
+  let duration = selSessionDur;
+  if (![30,45,60,90,120].includes(duration)) {
+    const custom = parseInt(document.getElementById('f-sess-dur-custom').value);
+    duration = Number.isFinite(custom) && custom > 0 ? custom : 60;
+  }
+
+  const before = document.getElementById('f-sess-before').value.trim();
+  const during = document.getElementById('f-sess-during').value.trim();
+  const after  = document.getElementById('f-sess-after').value.trim();
+  const tagsRaw = document.getElementById('f-sess-tags').value || '';
+  const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean)
+    .map(t => t.startsWith('#') ? t.toLowerCase() : '#' + t.toLowerCase())
+    .map(t => t.replace(/\s+/g, ''));
+
+  const s = {
+    id: uid(),
+    projectName: selectedProject,
+    date: todayStr(),
+    before, during, after,
+    durationMin: duration,
+    tags,
+    linkedBlockId: null,          // 2C will populate
+    createdAt: nowISTIso(),
+  };
+
+  if (!sessions[selectedProject]) sessions[selectedProject] = [];
+  sessions[selectedProject].push(s);
+  saveLocal(SK.SESSIONS, sessions);
+  syncSessionDoc(s);
+
+  closeSheets();
+  toast('✓ Session saved');
+  renderMain();
+};
+
+// Wire up session duration pill clicks (same pattern as activity block dur-pill)
+document.querySelectorAll('.sess-dur-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const v = parseInt(btn.dataset.dur);
+    selSessionDur = (v === 0) ? 0 : v;  // 0 = custom sentinel
+    renderSessionDurPills();
+    if (v === 0) {
+      const custom = document.getElementById('f-sess-dur-custom');
+      if (custom) { custom.style.display = 'block'; custom.focus(); }
+    }
+  });
+});
+
+// Firestore: sessions/{uid}/{projectName}/{sessionId}
+async function syncSessionDoc(s) {
+  if (!user) return;
+  try { await setDoc(doc(db, 'sessions', user.uid, s.projectName, s.id), s); } catch {}
+}
+
+async function loadSessionsFromCloud(uid, projectName) {
+  try {
+    const snap = await getDocs(collection(db, 'sessions', uid, projectName));
+    const remote = snap.docs.map(d => d.data());
+    if (!remote.length) return;
+    // Merge with local: remote wins on same id
+    const existing = sessions[projectName] || [];
+    const byId = {};
+    existing.forEach(s => { byId[s.id] = s; });
+    remote.forEach(s => { byId[s.id] = s; });
+    sessions[projectName] = Object.values(byId);
+    saveLocal(SK.SESSIONS, sessions);
+    if (activeTab === 'projects' && selectedProject === projectName) renderMain(true);
+  } catch (err) {
+    console.error('[DayOS] Sessions load error:', err);
+  }
 }
 
 window.selectProject = function(name) {
