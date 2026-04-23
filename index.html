@@ -280,15 +280,58 @@ html, body {
   font-size: 0.62rem;
   padding: 1px 7px;
   border-radius: 10px;
-  background: var(--surface3);
-  color: var(--text3);
+  background: #1a1a1a;
+  color: #888;
   font-weight: 500;
   line-height: 1.5;
+  border: 1px solid transparent;
 }
-.tag-pill.tag-win { background: rgba(234,179,8,0.15); color: #eab308; }
-.tag-pill.tag-dft { background: rgba(59,130,246,0.15); color: #60a5fa; }
-.tag-pill.tag-insight { background: rgba(168,85,247,0.15); color: #a855f7; }
-.tag-pill.tag-1pct { background: rgba(16,185,129,0.15); color: #10b981; }
+.tag-pill.tag-win     { background: #1a2e0a; color: #7bc44a; }
+.tag-pill.tag-insight { background: #1e1440; color: #8b7fdd; }
+.tag-pill.tag-dft     { background: #0e2a45; color: #5aaaf0; }
+.tag-pill.tag-pending { background: #2a1a08; color: #d4922a; }
+.tag-pill.tag-1pct    { background: #1a2e0a; color: #7bc44a; } /* legacy alias for #1% */
+
+/* ── Tag picker (sheets) ──────────────────────────────────────── */
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.tag-pick-pill {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.08s;
+  line-height: 1.3;
+}
+.tag-pick-pill.tag-win     { background: #1a2e0a; color: #7bc44a; }
+.tag-pick-pill.tag-insight { background: #1e1440; color: #8b7fdd; }
+.tag-pick-pill.tag-dft     { background: #0e2a45; color: #5aaaf0; }
+.tag-pick-pill.tag-pending { background: #2a1a08; color: #d4922a; }
+.tag-pick-pill.selected { border-color: currentColor; font-weight: 600; }
+.tag-pick-pill.custom-pill {
+  background: transparent;
+  border: 1px dashed var(--border2);
+  color: var(--text3);
+}
+.tag-pick-pill.custom-pill:hover { color: var(--accent); border-color: var(--accent); }
+.tag-pick-pill:active { transform: scale(0.96); }
+.tag-custom-input {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--surface2);
+  color: var(--text);
+  outline: none;
+  min-width: 110px;
+}
 
 /* ── DFT panel ─────────────────────────────────────────────── */
 .dft-panel {
@@ -1422,6 +1465,11 @@ select option { background: var(--surface2); }
       <input type="text" id="f-project-tag" placeholder="project name" autocomplete="off" oninput="filterProjectSuggestions(this.value)" onblur="setTimeout(hideProjectSuggestions,150)">
       <div id="project-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
     </div>
+    <div class="field">
+      <label class="field-label">Tags</label>
+      <div class="tag-picker" id="capture-tag-picker"></div>
+      <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> in your text are captured automatically.</div>
+    </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
       <button class="btn-primary" onclick="saveCapture()">Save</button>
@@ -1473,8 +1521,8 @@ select option { background: var(--surface2); }
     </div>
     <div class="field">
       <label class="session-field-label neutral">Tags</label>
-      <input type="text" id="f-sess-tags" placeholder="comma, separated, tags" autocomplete="off">
-      <div style="font-size:0.68rem;color:var(--text3);margin-top:0.25rem">Temporary — full tagging UI arrives in a later step.</div>
+      <div class="tag-picker" id="session-tag-picker"></div>
+      <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> inside your notes are captured automatically.</div>
     </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
@@ -1535,7 +1583,7 @@ const CTYPES = [
 // Legacy: Insight type removed from selector but old entries still render gracefully
 const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -1565,6 +1613,12 @@ let projectCreating = false;
 let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
 let expandedSessions   = new Set();                  // sessionIds currently expanded in list view
 let sessionsLoadedFor  = new Set();                  // projectNames whose sessions we've already fetched this mount
+let tagHistory         = loadLocal(SK.TAG_HISTORY, []); // user's custom tag history (string[], all start with '#')
+// Per-form tag picker state (each form maintains its own Set so they don't collide)
+let sessionFormTags    = new Set();
+let captureFormTags    = new Set();
+let sessionTagCustomOpen = false;
+let captureTagCustomOpen = false;
 let activeTab = 'today';
 let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
@@ -1608,6 +1662,7 @@ function saveAll() {
   saveLocal(SK.EOD, eodNotes);
   saveLocal(SK.PROJECTS, projects);
   saveLocal(SK.SESSIONS, sessions);
+  saveLocal(SK.TAG_HISTORY, tagHistory);
 }
 
 // ── Utils ─────────────────────────────────────────────────────
@@ -2015,10 +2070,163 @@ function renderJournal() {
 
 function renderTagPills(tags) {
   if (!tags || !tags.length) return '';
-  const special = { '#win': 'tag-win', '#dft': 'tag-dft', '#insight': 'tag-insight', '#1%': 'tag-1pct' };
   return `<div class="tag-pills">${tags.map(t =>
-    `<span class="tag-pill ${special[t] || ''}">${esc(t)}</span>`
+    `<span class="tag-pill ${tagClassFor(t)}">${esc(t)}</span>`
   ).join('')}</div>`;
+}
+
+// Single source of truth for tag → CSS modifier class.
+// Tags with no known class fall through to the default neutral gray .tag-pill styling.
+function tagClassFor(tag) {
+  const t = (tag || '').toLowerCase();
+  if (t === '#win')     return 'tag-win';
+  if (t === '#insight') return 'tag-insight';
+  if (t === '#dft')     return 'tag-dft';
+  if (t === '#pending') return 'tag-pending';
+  if (t === '#1%')      return 'tag-1pct';
+  return '';
+}
+
+// ── Shared two-layer tag picker (sessions + captures) ─────────
+// ctx is 'session' or 'capture'. Each context owns its own selected-Set and
+// customOpen boolean (declared in state section). All DOM containers are keyed
+// by ctx ('session-tag-picker' / 'capture-tag-picker').
+const TAG_PREPOPULATED_BASE = ['#win', '#insight', '#pending', '#dft'];
+
+function tagPickerState(ctx) {
+  if (ctx === 'session') return { set: sessionFormTags, open: sessionTagCustomOpen, containerId: 'session-tag-picker' };
+  return                        { set: captureFormTags, open: captureTagCustomOpen, containerId: 'capture-tag-picker' };
+}
+function setTagCustomOpen(ctx, v) {
+  if (ctx === 'session') sessionTagCustomOpen = v;
+  else                   captureTagCustomOpen = v;
+}
+
+function renderTagPicker(ctx) {
+  const { set, open, containerId } = tagPickerState(ctx);
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  // Build ordered pill list: base prepopulated → [current project tag if session] → user's tag history
+  const pre = TAG_PREPOPULATED_BASE.slice();
+  if (ctx === 'session' && selectedProject) {
+    pre.push('#' + selectedProject.toLowerCase().replace(/\s+/g, ''));
+  }
+  const seen = new Set(pre);
+  const extras = tagHistory.filter(t => !seen.has(t));
+  const allTags = [...pre, ...extras];
+
+  // Plus: any currently-selected tags that aren't in pre or history (e.g. loaded from an edited entry)
+  set.forEach(t => {
+    if (!seen.has(t) && !extras.includes(t)) allTags.push(t);
+  });
+
+  const pills = allTags.map(t => {
+    const selected = set.has(t);
+    return `<button type="button" class="tag-pick-pill ${tagClassFor(t)} ${selected ? 'selected' : ''}"
+      onclick="toggleTagPick('${ctx}','${esc(t).replace(/'/g, "\\'")}')">${esc(t)}</button>`;
+  }).join('');
+
+  const customEl = open
+    ? `<input class="tag-custom-input" id="${containerId}-custom"
+         placeholder="# new tag"
+         onkeydown="onTagCustomKey(event,'${ctx}')"
+         onblur="confirmTagCustom('${ctx}')" />`
+    : `<button type="button" class="tag-pick-pill custom-pill" onclick="openTagCustom('${ctx}')"># custom</button>`;
+
+  container.innerHTML = pills + customEl;
+}
+
+window.toggleTagPick = function(ctx, tag) {
+  const { set } = tagPickerState(ctx);
+  if (set.has(tag)) set.delete(tag);
+  else              set.add(tag);
+  renderTagPicker(ctx);
+};
+
+window.openTagCustom = function(ctx) {
+  setTagCustomOpen(ctx, true);
+  renderTagPicker(ctx);
+  setTimeout(() => {
+    const { containerId } = tagPickerState(ctx);
+    const el = document.getElementById(containerId + '-custom');
+    if (el) el.focus();
+  }, 20);
+};
+
+window.onTagCustomKey = function(e, ctx) {
+  if (e.key === 'Enter') { e.preventDefault(); confirmTagCustom(ctx); }
+  else if (e.key === 'Escape') { setTagCustomOpen(ctx, false); renderTagPicker(ctx); }
+};
+
+window.confirmTagCustom = function(ctx) {
+  const { set, containerId } = tagPickerState(ctx);
+  const el = document.getElementById(containerId + '-custom');
+  if (!el) return;
+  const raw = el.value.trim();
+  setTagCustomOpen(ctx, false);
+  if (raw) {
+    const tag = normalizeTag(raw);
+    if (tag) {
+      set.add(tag);
+      addToTagHistory([tag]);
+    }
+  }
+  renderTagPicker(ctx);
+};
+
+function normalizeTag(raw) {
+  if (!raw) return '';
+  let t = raw.trim().toLowerCase().replace(/\s+/g, '');
+  if (!t) return '';
+  if (!t.startsWith('#')) t = '#' + t;
+  // Strip anything that isn't a valid tag char (keep # letters digits _ %)
+  t = t.replace(/[^#a-z0-9_%]/g, '');
+  return t.length > 1 ? t : '';
+}
+
+// Add tags that aren't in the base-prepopulated list to persistent history
+function addToTagHistory(tags) {
+  const base = new Set(TAG_PREPOPULATED_BASE);
+  let changed = false;
+  tags.forEach(t => {
+    const tag = normalizeTag(t);
+    if (!tag || base.has(tag)) return;
+    if (!tagHistory.includes(tag)) {
+      tagHistory.push(tag);
+      changed = true;
+    }
+  });
+  if (changed) {
+    tagHistory.sort();
+    saveLocal(SK.TAG_HISTORY, tagHistory);
+    syncTagHistory();
+  }
+}
+
+async function syncTagHistory() {
+  if (!user) return;
+  try { await setDoc(doc(db, 'tags', user.uid), { history: tagHistory }); } catch {}
+}
+
+async function loadTagHistoryFromCloud(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'tags', uid));
+    if (snap.exists()) {
+      const remote = snap.data().history;
+      if (Array.isArray(remote)) {
+        const merged = new Set([...tagHistory, ...remote.map(normalizeTag).filter(Boolean)]);
+        tagHistory = [...merged].sort();
+        saveLocal(SK.TAG_HISTORY, tagHistory);
+        // If any new ones, push merged back
+        if (tagHistory.length !== remote.length) syncTagHistory();
+      }
+    } else if (tagHistory.length > 0) {
+      syncTagHistory();
+    }
+  } catch (err) {
+    console.error('[DayOS] Tag history load error:', err);
+  }
 }
 
 function renderCapFull(c) {
@@ -2109,9 +2317,10 @@ function renderSessionsList(projectName) {
 function renderSessionCard(s) {
   const expanded = expandedSessions.has(s.id);
   const dateLabel = fmtDate(s.date || (s.createdAt || '').slice(0,10));
-  const tagPills = (s.tags || []).map(t =>
-    `<span class="session-tag">${esc(t.startsWith('#') ? t : '#' + t)}</span>`
-  ).join('');
+  const tagPills = (s.tags || []).map(t => {
+    const tag = t.startsWith('#') ? t : '#' + t;
+    return `<span class="tag-pill ${tagClassFor(tag)}" style="font-size:0.7rem;padding:2px 8px">${esc(tag)}</span>`;
+  }).join('');
 
   const bodyParts = [];
   if (expanded) {
@@ -2169,11 +2378,14 @@ window.openNewSession = function() {
   document.getElementById('f-sess-before').value = '';
   document.getElementById('f-sess-during').value = '';
   document.getElementById('f-sess-after').value  = '';
-  document.getElementById('f-sess-tags').value   = '';
   document.getElementById('f-sess-dur-custom').style.display = 'none';
   document.getElementById('f-sess-dur-custom').value = '';
   selSessionDur = 60;
   renderSessionDurPills();
+  // Reset tag picker state for this form
+  sessionFormTags = new Set();
+  sessionTagCustomOpen = false;
+  renderTagPicker('session');
   document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
   document.getElementById('sheet-session').classList.add('open');
   document.getElementById('backdrop').classList.add('visible');
@@ -2199,13 +2411,17 @@ window.saveSession = async function() {
     duration = Number.isFinite(custom) && custom > 0 ? custom : 60;
   }
 
+  // Preserve original text verbatim — do NOT strip hashtags from stored content.
+  // (Outer whitespace trimmed for tidiness; internal text / hashtags untouched.)
   const before = document.getElementById('f-sess-before').value.trim();
   const during = document.getElementById('f-sess-during').value.trim();
   const after  = document.getElementById('f-sess-after').value.trim();
-  const tagsRaw = document.getElementById('f-sess-tags').value || '';
-  const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean)
-    .map(t => t.startsWith('#') ? t.toLowerCase() : '#' + t.toLowerCase())
-    .map(t => t.replace(/\s+/g, ''));
+
+  // Layer 1: pill-selected tags; Layer 2: inline #hashtag detection. Merge + dedupe.
+  const inlineTags = extractTags(before + ' ' + during + ' ' + after);
+  const tags = [...new Set([...sessionFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
+  // Persist any new non-prepopulated tags to history
+  addToTagHistory(tags);
 
   const s = {
     id: uid(),
@@ -3306,6 +3522,10 @@ function openCapture(type = 'note') {
     if (!_projSugMap.has(k)) _projSugMap.set(k, c.project_tag);
   });
   window._projectSuggestions = [..._projSugMap.values()].sort();
+  // Reset tag picker state for a new capture
+  captureFormTags = new Set();
+  captureTagCustomOpen = false;
+  renderTagPicker('capture');
   openSheet('sheet-capture');
   setTimeout(() => document.getElementById('f-cap-body').focus(), 300);
 }
@@ -3319,6 +3539,10 @@ function openCaptureEdit(captureId) {
   document.getElementById('f-project-tag').value = c.project_tag || '';
   renderCapTypeRow();
   toggleProjectField();
+  // Pre-select any tags the capture already has (from either pills or inline hashtags)
+  captureFormTags = new Set((c.tags || []).map(normalizeTag).filter(Boolean));
+  captureTagCustomOpen = false;
+  renderTagPicker('capture');
   openSheet('sheet-capture');
   setTimeout(() => document.getElementById('f-cap-body').focus(), 300);
 }
@@ -3346,7 +3570,11 @@ window.saveCapture = function() {
   const body = document.getElementById('f-cap-body').value.trim();
   if (!body) { toast('Capture cannot be empty'); return; }
   const projectTag = document.getElementById('f-project-tag').value.trim();
-  const tags = extractTags(body);
+  // Layer 1 (pill-selected) + Layer 2 (inline hashtags). Merge + dedupe.
+  // Original body text is preserved verbatim — hashtags are NOT stripped.
+  const inlineTags = extractTags(body);
+  const tags = [...new Set([...captureFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
+  addToTagHistory(tags);
 
   if (editingCaptureId) {
     const idx = captures.findIndex(c => c.id === editingCaptureId);
@@ -3927,8 +4155,9 @@ async function initialSync(uid) {
   setSyncStatus('syncing');
   const localBlocksBefore   = blocks.length;
   const localCapturesBefore = captures.length;
-  // Load projects list in parallel (separate root collection)
+  // Load projects list + tag history in parallel (separate root collections)
   loadProjectsFromCloud(uid);
+  loadTagHistoryFromCloud(uid);
   try {
     const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
