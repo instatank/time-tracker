@@ -686,6 +686,52 @@ html, body {
 .session-field-label.after  { color: #d4a45a; }
 .session-field-label.neutral { color: var(--text2); }
 
+/* ── Session ↔ block link affordances ─────────────────────────── */
+.session-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.72rem;
+}
+.session-linked-badge {
+  color: #5fb97a;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.session-link-btn {
+  background: none;
+  border: 1px dashed var(--border2);
+  color: var(--text3);
+  font-size: 0.7rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.session-link-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Block picker rows */
+.link-block-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  margin-bottom: 0.4rem;
+  transition: border-color 0.15s;
+}
+.link-block-row:hover { border-color: var(--accent); }
+.link-block-time { color: var(--text2); font-size: 0.82rem; min-width: 46px; }
+.link-block-body { flex: 1; min-width: 0; }
+.link-block-label { color: var(--text); font-size: 0.88rem; font-weight: 500; }
+.link-block-meta { color: var(--text3); font-size: 0.72rem; }
+
 .journal-search {
   position: relative;
   margin-bottom: 0.75rem;
@@ -1348,6 +1394,10 @@ select option { background: var(--surface2); }
         </div>
       </div>
     </div>
+    <div class="field">
+      <label class="field-label">Project tag <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <div class="proj-scroller" id="f-block-project-row" style="margin:0;padding:0.2rem 0 0"></div>
+    </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
       <button class="btn-primary" onclick="saveBlock()">Save Block</button>
@@ -1383,6 +1433,13 @@ select option { background: var(--surface2); }
 <div id="sheet-opts" class="sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-body" id="opts-body"></div>
+</div>
+
+<!-- Sheet: Link session to a time block -->
+<div id="sheet-link-block" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">Link to a time block</div>
+  <div class="sheet-body" id="link-block-body"></div>
 </div>
 
 <!-- Sheet: New Session (Projects tab) -->
@@ -1535,6 +1592,7 @@ let editingCaptureId = null;
 let selCat = 'deep_work';
 let selDur = 30;
 let selEnergy = '';
+let selBlockProject = '';   // optional project tag on a time block (Log Activity form)
 let selCapType = 'note';
 
 // ── Storage ───────────────────────────────────────────────────
@@ -2067,6 +2125,21 @@ function renderSessionCard(s) {
     if (preview) bodyParts.push(`<div class="session-preview">${esc(preview)}</div>`);
   }
 
+  // Link affordance / linked indicator
+  let linkRow = '';
+  if (s.linkedBlockId) {
+    const linked = blocks.find(b => b.id === s.linkedBlockId);
+    const timeHint = linked ? ` · ${linked.start_time || ''} · ${linked.duration_min || 0}m` : '';
+    linkRow = `<div class="session-link-row">
+      <span class="session-linked-badge">🔗 Linked to block${timeHint}</span>
+    </div>`;
+  } else {
+    linkRow = `<div class="session-link-row">
+      <span style="color:var(--text3)">Not linked to a block</span>
+      <button class="session-link-btn" onclick="openLinkBlockPicker('${s.id}','${esc(s.projectName).replace(/'/g, "\\'")}',event)">🔗 Link to block</button>
+    </div>`;
+  }
+
   return `
     <div class="session-card" onclick="toggleSessionExpand('${s.id}')">
       <div class="session-card-hdr">
@@ -2076,6 +2149,7 @@ function renderSessionCard(s) {
       ${bodyParts.join('')}
       ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
       ${!expanded && (s.before || s.during || s.after) ? '<div class="session-expand-hint">Tap to expand</div>' : ''}
+      ${linkRow}
     </div>
   `;
 }
@@ -2140,9 +2214,47 @@ window.saveSession = async function() {
     before, during, after,
     durationMin: duration,
     tags,
-    linkedBlockId: null,          // 2C will populate
+    linkedBlockId: null,
     createdAt: nowISTIso(),
   };
+
+  // ── Direction 1: auto-link to an existing time block ──
+  const match = findAutoLinkBlock(selectedProject);
+  let toastMsg = '✓ Session saved';
+  if (match) {
+    s.linkedBlockId = match.id;
+    s.durationMin   = match.duration_min || s.durationMin; // pull duration from the block
+    // Also back-link on the block side for the picker to surface
+    const bIdx = blocks.findIndex(b => b.id === match.id);
+    if (bIdx > -1 && !blocks[bIdx].linkedSessionId) {
+      blocks[bIdx] = { ...blocks[bIdx], linkedSessionId: s.id };
+      saveLocal(SK.BLOCKS, blocks);
+      syncBlockDoc(blocks[bIdx]);
+    }
+    toastMsg = '✓ Session saved & linked to existing block';
+  } else {
+    // ── Direction 2: auto-create a time block for this session ──
+    const startTime = calcBackdatedStartTime(duration);
+    const newBlock = {
+      id: uid(),
+      date: todayStr(),
+      start_time: startTime,
+      duration_min: duration,
+      category: 'deep_work',
+      label: selectedProject,
+      note: '',
+      energy_level: '',
+      projectTag: selectedProject,
+      tags: extractTags(selectedProject),
+      autoFromSession: true,          // flag: so we can distinguish auto-created blocks
+      linkedSessionId: s.id,
+    };
+    blocks.push(newBlock);
+    saveLocal(SK.BLOCKS, blocks);
+    syncBlockDoc(newBlock);
+    s.linkedBlockId = newBlock.id;
+    toastMsg = '✓ Session saved + time block auto-logged';
+  }
 
   if (!sessions[selectedProject]) sessions[selectedProject] = [];
   sessions[selectedProject].push(s);
@@ -2150,8 +2262,90 @@ window.saveSession = async function() {
   syncSessionDoc(s);
 
   closeSheets();
-  toast('✓ Session saved');
-  renderMain();
+  toast(toastMsg, 3000);
+  render();                          // full render — Today tab also needs to reflect the new/linked block
+};
+
+// Find a candidate block to auto-link a new session to.
+// Rule: today's block, start within last 2 hours, AND
+//       (block.projectTag matches project OR block.label contains project name case-insensitively)
+function findAutoLinkBlock(projectName) {
+  const td = todayStr();
+  const now = nowIST();
+  const lowerName = projectName.toLowerCase();
+  const twoHrMs = 2 * 60 * 60 * 1000;
+  const candidates = blocks
+    .filter(b => b.date === td)
+    .filter(b => !b.linkedSessionId)                 // skip blocks already linked
+    .filter(b => {
+      const [h, m] = (b.start_time || '00:00').split(':').map(Number);
+      const start = new Date(now);
+      start.setHours(h, m, 0, 0);
+      const diffMs = now.getTime() - start.getTime();
+      return diffMs >= 0 && diffMs <= twoHrMs;
+    })
+    .filter(b => {
+      const pt = (b.projectTag || '').toLowerCase();
+      const lbl = (b.label || '').toLowerCase();
+      return pt === lowerName || (lbl && lbl.includes(lowerName));
+    })
+    .sort((a, b) => (b.start_time || '').localeCompare(a.start_time || ''));
+  return candidates[0] || null;
+}
+
+// Compute backdated start time "HH:MM" = now minus durationMin
+function calcBackdatedStartTime(durationMin) {
+  const now = nowIST();
+  const start = new Date(now.getTime() - durationMin * 60 * 1000);
+  const hh = String(start.getHours()).padStart(2, '0');
+  const mm = String(start.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+// ── Manual block linking ─────────────────────────────────────
+window.openLinkBlockPicker = function(sessionId, projectName, ev) {
+  if (ev) { ev.stopPropagation(); }  // don't bubble up to card expand
+  const td = todayStr();
+  const todayBlocks = blocks
+    .filter(b => b.date === td)
+    .sort((a, b) => (b.start_time || '').localeCompare(a.start_time || ''));
+
+  const body = document.getElementById('link-block-body');
+  if (!todayBlocks.length) {
+    body.innerHTML = `<div style="color:var(--text3);font-size:0.88rem;text-align:center;padding:1rem 0">
+      No time blocks logged today yet.
+    </div>`;
+  } else {
+    body.innerHTML = todayBlocks.map(b => {
+      const cat = catById(b.category);
+      const already = b.linkedSessionId ? ` <span style="color:var(--text3);font-size:0.7rem">· already linked</span>` : '';
+      return `<div class="link-block-row" onclick="linkSessionToBlock('${sessionId}','${esc(projectName).replace(/'/g, "\\'")}','${b.id}')">
+        <span class="link-block-time">${b.start_time || ''}</span>
+        <div class="link-block-body">
+          <div class="link-block-label">${esc(b.label || '(no label)')}</div>
+          <div class="link-block-meta"><span style="color:${cat.color}">● ${cat.label}</span> · ${b.duration_min || 0}m${already}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  openSheet('sheet-link-block');
+};
+
+window.linkSessionToBlock = function(sessionId, projectName, blockId) {
+  const list = sessions[projectName] || [];
+  const sIdx = list.findIndex(s => s.id === sessionId);
+  const bIdx = blocks.findIndex(b => b.id === blockId);
+  if (sIdx === -1 || bIdx === -1) { closeSheets(); return; }
+  list[sIdx] = { ...list[sIdx], linkedBlockId: blockId, durationMin: blocks[bIdx].duration_min || list[sIdx].durationMin };
+  sessions[projectName] = list;
+  blocks[bIdx] = { ...blocks[bIdx], linkedSessionId: sessionId };
+  saveLocal(SK.SESSIONS, sessions);
+  saveLocal(SK.BLOCKS, blocks);
+  syncSessionDoc(list[sIdx]);
+  syncBlockDoc(blocks[bIdx]);
+  closeSheets();
+  toast('✓ Linked');
+  renderMain(true);
 };
 
 // Wire up session duration pill clicks (same pattern as activity block dur-pill)
@@ -2945,10 +3139,12 @@ function openLogBlock(blockId = null) {
   selCat    = b ? b.category   : 'deep_work';
   selDur    = b ? (b.duration_min || 30) : 30;
   selEnergy = b ? (b.energy_level || '') : '';
+  selBlockProject = b ? (b.projectTag || '') : '';
 
   renderCatGrid();
   renderDurPills();
   renderEnergyPills();
+  renderBlockProjectPills();
 
   // Pre-build sorted unique labels for autocomplete
   window._labelSuggestions = [...new Set(blocks.map(b => b.label).filter(Boolean))].sort();
@@ -2989,6 +3185,26 @@ function renderEnergyPills() {
     btn.style.background = isActive ? 'var(--accent)' : '';
   });
 }
+
+function renderBlockProjectPills() {
+  const row = document.getElementById('f-block-project-row');
+  if (!row) return;
+  if (!projects.length) {
+    row.innerHTML = `<span style="color:var(--text3);font-size:0.78rem;padding:0.4rem 0">No projects yet — add them in the Projects tab.</span>`;
+    return;
+  }
+  const pills = projects.map(p => {
+    const active = p === selBlockProject;
+    return `<button type="button" class="proj-pill-lg ${active ? 'active' : ''}"
+      onclick="toggleBlockProject('${esc(p).replace(/'/g, "\\'")}')">${esc(p)}</button>`;
+  }).join('');
+  row.innerHTML = pills;
+}
+
+window.toggleBlockProject = function(name) {
+  selBlockProject = selBlockProject === name ? '' : name;  // tap again to clear
+  renderBlockProjectPills();
+};
 
 window.selCatFn = function(id) { selCat = id; renderCatGrid(); };
 
@@ -3061,12 +3277,12 @@ window.saveBlock = function() {
   if (editingBlockId) {
     const idx = blocks.findIndex(b => b.id === editingBlockId);
     if (idx > -1) {
-      blocks[idx] = { ...blocks[idx], start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, tags: extractTags(label + ' ' + noteVal) };
+      blocks[idx] = { ...blocks[idx], start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, projectTag: selBlockProject || '', tags: extractTags(label + ' ' + noteVal) };
       syncBlockDoc(blocks[idx]);
       toast('Block updated');
     }
   } else {
-    const b = { id: uid(), date, start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, tags: extractTags(label + ' ' + noteVal) };
+    const b = { id: uid(), date, start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, projectTag: selBlockProject || '', tags: extractTags(label + ' ' + noteVal) };
     blocks.push(b);
     syncBlockDoc(b);
     toast('Block logged');
