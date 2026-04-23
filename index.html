@@ -1289,6 +1289,7 @@ let dashDay = todayStr(); // selected date for Day view
 let showWeeklyReview = false;
 let weeklyReviewOffset = 0; // 0 = current week, -1 = last week, etc.
 let dashView = 'totals'; // 'totals' or 'overtime'
+let dashSubTab = 'charts'; // 'charts' or 'calendar'
 let weeklyReviews = loadLocal('dayos_weekly_reviews_v1', {});
 let todayBksExpanded = false;
 let todayCapsExpanded = false;
@@ -1436,7 +1437,7 @@ function renderNav() {
   const tabs = [
     { id: 'today',     icon: navIconToday(),     label: 'Today' },
     { id: 'journal',   icon: navIconJournal(),   label: 'Journal' },
-    { id: 'history',   icon: navIconHistory(),   label: 'History' },
+    { id: 'projects',  icon: navIconProjects(),  label: 'Projects' },
     { id: 'dashboard', icon: navIconDashboard(), label: 'Trends' },
   ];
   document.getElementById('nav').innerHTML = tabs.map(t => `
@@ -1454,7 +1455,7 @@ function renderMain(keepScroll) {
   switch (activeTab) {
     case 'today':     el.innerHTML = renderToday(); break;
     case 'journal':   el.innerHTML = renderJournal(); break;
-    case 'history':   el.innerHTML = renderHistory(); break;
+    case 'projects':  el.innerHTML = renderProjects(); break;
     case 'dashboard': el.innerHTML = showWeeklyReview ? renderWeeklyReview() : renderDashboard(); break;
   }
 }
@@ -1767,17 +1768,26 @@ function renderBlockInJournal(b) {
     </div>`;
 }
 
-// ── History ───────────────────────────────────────────────────
-function renderHistory() {
+// ── Projects ──────────────────────────────────────────────────
+function renderProjects() {
   return `<div class="view">
-    ${renderCalendar()}
+    <div class="section" style="text-align:center;padding:3rem 1rem;">
+      <div style="font-size:2.5rem;margin-bottom:0.5rem;">📁</div>
+      <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.3rem;">Projects</div>
+      <div style="color:var(--text2);font-size:0.9rem;">Coming soon</div>
+    </div>
+  </div>`;
+}
+
+// ── Calendar (History) — used inside Trends tab ──────────────
+function renderCalendarView() {
+  return `${renderCalendar()}
     <div class="hist-day-hdr">
       ${fmtDate(histDate)}${ratings[histDate] ? ' &nbsp;·&nbsp; ' + '★'.repeat(ratings[histDate]) : ''}
     </div>
     ${renderDayEod(histDate)}
     ${renderDayLifeRatings(histDate)}
-    ${renderDayBlocks(histDate)}
-  </div>`;
+    ${renderDayBlocks(histDate)}`;
 }
 
 // Read-only EOD snapshot for a past day (no editing in history view)
@@ -1892,6 +1902,20 @@ let _chartInstance = null;
 function renderDashboard() {
   const td = todayStr();
 
+  // [Charts] | [Calendar] toggle — shown on every dashboard view
+  const subTabs = `<div class="range-toggle" style="margin-bottom:0.75rem;">
+      <button class="range-btn ${dashSubTab==='charts'?'active':''}" onclick="setDashSubTab('charts')">Charts</button>
+      <button class="range-btn ${dashSubTab==='calendar'?'active':''}" onclick="setDashSubTab('calendar')">Calendar</button>
+    </div>`;
+
+  // Calendar view — re-uses the existing History layout unchanged
+  if (dashSubTab === 'calendar') {
+    return `<div class="view">
+      ${subTabs}
+      ${renderCalendarView()}
+    </div>`;
+  }
+
   // ── Day view ────────────────────────────────────────────────
   if (dashRange === 'day') {
     const d = dashDay;
@@ -1928,6 +1952,7 @@ function renderDashboard() {
     ].join('');
 
     return `<div class="view">
+      ${subTabs}
       <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
 
       <div class="range-toggle">
@@ -2041,6 +2066,7 @@ function renderDashboard() {
     </div>`;
 
   const html = `<div class="view">
+    ${subTabs}
     <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
 
     <div class="range-toggle">
@@ -2913,6 +2939,7 @@ window.setJSearch = function(q) {
 };
 window.setDashRange = function(r) { dashRange = r; if (r === 'day') dashDay = todayStr(); renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
+window.setDashSubTab = function(t) { dashSubTab = t; renderMain(); };
 window.dashDayNav = function(dir) { dashDay = addDays(dashDay, dir); renderMain(); };
 window.openWeeklyReview = function() { showWeeklyReview = true; weeklyReviewOffset = 0; renderMain(); };
 window.closeWeeklyReview = function() { showWeeklyReview = false; renderMain(); };
@@ -3316,9 +3343,9 @@ function navIconJournal() {
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
   </svg>`;
 }
-function navIconHistory() {
+function navIconProjects() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
   </svg>`;
 }
 function navIconDashboard() {
