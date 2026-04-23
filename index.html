@@ -505,6 +505,58 @@ html, body {
 .proj-pill { font-size: 0.72rem; padding: 0.25rem 0.6rem; border-radius: 20px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text2); cursor: pointer; }
 .proj-pill.active { background: var(--surface3); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
+/* ── Projects tab: horizontally scrollable selector ───────────── */
+.proj-scroller {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.3rem 0 0.5rem;
+  margin: 0 -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.proj-scroller::-webkit-scrollbar { display: none; }
+.proj-pill-lg {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.proj-pill-lg.active {
+  background: rgba(59,130,246,0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.proj-pill-lg.new-pill { border-style: dashed; color: var(--text3); }
+.proj-pill-lg.new-pill:hover { color: var(--text2); }
+.proj-new-input {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--surface2);
+  color: var(--text);
+  outline: none;
+  min-width: 140px;
+}
+.proj-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text3);
+  font-size: 0.85rem;
+}
+
 .journal-search {
   position: relative;
   margin-bottom: 0.75rem;
@@ -1256,7 +1308,10 @@ const CTYPES = [
 // Legacy: Insight type removed from selector but old entries still render gracefully
 const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1' };
+
+// Default projects seeded for first-time users (overridden once Firestore loads)
+const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
 
 // ── State ─────────────────────────────────────────────────────
 let blocks      = loadLocal(SK.BLOCKS, []);
@@ -1277,6 +1332,9 @@ let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { habit_sta
   if (changed) saveLocal(SK.LIFE_RATINGS, lifeRatings);
 })();
 let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
+let projects        = loadLocal(SK.PROJECTS, DEFAULT_PROJECTS.slice()); // string[]
+let selectedProject = projects[0] || null;
+let projectCreating = false;
 let activeTab = 'today';
 let histDate  = todayStr();
 let histCalMonth = new Date(); histCalMonth.setDate(1);
@@ -1317,6 +1375,7 @@ function saveAll() {
   saveLocal(SK.RATINGS, ratings);
   saveLocal(SK.LIFE_RATINGS, lifeRatings);
   saveLocal(SK.EOD, eodNotes);
+  saveLocal(SK.PROJECTS, projects);
 }
 
 // ── Utils ─────────────────────────────────────────────────────
@@ -1770,13 +1829,108 @@ function renderBlockInJournal(b) {
 
 // ── Projects ──────────────────────────────────────────────────
 function renderProjects() {
+  const pills = projects.map(p => `
+    <button class="proj-pill-lg ${p === selectedProject ? 'active' : ''}"
+            onclick="selectProject('${esc(p).replace(/'/g, "\\'")}')">${esc(p)}</button>
+  `).join('');
+
+  const newPill = projectCreating
+    ? `<input class="proj-new-input" id="proj-new-input"
+         placeholder="Project name…"
+         onkeydown="if(event.key==='Enter'){createProjectFromInput()} else if(event.key==='Escape'){cancelProjectCreate()}"
+         onblur="createProjectFromInput()" />`
+    : `<button class="proj-pill-lg new-pill" onclick="startProjectCreate()">+ new</button>`;
+
+  const content = !selectedProject
+    ? `<div class="proj-empty">Create a project to get started.</div>`
+    : `<div class="proj-empty">
+         Sessions for <strong style="color:var(--text)">${esc(selectedProject)}</strong> will appear here.<br>
+         <span style="opacity:0.7">(Session log + New Session coming next.)</span>
+       </div>`;
+
   return `<div class="view">
-    <div class="section" style="text-align:center;padding:3rem 1rem;">
-      <div style="font-size:2.5rem;margin-bottom:0.5rem;">📁</div>
-      <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.3rem;">Projects</div>
-      <div style="color:var(--text2);font-size:0.9rem;">Coming soon</div>
+    <div class="proj-scroller">
+      ${pills}
+      ${newPill}
     </div>
+    ${content}
   </div>`;
+}
+
+window.selectProject = function(name) {
+  selectedProject = name;
+  projectCreating = false;
+  renderMain();
+};
+
+window.startProjectCreate = function() {
+  projectCreating = true;
+  renderMain();
+  setTimeout(() => {
+    const el = document.getElementById('proj-new-input');
+    if (el) el.focus();
+  }, 30);
+};
+
+window.cancelProjectCreate = function() {
+  projectCreating = false;
+  renderMain();
+};
+
+window.createProjectFromInput = function() {
+  const el = document.getElementById('proj-new-input');
+  if (!el) return;
+  const name = el.value.trim();
+  if (!name) { projectCreating = false; renderMain(); return; }
+  // Case-insensitive de-dupe
+  const existing = projects.find(p => p.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    selectedProject = existing;
+    projectCreating = false;
+    toast(`"${existing}" already exists`);
+    renderMain();
+    return;
+  }
+  projects.push(name);
+  saveLocal(SK.PROJECTS, projects);
+  selectedProject = name;
+  projectCreating = false;
+  syncProjectsDoc();
+  toast(`✓ "${name}" added`);
+  renderMain();
+};
+
+// Firestore: single doc at projects/{uid} with field list: string[]
+async function syncProjectsDoc() {
+  if (!user) return;
+  try { await setDoc(doc(db, 'projects', user.uid), { list: projects }); } catch {}
+}
+
+async function loadProjectsFromCloud(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'projects', uid));
+    if (snap.exists()) {
+      const remote = snap.data().list;
+      if (Array.isArray(remote) && remote.length > 0) {
+        // Merge: remote first, then any local-only extras
+        const seen = new Set(remote.map(p => p.toLowerCase()));
+        const extras = projects.filter(p => !seen.has(p.toLowerCase()));
+        projects = [...remote, ...extras];
+        saveLocal(SK.PROJECTS, projects);
+        if (!selectedProject || !projects.includes(selectedProject)) {
+          selectedProject = projects[0] || null;
+        }
+        if (extras.length > 0) syncProjectsDoc();
+        if (activeTab === 'projects') renderMain();
+      } else {
+        syncProjectsDoc(); // remote empty — seed with current list
+      }
+    } else {
+      syncProjectsDoc(); // first sign-in — seed cloud
+    }
+  } catch (err) {
+    console.error('[DayOS] Projects load error:', err);
+  }
 }
 
 // ── Calendar (History) — used inside Trends tab ──────────────
@@ -3223,6 +3377,8 @@ async function initialSync(uid) {
   setSyncStatus('syncing');
   const localBlocksBefore   = blocks.length;
   const localCapturesBefore = captures.length;
+  // Load projects list in parallel (separate root collection)
+  loadProjectsFromCloud(uid);
   try {
     const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
