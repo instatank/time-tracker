@@ -1654,16 +1654,16 @@ select option { background: var(--surface2); }
   <div class="sheet-title" id="session-sheet-title">New Session</div>
   <div class="sheet-body">
     <div class="field">
-      <label class="session-field-label before">Before</label>
+      <label class="session-field-label before">Goals and Intentions</label>
       <textarea class="session-textarea" id="f-sess-before" placeholder="What do you want to accomplish?"></textarea>
     </div>
     <div class="field">
-      <label class="session-field-label during">During</label>
+      <label class="session-field-label during">Session Notes</label>
       <textarea class="session-textarea" id="f-sess-during" placeholder="Notes as you go..."></textarea>
     </div>
     <div class="field">
-      <label class="session-field-label after">After</label>
-      <textarea class="session-textarea" id="f-sess-after" placeholder="What got done? What's pending?"></textarea>
+      <label class="session-field-label after">Review</label>
+      <textarea class="session-textarea" id="f-sess-after" placeholder="Note learnings, what's done and pending"></textarea>
     </div>
     <div class="field">
       <label class="session-field-label neutral">Duration</label>
@@ -2535,9 +2535,9 @@ function renderSessionCard(s) {
 
   const bodyParts = [];
   if (expanded) {
-    if (s.before) bodyParts.push(`<div class="session-section"><span class="session-section-label before">Before</span>${esc(s.before)}</div>`);
-    if (s.during) bodyParts.push(`<div class="session-section"><span class="session-section-label during">During</span>${esc(s.during)}</div>`);
-    if (s.after)  bodyParts.push(`<div class="session-section"><span class="session-section-label after">After</span>${esc(s.after)}</div>`);
+    if (s.before) bodyParts.push(`<div class="session-section"><span class="session-section-label before">Goals and Intentions</span>${esc(s.before)}</div>`);
+    if (s.during) bodyParts.push(`<div class="session-section"><span class="session-section-label during">Session Notes</span>${esc(s.during)}</div>`);
+    if (s.after)  bodyParts.push(`<div class="session-section"><span class="session-section-label after">Review</span>${esc(s.after)}</div>`);
     if (!bodyParts.length) bodyParts.push(`<div class="session-section" style="color:var(--text3);font-style:italic">No notes captured.</div>`);
   } else {
     // Collapsed preview: show first non-empty of before/during/after
