@@ -3139,31 +3139,45 @@ document.querySelectorAll('.sess-dur-pill').forEach(btn => {
 // Firestore: users/{uid}/sessions/{sessionId} (flat; projectName stored as field on each doc)
 async function syncSessionDoc(s) {
   if (!user) return;
-  try { await setDoc(doc(db, 'users', user.uid, 'sessions', s.id), s); }
-  catch (err) { console.error('[DayOS] Session sync error:', err); }
+  try {
+    await setDoc(doc(db, 'users', user.uid, 'sessions', s.id), s);
+    const proj = s.projectName;
+    if (sessions[proj]) {
+      const idx = sessions[proj].findIndex(x => x.id === s.id);
+      if (idx !== -1 && !sessions[proj][idx]._synced) {
+        sessions[proj][idx]._synced = true;
+        saveLocal(SK.SESSIONS, sessions);
+      }
+    }
+  } catch (err) { console.error('[DayOS] Session sync error:', err); }
 }
 
 async function loadSessionsFromCloud(uid) {
   try {
     const snap = await getDocs(collection(db, 'users', uid, 'sessions'));
     const remote = snap.docs.map(d => d.data());
-    // Merge all local sessions + remote; remote wins on same id
+    const remoteIds = new Set(remote.map(s => s.id));
+    // Remote is authoritative: start with all remote items
     const byId = {};
-    Object.values(sessions).flat().forEach(s => { byId[s.id] = s; });
     remote.forEach(s => { byId[s.id] = s; });
+    // Add local items that were never synced (created offline / not yet pushed)
+    // Local items that ARE synced but absent from remote were deleted on another device → drop them
+    const localExtras = [];
+    Object.values(sessions).flat().forEach(s => {
+      if (remoteIds.has(s.id)) return;
+      if (s._synced) return; // synced before → deleted elsewhere → omit
+      byId[s.id] = s;
+      localExtras.push(s);
+    });
     // Re-partition by projectName
     const merged = {};
-    const remoteIds = new Set(remote.map(s => s.id));
-    const localExtras = [];
     Object.values(byId).forEach(s => {
       if (!s.projectName) return;
       if (!merged[s.projectName]) merged[s.projectName] = [];
       merged[s.projectName].push(s);
-      if (!remoteIds.has(s.id)) localExtras.push(s);
     });
     sessions = merged;
     saveLocal(SK.SESSIONS, sessions);
-    // Push any local-only sessions up so cloud catches up
     localExtras.forEach(s => syncSessionDoc(s));
     if (activeTab === 'projects') renderMain(true);
   } catch (err) {
@@ -3394,24 +3408,35 @@ window.saveLearning = function() {
 // Firestore sync — users/{uid}/learning/{id}
 async function syncLearningDoc(e) {
   if (!user) return;
-  try { await setDoc(doc(db, 'users', user.uid, 'learning', e.id), e); }
-  catch (err) { console.error('[DayOS] Learning sync error:', err); }
+  try {
+    await setDoc(doc(db, 'users', user.uid, 'learning', e.id), e);
+    const idx = learning.findIndex(x => x.id === e.id);
+    if (idx !== -1 && !learning[idx]._synced) {
+      learning[idx]._synced = true;
+      saveLocal(SK.LEARNING, learning);
+    }
+  } catch (err) { console.error('[DayOS] Learning sync error:', err); }
 }
 
 async function loadLearningFromCloud(uid) {
   try {
     const snap = await getDocs(collection(db, 'users', uid, 'learning'));
     const remote = snap.docs.map(d => d.data());
-    // Merge: remote wins on same id; collect local-only for push-back
-    const byId = {};
-    learning.forEach(e => { byId[e.id] = e; });
-    remote.forEach(e => { byId[e.id] = e; });
     const remoteIds = new Set(remote.map(e => e.id));
-    const localExtras = learning.filter(e => !remoteIds.has(e.id));
+    // Remote is authoritative: start with all remote items
+    const byId = {};
+    remote.forEach(e => { byId[e.id] = e; });
+    // Add local items never synced (created offline); drop synced items absent from remote (deleted elsewhere)
+    const localExtras = [];
+    learning.forEach(e => {
+      if (remoteIds.has(e.id)) return;
+      if (e._synced) return; // synced before → deleted elsewhere → omit
+      byId[e.id] = e;
+      localExtras.push(e);
+    });
     learning = Object.values(byId);
     saveLocal(SK.LEARNING, learning);
     learningLoadedFromCloud = true;
-    // Push any local-only entries up so cloud catches up
     localExtras.forEach(e => syncLearningDoc(e));
     if (activeTab === 'projects' && projectsSubTab === 'learning') renderMain(true);
   } catch (err) {
