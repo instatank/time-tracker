@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0d0d0d">
+<script>
+  // Apply saved theme before first paint to avoid a flash of the default palette.
+  (function () {
+    try {
+      var p = localStorage.getItem('dayos_theme') || 'dark';
+      if (p !== 'dark' && p !== 'light' && p !== 'system') p = 'dark';
+      var effective = p === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        : p;
+      document.documentElement.setAttribute('data-theme', effective);
+      // applyTheme() runs later and syncs the <meta> from --bg.
+    } catch (e) {}
+  })();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="DayOS">
@@ -13,31 +27,178 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0d0d0d;
-  --surface: #181818;
+  /* Surfaces */
+  --bg:       #0d0d0d;
+  --surface:  #181818;
   --surface2: #212121;
   --surface3: #2a2a2a;
-  --border: #2d2d2d;
-  --border2: #3a3a3a;
-  --text: #f0f0f0;
+  --border:   #2d2d2d;
+  --border2:  #3a3a3a;
+
+  /* Text */
+  --text:  #f0f0f0;
   --text2: #999;
   --text3: #555;
-  --accent: #3b82f6;
-  --danger: #ef4444;
-  --success: #10b981;
-  --warn: #f59e0b;
 
-  --c-deep_work: #3b82f6;
+  /* Accent & status */
+  --accent:  #3b82f6;
+  --danger:  #ef4444;
+  --success: #10b981;
+  --warn:    #f59e0b;
+
+  /* Category colors (aligned with rendered bars) */
+  --c-deep_work: #16a34a;
   --c-admin:     #8b5cf6;
-  --c-learning:  #10b981;
-  --c-practice:  #f59e0b;
-  --c-routine:   #6366f1;
+  --c-learning:  #4ade80;
+  --c-practice:  #3b82f6;
+  --c-routine:   #eab308;
   --c-leisure:   #f97316;
   --c-leaks:     #ef4444;
+  --c-sleep:     #6366f1;
+  --c-skipped:   #4b5563;
 
+  /* Text on solid accent/category fills */
+  --on-accent: #fff;
+
+  /* Google brand button — intentionally un-themed */
+  --google-bg:   #fff;
+  --google-text: #333;
+
+  /* Muted placeholders (empty tag-pill, empty chip, session tags) */
+  --muted-bg:   #1a1a1a;
+  --muted-text: #888;
+
+  /* Tag pills */
+  --tag-win-bg:       #1a2e0a;
+  --tag-win-text:     #7bc44a;
+  --tag-insight-bg:   #1e1440;
+  --tag-insight-text: #8b7fdd;
+  --tag-dft-bg:       #0e2a45;
+  --tag-dft-text:     #5aaaf0;
+  --tag-pending-bg:   #2a1a08;
+  --tag-pending-text: #d4922a;
+
+  /* Session section labels */
+  --session-before: #6b9fe8;
+  --session-during: #5fb97a;
+  --session-after:  #d4a45a;
+
+  /* Alpha overlays (accent/status tints derived from tokens) */
+  --accent-soft:        rgba(59,130,246,0.15);
+  --accent-soft-faint:  rgba(59,130,246,0.12);
+  --accent-soft-strong: rgba(59,130,246,0.35);
+  --accent-shadow:      rgba(59,130,246,0.18);
+  --danger-soft:        rgba(239,68,68,0.15);
+  --danger-soft-strong: rgba(239,68,68,0.28);
+  --tick-color:         #22c55e;
+  --tick-soft:          rgba(34,197,94,0.15);
+  --tick-soft-faint:    rgba(34,197,94,0.10);
+  --edit-color:         #facc15;
+  --edit-soft:          rgba(250,204,21,0.15);
+
+  /* Backdrop overlay */
+  --overlay: rgba(0,0,0,0.6);
+
+  /* Shadows */
+  --shadow-sm:       0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md:       0 1px 3px rgba(0,0,0,0.4);
+  --shadow-btn:      0 1px 4px rgba(0,0,0,0.5);
+  --shadow-lg:       0 4px 20px rgba(0,0,0,0.4);
+  --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.3);
+  --shadow-accent:   0 2px 6px var(--accent-shadow);
+
+  /* Chart */
+  --chart-legend: #999;
+  --chart-tick:   #666;
+  --chart-grid:   #2d2d2d;
+
+  /* Sizing */
   --nav-h: 64px;
   --hdr-h: 52px;
   --r: 10px;
+}
+
+[data-theme="light"] {
+  /* Surfaces — cool Linen greys */
+  --bg:       #F3F4F6;
+  --surface:  #FFFFFF;
+  --surface2: #F9FAFB;
+  --surface3: #F3F4F6;
+  --border:   #E5E7EB;
+  --border2:  #D1D5DB;
+
+  /* Text — warm Stone greys (intentional contrast against cool surfaces) */
+  --text:  #1F1C17;
+  --text2: #6A6558;
+  --text3: #9A9586;
+
+  /* Accent & status — deep indigo, earthy status */
+  --accent:  #4F46E5;
+  --warn:    #A86B1C;
+  --success: #4A7C47;
+  --danger:  #B0384A;
+
+  /* Category colors — muted, book-like */
+  --c-deep_work: #3B3AB0;
+  --c-admin:     #4F46E5;
+  --c-learning:  #2E7A4F;
+  --c-practice:  #9B6A1C;
+  --c-routine:   #4F46E5;
+  --c-leisure:   #A75524;
+  --c-leaks:     #B0384A;
+  --c-sleep:     #6366F1;
+  --c-skipped:   #9CA3AF;
+
+  /* Google brand — unchanged */
+  --google-bg:   #fff;
+  --google-text: #333;
+
+  /* Muted placeholders */
+  --muted-bg:   #F3F4F6;
+  --muted-text: #6A6558;
+
+  /* Tag pills — tinted, book-like */
+  --tag-win-bg:       #E9F2E1;
+  --tag-win-text:     #2E7A4F;
+  --tag-insight-bg:   #ECEAFA;
+  --tag-insight-text: #4339A3;
+  --tag-dft-bg:       #E3EAFA;
+  --tag-dft-text:     #2F4CA8;
+  --tag-pending-bg:   #F5EBDA;
+  --tag-pending-text: #8A5A18;
+
+  /* Session section labels */
+  --session-before: #3B3AB0;
+  --session-during: #2E7A4F;
+  --session-after:  #8A5A18;
+
+  /* Alpha overlays — softer for light surfaces */
+  --accent-soft:        rgba(79,70,229,0.10);
+  --accent-soft-faint:  rgba(79,70,229,0.08);
+  --accent-soft-strong: rgba(79,70,229,0.22);
+  --accent-shadow:      rgba(79,70,229,0.12);
+  --danger-soft:        rgba(176,56,74,0.10);
+  --danger-soft-strong: rgba(176,56,74,0.20);
+  --tick-color:         #4A7C47;
+  --tick-soft:          rgba(74,124,71,0.12);
+  --tick-soft-faint:    rgba(74,124,71,0.08);
+  --edit-color:         #A86B1C;
+  --edit-soft:          rgba(168,107,28,0.10);
+
+  /* Backdrop overlay — lighter */
+  --overlay: rgba(0,0,0,0.4);
+
+  /* Shadows — softer for light */
+  --shadow-sm:       0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:       0 1px 3px rgba(0,0,0,0.06);
+  --shadow-btn:      0 1px 2px rgba(0,0,0,0.06);
+  --shadow-lg:       0 4px 20px rgba(0,0,0,0.08);
+  --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.08);
+
+  /* Chart — light mode tokens */
+  --chart-legend: #6A6558;
+  --chart-tick:   #9A9586;
+  --chart-grid:   #E5E7EB;
 }
 
 html, body {
@@ -191,7 +352,7 @@ html, body {
   gap: 0.4rem;
   transition: opacity 0.15s;
 }
-.btn-log { background: var(--accent); color: #fff; }
+.btn-log { background: var(--accent); color: var(--on-accent); }
 .btn-cap { background: var(--surface2); color: var(--text); border: 1px solid var(--border2); }
 .btn-log:active, .btn-cap:active { opacity: 0.8; }
 
@@ -280,17 +441,17 @@ html, body {
   font-size: 0.62rem;
   padding: 1px 7px;
   border-radius: 10px;
-  background: #1a1a1a;
-  color: #888;
+  background: var(--muted-bg);
+  color: var(--muted-text);
   font-weight: 500;
   line-height: 1.5;
   border: 1px solid transparent;
 }
-.tag-pill.tag-win     { background: #1a2e0a; color: #7bc44a; }
-.tag-pill.tag-insight { background: #1e1440; color: #8b7fdd; }
-.tag-pill.tag-dft     { background: #0e2a45; color: #5aaaf0; }
-.tag-pill.tag-pending { background: #2a1a08; color: #d4922a; }
-.tag-pill.tag-1pct    { background: #1a2e0a; color: #7bc44a; } /* legacy alias for #1% */
+.tag-pill.tag-win     { background: var(--tag-win-bg);     color: var(--tag-win-text); }
+.tag-pill.tag-insight { background: var(--tag-insight-bg); color: var(--tag-insight-text); }
+.tag-pill.tag-dft     { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
+.tag-pill.tag-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
+.tag-pill.tag-1pct    { background: var(--tag-win-bg);     color: var(--tag-win-text); } /* legacy alias for #1% */
 
 /* ── Tag picker (sheets) ──────────────────────────────────────── */
 .tag-picker {
@@ -303,17 +464,17 @@ html, body {
   font-size: 0.75rem;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #1a1a1a;
-  color: #888;
+  background: var(--muted-bg);
+  color: var(--muted-text);
   border: 1px solid transparent;
   cursor: pointer;
   transition: border-color 0.12s, transform 0.08s;
   line-height: 1.3;
 }
-.tag-pick-pill.tag-win     { background: #1a2e0a; color: #7bc44a; }
-.tag-pick-pill.tag-insight { background: #1e1440; color: #8b7fdd; }
-.tag-pick-pill.tag-dft     { background: #0e2a45; color: #5aaaf0; }
-.tag-pick-pill.tag-pending { background: #2a1a08; color: #d4922a; }
+.tag-pick-pill.tag-win     { background: var(--tag-win-bg);     color: var(--tag-win-text); }
+.tag-pick-pill.tag-insight { background: var(--tag-insight-bg); color: var(--tag-insight-text); }
+.tag-pick-pill.tag-dft     { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
+.tag-pick-pill.tag-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
 .tag-pick-pill.selected { border-color: currentColor; font-weight: 600; }
 .tag-pick-pill.custom-pill {
   background: transparent;
@@ -400,13 +561,13 @@ html, body {
   transition: background 0.15s, color 0.15s;
   line-height: 1;
 }
-.dft-tick-btn { border-color: #22c55e; color: #22c55e; }
-.dft-tick-btn:hover { background: rgba(34,197,94,0.15); }
-.dft-skip-btn { border-color: #ef4444; color: #ef4444; }
-.dft-skip-btn:hover { background: rgba(239,68,68,0.15); }
+.dft-tick-btn { border-color: var(--tick-color); color: var(--tick-color); }
+.dft-tick-btn:hover { background: var(--tick-soft); }
+.dft-skip-btn { border-color: var(--danger); color: var(--danger); }
+.dft-skip-btn:hover { background: var(--danger-soft); }
 .dft-status-done {
   font-size: 0.88rem;
-  color: #22c55e;
+  color: var(--tick-color);
   font-weight: 500;
   padding: 0.15rem 0;
 }
@@ -452,12 +613,12 @@ html, body {
 }
 .eod-saved-badge {
   font-size: 0.65rem;
-  color: #22c55e;
+  color: var(--tick-color);
   font-weight: 600;
   padding: 2px 8px;
-  border: 1px solid #22c55e;
+  border: 1px solid var(--tick-color);
   border-radius: 999px;
-  background: rgba(34,197,94,0.1);
+  background: var(--tick-soft-faint);
 }
 .eod-body {
   display: flex;
@@ -543,7 +704,7 @@ html, body {
   cursor: pointer;
   transition: all 0.15s;
 }
-.fpill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fpill.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .project-subtabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: -0.25rem 0 0.75rem; padding: 0.5rem 0 0.25rem; border-top: 1px solid var(--border2); }
 .proj-pill { font-size: 0.72rem; padding: 0.25rem 0.6rem; border-radius: 20px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text2); cursor: pointer; }
 .proj-pill.active { background: var(--surface3); border-color: var(--accent); color: var(--accent); font-weight: 600; }
@@ -575,7 +736,7 @@ html, body {
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .proj-pill-lg.active {
-  background: rgba(59,130,246,0.15);
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
@@ -606,7 +767,7 @@ html, body {
   padding: 0.9rem 1rem;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 0.95rem;
   font-weight: 600;
   border-radius: var(--r);
@@ -617,7 +778,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  box-shadow: 0 2px 6px rgba(59,130,246,0.18);
+  box-shadow: var(--shadow-accent);
 }
 .new-session-btn:hover  { opacity: 0.92; }
 .new-session-btn:active { opacity: 0.82; transform: scale(0.99); }
@@ -713,9 +874,9 @@ html, body {
   font-size: 0.62rem;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(59,130,246,0.12);
+  background: var(--accent-soft-faint);
   color: var(--accent);
-  border: 1px solid rgba(59,130,246,0.35);
+  border: 1px solid var(--accent-soft-strong);
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.4;
@@ -752,13 +913,13 @@ html, body {
   padding: 0;
   transition: background 0.15s, color 0.15s;
 }
-.card-edit-btn   { border-color: #facc15; color: #facc15; }
-.card-edit-btn:hover   { background: rgba(250,204,21,0.15); }
-.card-delete-btn { border-color: #ef4444; color: #ef4444; }
-.card-delete-btn:hover { background: rgba(239,68,68,0.15); }
+.card-edit-btn   { border-color: var(--edit-color); color: var(--edit-color); }
+.card-edit-btn:hover   { background: var(--edit-soft); }
+.card-delete-btn { border-color: var(--danger); color: var(--danger); }
+.card-delete-btn:hover { background: var(--danger-soft); }
 .card-delete-btn.armed {
-  background: rgba(239,68,68,0.28);
-  color: #fff;
+  background: var(--danger-soft-strong);
+  color: var(--on-accent);
   font-weight: 700;
   width: auto;
   padding: 0 10px;
@@ -780,9 +941,9 @@ html, body {
   letter-spacing: 0.05em;
   margin-bottom: 0.2rem;
 }
-.session-section-label.before  { color: #6b9fe8; }   /* muted blue */
-.session-section-label.during  { color: #5fb97a; }   /* muted green */
-.session-section-label.after   { color: #d4a45a; }   /* muted amber */
+.session-section-label.before  { color: var(--session-before); }   /* muted blue */
+.session-section-label.during  { color: var(--session-during); }   /* muted green */
+.session-section-label.after   { color: var(--session-after); }    /* muted amber */
 .session-preview {
   margin-top: 0.4rem;
   font-size: 0.82rem;
@@ -803,8 +964,8 @@ html, body {
   font-size: 0.7rem;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #1a1a1a;
-  color: #888;
+  background: var(--muted-bg);
+  color: var(--muted-text);
   border: 1px solid var(--border);
 }
 .session-expand-hint {
@@ -837,9 +998,9 @@ html, body {
   letter-spacing: 0.06em;
   margin-bottom: 0.3rem;
 }
-.session-field-label.before { color: #6b9fe8; }
-.session-field-label.during { color: #5fb97a; }
-.session-field-label.after  { color: #d4a45a; }
+.session-field-label.before { color: var(--session-before); }
+.session-field-label.during { color: var(--session-during); }
+.session-field-label.after  { color: var(--session-after); }
 
 /* ── Review chips & parsed groups ─────────────────────────────── */
 .review-chips {
@@ -852,17 +1013,17 @@ html, body {
   font-size: 0.74rem;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #1a1a1a;
-  color: #888;
+  background: var(--muted-bg);
+  color: var(--muted-text);
   border: 1px solid transparent;
   cursor: pointer;
   transition: transform 0.08s;
   line-height: 1.3;
 }
 .review-chip:active { transform: scale(0.96); }
-.review-chip.chip-done    { background: #1a2e0a; color: #7bc44a; }
-.review-chip.chip-pending { background: #2a1a08; color: #d4922a; }
-.review-chip.chip-learned { background: #1e1440; color: #8b7fdd; }
+.review-chip.chip-done    { background: var(--tag-win-bg);     color: var(--tag-win-text); }
+.review-chip.chip-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
+.review-chip.chip-learned { background: var(--tag-insight-bg); color: var(--tag-insight-text); }
 
 /* Grouped review display (saved session cards, expanded) — tight, zero dead-space */
 .review-group {
@@ -880,9 +1041,9 @@ html, body {
   letter-spacing: 0.04em;
   margin-right: 0.45rem;
 }
-.review-group.done    .review-group-label { color: #7bc44a; }
-.review-group.pending .review-group-label { color: #d4922a; }
-.review-group.learned .review-group-label { color: #8b7fdd; }
+.review-group.done    .review-group-label { color: var(--tag-win-text); }
+.review-group.pending .review-group-label { color: var(--tag-pending-text); }
+.review-group.learned .review-group-label { color: var(--tag-insight-text); }
 .review-items {
   font-size: 0.86rem;
   color: var(--text);
@@ -913,7 +1074,7 @@ html, body {
 .session-footer-left  { color: var(--text3); }
 .session-footer-right { margin-left: auto; }
 .session-linked-badge {
-  color: #5fb97a;
+  color: var(--session-during);
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -975,7 +1136,7 @@ html, body {
 .subtab-btn.active {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-md);
 }
 
 /* ── Learning sub-tab ─────────────────────────────────────────── */
@@ -1008,8 +1169,8 @@ html, body {
   font-size: 0.66rem;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #1a1a1a;
-  color: #888;
+  background: var(--muted-bg);
+  color: var(--muted-text);
   border: 1px solid var(--border);
   font-weight: 500;
   text-transform: uppercase;
@@ -1182,7 +1343,7 @@ html, body {
 }
 .cal-day:hover { background: var(--surface2); }
 .cal-day.today-cell { color: var(--text); font-weight: 700; }
-.cal-day.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+.cal-day.selected { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .cal-day.has-data .cal-dots { display: flex; gap: 1.5px; margin-top: 2px; }
 .cal-dots { display: none; }
 .cal-dot { width: 4px; height: 4px; border-radius: 50%; }
@@ -1216,7 +1377,7 @@ html, body {
   cursor: pointer;
   transition: all 0.15s;
 }
-.range-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+.range-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-btn); }
 
 .day-nav {
   display: flex;
@@ -1373,7 +1534,7 @@ html, body {
   margin-top: 0.6rem;
   padding: 0.5rem 1.2rem;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   border-radius: 8px;
   font-size: 0.85rem;
@@ -1416,7 +1577,7 @@ html, body {
   cursor: pointer;
   transition: all 0.15s;
 }
-.view-btn.active { background: var(--surface2); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+.view-btn.active { background: var(--surface2); color: var(--text); box-shadow: var(--shadow-btn); }
 
 .trend-chart-wrap {
   position: relative;
@@ -1450,7 +1611,7 @@ html, body {
 /* ── Sheet modals ───────────────────────────────────────────── */
 .backdrop {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: var(--overlay);
   z-index: 100;
   opacity: 0;
   pointer-events: none;
@@ -1534,7 +1695,7 @@ select option { background: var(--surface2); }
   transition: all 0.15s;
   white-space: nowrap;
 }
-.pill.active { border-color: transparent; color: #fff; }
+.pill.active { border-color: transparent; color: var(--on-accent); }
 .dur-pill { min-width: 48px; text-align: center; }
 
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
@@ -1551,14 +1712,14 @@ select option { background: var(--surface2); }
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
 .cat-pill .cat-icon { font-size: 1rem; }
-.cat-pill.active { color: #fff; }
+.cat-pill.active { color: var(--on-accent); }
 
 .btn-row { display: flex; gap: 0.5rem; margin-top: 1rem; }
 .btn-primary {
   flex: 1;
   padding: 0.75rem;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   border-radius: 10px;
   font-size: 0.9rem;
@@ -1615,7 +1776,7 @@ select option { background: var(--surface2); }
   font-size: 0.82rem;
   padding: 0.55rem 1rem;
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-lg);
   animation: fadeup 0.2s ease;
 }
 @keyframes fadeup { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
@@ -1630,8 +1791,8 @@ select option { background: var(--surface2); }
   gap: 0.6rem;
   width: 100%;
   padding: 0.75rem;
-  background: #fff;
-  color: #333;
+  background: var(--google-bg);
+  color: var(--google-text);
   border: none;
   border-radius: 10px;
   font-size: 0.9rem;
@@ -1676,6 +1837,48 @@ select option { background: var(--surface2); }
 .sync-val.syncing { color: var(--warn); }
 .sync-val.idle   { color: var(--text3); }
 .sync-err-msg { font-size: 0.75rem; color: var(--danger); margin-top: 0.5rem; line-height: 1.4; }
+
+/* ── Appearance (theme) segmented control ───────────────────── */
+.appearance-panel {
+  text-align: left;
+  margin-bottom: 0.75rem;
+}
+.appearance-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text2);
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+  display: block;
+}
+.appearance-seg {
+  display: flex;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  width: 100%;
+}
+.appearance-seg-btn {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.appearance-seg-btn:hover { color: var(--text); }
+.appearance-seg-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-btn);
+}
 </style>
 </head>
 <body>
@@ -1712,7 +1915,7 @@ select option { background: var(--surface2); }
     <div class="field" style="position:relative">
       <label class="field-label">Activity Label</label>
       <input type="text" id="f-label" placeholder="e.g. Meditation, Feature X…" autocomplete="off" oninput="filterLabelSuggestions(this.value)" onblur="setTimeout(hideLabelSuggestions,150)">
-      <div id="label-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
+      <div id="label-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:var(--shadow-dropdown)"></div>
     </div>
     <div class="field">
       <label class="field-label">Note</label>
@@ -1754,7 +1957,7 @@ select option { background: var(--surface2); }
     <div class="field" id="f-project-field" style="display:none;position:relative">
       <label class="field-label">Project Tag</label>
       <input type="text" id="f-project-tag" placeholder="project name" autocomplete="off" oninput="filterProjectSuggestions(this.value)" onblur="setTimeout(hideProjectSuggestions,150)">
-      <div id="project-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
+      <div id="project-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:var(--shadow-dropdown)"></div>
     </div>
     <div class="field">
       <label class="field-label">Tags</label>
@@ -1895,16 +2098,17 @@ const db   = getFirestore(fbApp);
 let unsubs = [];
 
 // ── Constants ─────────────────────────────────────────────────
+// Category colors are read from CSS tokens so they re-theme instantly.
 const CATS = [
-  { id: 'deep_work', label: 'Deep Work', icon: '🎯', color: '#16a34a' },
-  { id: 'learning',  label: 'Learning',  icon: '📚', color: '#4ade80' },
-  { id: 'practice',  label: 'Practice',  icon: '🧘', color: '#3b82f6' },
-  { id: 'routine',   label: 'Routine',   icon: '🏠', color: '#eab308' },
-  { id: 'leisure',   label: 'Leisure',   icon: '🎮', color: '#f97316' },
-  { id: 'leaks',     label: 'Leaks',     icon: '🕳️', color: '#ef4444' },
+  { id: 'deep_work', label: 'Deep Work', icon: '🎯', color: 'var(--c-deep_work)' },
+  { id: 'learning',  label: 'Learning',  icon: '📚', color: 'var(--c-learning)' },
+  { id: 'practice',  label: 'Practice',  icon: '🧘', color: 'var(--c-practice)' },
+  { id: 'routine',   label: 'Routine',   icon: '🏠', color: 'var(--c-routine)' },
+  { id: 'leisure',   label: 'Leisure',   icon: '🎮', color: 'var(--c-leisure)' },
+  { id: 'leaks',     label: 'Leaks',     icon: '🕳️', color: 'var(--c-leaks)' },
 ];
-const SLEEP_CAT   = { id: 'sleep',   label: 'Sleep',   icon: '😴', color: '#6366f1' };
-const SKIPPED_CAT = { id: 'skipped', label: 'Skipped', icon: '⬜', color: '#4b5563' };
+const SLEEP_CAT   = { id: 'sleep',   label: 'Sleep',   icon: '😴', color: 'var(--c-sleep)' };
+const SKIPPED_CAT = { id: 'skipped', label: 'Skipped', icon: '⬜', color: 'var(--c-skipped)' };
 const CTYPES = [
   { id: 'note',    label: 'Quick Note', icon: '💭' },
   { id: 'journal', label: 'Journal',    icon: '📓' },
@@ -3625,7 +3829,7 @@ window.openEditLearning = function(entryId) {
 function renderLearningTypeRow() {
   document.getElementById('learn-type-row').innerHTML = LEARNING_TYPES.map(t => `
     <button type="button" class="pill ${selLearningType === t ? 'active' : ''}"
-            style="${selLearningType === t ? 'background:var(--accent);border-color:var(--accent);color:#fff' : ''}"
+            style="${selLearningType === t ? 'background:var(--accent);border-color:var(--accent);color:var(--on-accent)' : ''}"
             onclick="selLearningTypeFn('${t}')">${esc(t)}</button>
   `).join('');
 }
@@ -4194,7 +4398,33 @@ function loadChartJs() {
   return _chartJsPromise;
 }
 
+// Resolve a CSS variable like --c-deep_work to its computed hex/rgb string.
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// Derive an rgba() fill from a resolved category token (#rgb or #rrggbb).
+function hexToRgba(hex, alpha) {
+  const h = (hex || '').replace('#', '');
+  if (h.length === 3) {
+    const r = parseInt(h[0] + h[0], 16);
+    const g = parseInt(h[1] + h[1], 16);
+    const b = parseInt(h[2] + h[2], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  if (h.length === 6) {
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return hex || 'transparent';
+}
+
+let _chartLastArgs = null;
+
 async function buildTrendChart(td, n) {
+  _chartLastArgs = { td, n };
   try {
     await loadChartJs();
   } catch { return; }
@@ -4207,6 +4437,11 @@ async function buildTrendChart(td, n) {
   let labels, datasets;
 
   const allChartCats = CATS;
+  // Resolve each category CSS token once per build so Chart.js receives concrete colors.
+  const catHex = {};
+  allChartCats.forEach(c => { catHex[c.id] = cssVar('--c-' + c.id); });
+  const skippedHex = cssVar('--c-skipped');
+
   if (dashRange === 'week') {
     // 7 days, by day
     labels = [];
@@ -4229,8 +4464,8 @@ async function buildTrendChart(td, n) {
       ...allChartCats.map(c => ({
         label: c.label,
         data: dayData[c.id],
-        borderColor: c.color,
-        backgroundColor: c.color + '33',
+        borderColor: catHex[c.id],
+        backgroundColor: hexToRgba(catHex[c.id], 0.2),
         tension: 0.3,
         pointRadius: 3,
         borderWidth: 2,
@@ -4238,8 +4473,8 @@ async function buildTrendChart(td, n) {
       {
         label: SKIPPED_CAT.label,
         data: skippedData,
-        borderColor: SKIPPED_CAT.color,
-        backgroundColor: SKIPPED_CAT.color + '33',
+        borderColor: skippedHex,
+        backgroundColor: hexToRgba(skippedHex, 0.2),
         tension: 0.3,
         pointRadius: 3,
         borderWidth: 2,
@@ -4269,8 +4504,8 @@ async function buildTrendChart(td, n) {
       ...allChartCats.map(c => ({
         label: c.label,
         data: weekData[c.id],
-        borderColor: c.color,
-        backgroundColor: c.color + '33',
+        borderColor: catHex[c.id],
+        backgroundColor: hexToRgba(catHex[c.id], 0.2),
         tension: 0.3,
         pointRadius: 3,
         borderWidth: 2,
@@ -4278,8 +4513,8 @@ async function buildTrendChart(td, n) {
       {
         label: SKIPPED_CAT.label,
         data: skippedData,
-        borderColor: SKIPPED_CAT.color,
-        backgroundColor: SKIPPED_CAT.color + '33',
+        borderColor: skippedHex,
+        backgroundColor: hexToRgba(skippedHex, 0.2),
         tension: 0.3,
         pointRadius: 3,
         borderWidth: 2,
@@ -4287,6 +4522,10 @@ async function buildTrendChart(td, n) {
       },
     ];
   }
+
+  const legendColor = cssVar('--chart-legend');
+  const tickColor   = cssVar('--chart-tick');
+  const gridColor   = cssVar('--chart-grid');
 
   _chartInstance = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -4297,18 +4536,18 @@ async function buildTrendChart(td, n) {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
-          labels: { color: '#999', font: { size: 11 }, boxWidth: 12, padding: 10 }
+          labels: { color: legendColor, font: { size: 11 }, boxWidth: 12, padding: 10 }
         }
       },
       scales: {
         x: {
-          ticks: { color: '#666', font: { size: 11 } },
-          grid: { color: '#2d2d2d' }
+          ticks: { color: tickColor, font: { size: 11 } },
+          grid: { color: gridColor }
         },
         y: {
           beginAtZero: true,
-          ticks: { color: '#666', font: { size: 11 }, callback: v => v + 'h' },
-          grid: { color: '#2d2d2d' }
+          ticks: { color: tickColor, font: { size: 11 }, callback: v => v + 'h' },
+          grid: { color: gridColor }
         }
       }
     }
@@ -5167,6 +5406,24 @@ async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allL
   }
 }
 
+// Build the Appearance segmented control (System · Light · Dark).
+// Shown in every state of the Account sheet so users can always toggle.
+function appearancePanelHtml() {
+  const pref = (typeof _themePref !== 'undefined') ? _themePref : 'dark';
+  const opt = (val, label) =>
+    `<button class="appearance-seg-btn${pref === val ? ' active' : ''}" onclick="setTheme('${val}')">${label}</button>`;
+  return `
+    <div class="appearance-panel">
+      <label class="appearance-label">Appearance</label>
+      <div class="appearance-seg" role="group" aria-label="Appearance">
+        ${opt('system', 'System')}
+        ${opt('light',  'Light')}
+        ${opt('dark',   'Dark')}
+      </div>
+    </div>
+  `;
+}
+
 // ── Auth sheet UI ──────────────────────────────────────────────
 window.openAuth = function() {
   const body = document.getElementById('auth-body');
@@ -5195,7 +5452,8 @@ window.openAuth = function() {
         <button class="btn-ghost"    onclick="forcePullFromCloud()">↓ Pull cloud → local</button>
       </div>
       <div class="sync-err-msg" id="sync-sheet-err"></div>
-      <button class="btn-signout" style="margin-top:0.75rem" onclick="doSignOut()">Sign out</button>
+      ${appearancePanelHtml()}
+      <button class="btn-signout" style="margin-top:0.25rem" onclick="doSignOut()">Sign out</button>
     `;
   } else if (pendingRedirect) {
     body.innerHTML = `
@@ -5204,6 +5462,7 @@ window.openAuth = function() {
         <p style="color:var(--text2);font-size:0.88rem;margin-bottom:1rem">Completing sign-in…</p>
         <button class="btn-ghost" onclick="cancelRedirect()">Cancel</button>
       </div>
+      ${appearancePanelHtml()}
     `;
   } else {
     body.innerHTML = `
@@ -5213,6 +5472,7 @@ window.openAuth = function() {
         Continue with Google
       </button>
       <div class="auth-error" id="auth-error" style="display:none"></div>
+      ${appearancePanelHtml()}
     `;
   }
   openSheet('sheet-auth');
@@ -5647,6 +5907,55 @@ function autoLogSleep() {
   }
   if (changed) saveLocal(SK.BLOCKS, blocks);
 }
+
+// ── Theme (Appearance) ────────────────────────────────────────
+// Values: "dark" | "light" | "system" (default dark).
+const THEME_KEY = 'dayos_theme';
+let _themePref = (localStorage.getItem(THEME_KEY) || 'dark');
+if (!['dark', 'light', 'system'].includes(_themePref)) _themePref = 'dark';
+
+const _prefersLightMQ = window.matchMedia('(prefers-color-scheme: light)');
+
+function resolveTheme(pref) {
+  if (pref === 'system') return _prefersLightMQ.matches ? 'light' : 'dark';
+  return pref;
+}
+
+function applyTheme(pref) {
+  const effective = resolveTheme(pref);
+  document.documentElement.setAttribute('data-theme', effective);
+  // Read the active --bg token so meta theme-color always matches the active theme
+  // (iOS PWA status bar, Android chrome bar).
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if (bg) meta.setAttribute('content', bg);
+  }
+  // If a dashboard chart is currently live, rebuild it so dataset/grid colors re-read the tokens.
+  if (_chartInstance && _chartLastArgs) {
+    const { td, n } = _chartLastArgs;
+    setTimeout(() => buildTrendChart(td, n), 0);
+  }
+}
+
+window.setTheme = function(pref) {
+  if (!['dark', 'light', 'system'].includes(pref)) pref = 'dark';
+  _themePref = pref;
+  localStorage.setItem(THEME_KEY, pref);
+  applyTheme(pref);
+  // Re-render the Account sheet so the segmented control reflects the new state.
+  const sheet = document.getElementById('sheet-auth');
+  if (sheet && sheet.classList.contains('open')) {
+    if (typeof openAuth === 'function') openAuth();
+  }
+};
+
+// React to OS theme changes when the user chose "system".
+_prefersLightMQ.addEventListener?.('change', () => {
+  if (_themePref === 'system') applyTheme('system');
+});
+
+applyTheme(_themePref);
 
 // ── Service Worker ────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
