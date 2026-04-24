@@ -1876,7 +1876,6 @@ let selectedProject = projects[0] || null;
 let projectCreating = false;
 let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
 let expandedSessions   = new Set();                  // sessionIds currently expanded in list view
-let sessionsLoadedFor  = new Set();                  // projectNames whose sessions we've already fetched this mount
 let tagHistory         = loadLocal(SK.TAG_HISTORY, []); // user's custom tag history (string[], all start with '#')
 // Per-form tag picker state (each form maintains its own Set so they don't collide)
 let sessionFormTags    = new Set();
@@ -2550,12 +2549,13 @@ function addToTagHistory(tags) {
 
 async function syncTagHistory() {
   if (!user) return;
-  try { await setDoc(doc(db, 'tags', user.uid), { history: tagHistory }); } catch {}
+  try { await setDoc(doc(db, 'users', user.uid, 'meta', 'tag_history'), { history: tagHistory }); }
+  catch (err) { console.error('[DayOS] Tag history sync error:', err); }
 }
 
 async function loadTagHistoryFromCloud(uid) {
   try {
-    const snap = await getDoc(doc(db, 'tags', uid));
+    const snap = await getDoc(doc(db, 'users', uid, 'meta', 'tag_history'));
     if (snap.exists()) {
       const remote = snap.data().history;
       if (Array.isArray(remote)) {
@@ -2636,12 +2636,6 @@ function renderProjects() {
          onkeydown="if(event.key==='Enter'){createProjectFromInput()} else if(event.key==='Escape'){cancelProjectCreate()}"
          onblur="createProjectFromInput()" />`
     : `<button class="proj-pill-lg new-pill" onclick="startProjectCreate()">+ new</button>`;
-
-  // Kick off lazy cloud load for this project's sessions (fires once per project per mount)
-  if (selectedProject && user && !sessionsLoadedFor.has(selectedProject)) {
-    sessionsLoadedFor.add(selectedProject);
-    loadSessionsFromCloud(user.uid, selectedProject);
-  }
 
   const content = !selectedProject
     ? `<div class="proj-empty">Create a project to get started.</div>`
@@ -2804,7 +2798,8 @@ window.deleteSession = function(sessionId, projectName) {
     }
     // Remove from cloud
     if (user) {
-      deleteDoc(doc(db, 'sessions', user.uid, projectName, sessionId)).catch(() => {});
+      deleteDoc(doc(db, 'users', user.uid, 'sessions', sessionId))
+        .catch(err => console.error('[DayOS] Session delete error:', err));
     }
     toast('✓ Session deleted');
     renderMain(true);
@@ -3141,25 +3136,36 @@ document.querySelectorAll('.sess-dur-pill').forEach(btn => {
   });
 });
 
-// Firestore: sessions/{uid}/{projectName}/{sessionId}
+// Firestore: users/{uid}/sessions/{sessionId} (flat; projectName stored as field on each doc)
 async function syncSessionDoc(s) {
   if (!user) return;
-  try { await setDoc(doc(db, 'sessions', user.uid, s.projectName, s.id), s); } catch {}
+  try { await setDoc(doc(db, 'users', user.uid, 'sessions', s.id), s); }
+  catch (err) { console.error('[DayOS] Session sync error:', err); }
 }
 
-async function loadSessionsFromCloud(uid, projectName) {
+async function loadSessionsFromCloud(uid) {
   try {
-    const snap = await getDocs(collection(db, 'sessions', uid, projectName));
+    const snap = await getDocs(collection(db, 'users', uid, 'sessions'));
     const remote = snap.docs.map(d => d.data());
-    if (!remote.length) return;
-    // Merge with local: remote wins on same id
-    const existing = sessions[projectName] || [];
+    // Merge all local sessions + remote; remote wins on same id
     const byId = {};
-    existing.forEach(s => { byId[s.id] = s; });
+    Object.values(sessions).flat().forEach(s => { byId[s.id] = s; });
     remote.forEach(s => { byId[s.id] = s; });
-    sessions[projectName] = Object.values(byId);
+    // Re-partition by projectName
+    const merged = {};
+    const remoteIds = new Set(remote.map(s => s.id));
+    const localExtras = [];
+    Object.values(byId).forEach(s => {
+      if (!s.projectName) return;
+      if (!merged[s.projectName]) merged[s.projectName] = [];
+      merged[s.projectName].push(s);
+      if (!remoteIds.has(s.id)) localExtras.push(s);
+    });
+    sessions = merged;
     saveLocal(SK.SESSIONS, sessions);
-    if (activeTab === 'projects' && selectedProject === projectName) renderMain(true);
+    // Push any local-only sessions up so cloud catches up
+    localExtras.forEach(s => syncSessionDoc(s));
+    if (activeTab === 'projects') renderMain(true);
   } catch (err) {
     console.error('[DayOS] Sessions load error:', err);
   }
@@ -3250,7 +3256,8 @@ window.deleteLearning = function(entryId) {
     learning.splice(idx, 1);
     saveLocal(SK.LEARNING, learning);
     if (user) {
-      deleteDoc(doc(db, 'learning', user.uid, 'entries', entryId)).catch(() => {});
+      deleteDoc(doc(db, 'users', user.uid, 'learning', entryId))
+        .catch(err => console.error('[DayOS] Learning delete error:', err));
     }
     toast('✓ Learning deleted');
     renderMain(true);
@@ -3384,23 +3391,28 @@ window.saveLearning = function() {
   renderMain(true);
 };
 
-// Firestore sync
+// Firestore sync — users/{uid}/learning/{id}
 async function syncLearningDoc(e) {
   if (!user) return;
-  try { await setDoc(doc(db, 'learning', user.uid, 'entries', e.id), e); } catch {}
+  try { await setDoc(doc(db, 'users', user.uid, 'learning', e.id), e); }
+  catch (err) { console.error('[DayOS] Learning sync error:', err); }
 }
 
 async function loadLearningFromCloud(uid) {
   try {
-    const snap = await getDocs(collection(db, 'learning', uid, 'entries'));
+    const snap = await getDocs(collection(db, 'users', uid, 'learning'));
     const remote = snap.docs.map(d => d.data());
-    if (!remote.length) return;
-    // Merge: remote wins on same id
+    // Merge: remote wins on same id; collect local-only for push-back
     const byId = {};
     learning.forEach(e => { byId[e.id] = e; });
     remote.forEach(e => { byId[e.id] = e; });
+    const remoteIds = new Set(remote.map(e => e.id));
+    const localExtras = learning.filter(e => !remoteIds.has(e.id));
     learning = Object.values(byId);
     saveLocal(SK.LEARNING, learning);
+    learningLoadedFromCloud = true;
+    // Push any local-only entries up so cloud catches up
+    localExtras.forEach(e => syncLearningDoc(e));
     if (activeTab === 'projects' && projectsSubTab === 'learning') renderMain(true);
   } catch (err) {
     console.error('[DayOS] Learning load error:', err);
@@ -3450,15 +3462,16 @@ window.createProjectFromInput = function() {
   renderMain();
 };
 
-// Firestore: single doc at projects/{uid} with field list: string[]
+// Firestore: single doc at users/{uid}/meta/projects with field list: string[]
 async function syncProjectsDoc() {
   if (!user) return;
-  try { await setDoc(doc(db, 'projects', user.uid), { list: projects }); } catch {}
+  try { await setDoc(doc(db, 'users', user.uid, 'meta', 'projects'), { list: projects }); }
+  catch (err) { console.error('[DayOS] Projects sync error:', err); }
 }
 
 async function loadProjectsFromCloud(uid) {
   try {
-    const snap = await getDoc(doc(db, 'projects', uid));
+    const snap = await getDoc(doc(db, 'users', uid, 'meta', 'projects'));
     if (snap.exists()) {
       const remote = snap.data().list;
       if (Array.isArray(remote) && remote.length > 0) {
@@ -4744,6 +4757,8 @@ function setAuthError(msg) {
 
 // ── Firestore batch write (handles >500 docs by splitting) ────
 async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allLifeRatings = {}, allEodNotes = {}) {
+  // Sessions flatten: {projectName: [Session]} → flat array
+  const allSessions = Object.values(sessions).flat();
   const ops = [
     ...allBlocks.map(b   => ({ ref: doc(db, 'users', uid, 'blocks',   b.id), data: b })),
     ...allCaptures.map(c => ({ ref: doc(db, 'users', uid, 'captures', c.id), data: c })),
@@ -4756,6 +4771,10 @@ async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allL
     ...Object.entries(allEodNotes).map(([date, text]) => ({
       ref: doc(db, 'users', uid, 'eod', date), data: { text }
     })),
+    ...allSessions.map(s => ({ ref: doc(db, 'users', uid, 'sessions', s.id), data: s })),
+    ...learning.map(e    => ({ ref: doc(db, 'users', uid, 'learning', e.id), data: e })),
+    { ref: doc(db, 'users', uid, 'meta', 'projects'),     data: { list: projects } },
+    { ref: doc(db, 'users', uid, 'meta', 'tag_history'),  data: { history: tagHistory } },
   ];
   const CHUNK = 400;
   for (let i = 0; i < ops.length; i += CHUNK) {
@@ -4961,9 +4980,12 @@ async function initialSync(uid) {
   setSyncStatus('syncing');
   const localBlocksBefore   = blocks.length;
   const localCapturesBefore = captures.length;
-  // Load projects list + tag history in parallel (separate root collections)
+  // Load projects list, tag history, sessions, and learning in parallel
+  // (each is self-contained — handles its own merge + push-back-of-local-extras)
   loadProjectsFromCloud(uid);
   loadTagHistoryFromCloud(uid);
+  loadSessionsFromCloud(uid);
+  loadLearningFromCloud(uid);
   try {
     const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
