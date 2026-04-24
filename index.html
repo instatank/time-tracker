@@ -1914,7 +1914,6 @@ let tombstonesLearning  = loadLocal(SK.TOMBSTONES_LEARNING, {}); // { id: ts }
 let projectsSubTab      = 'projects';                  // 'projects' | 'learning'
 let learningFilter      = 'all';                       // 'all' | a tag e.g. '#ai'
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
-let learningLoadedFromCloud = false;
 let selLearningType     = '';                          // current form source type
 let learningFormNotesOpen = false;                     // whether the "Full notes" textarea is expanded in the form
 let editingLearningId   = null;
@@ -3237,12 +3236,6 @@ const LEARNING_TYPES = ['Course', 'Book', 'Podcast', 'Video', 'Article', 'Other'
 const LEARNING_FILTER_PILLS = ['#ai', '#trading', '#building', '#uot', '#mindset'];
 
 function renderLearningSub() {
-  // Lazy-load from cloud once per mount
-  if (user && !learningLoadedFromCloud) {
-    learningLoadedFromCloud = true;
-    loadLearningFromCloud(user.uid);
-  }
-
   // Filter pill row (neutral gray pills with blue-accent active state — same as project pills)
   const pills = ['all', ...LEARNING_FILTER_PILLS].map(f => {
     const active = learningFilter === f;
@@ -3500,7 +3493,6 @@ async function loadLearningFromCloud(uid) {
     });
     learning = Object.values(byId);
     saveLocal(SK.LEARNING, learning);
-    learningLoadedFromCloud = true;
     localExtras.forEach(e => syncLearningDoc(e));
     if (activeTab === 'projects' && projectsSubTab === 'learning') renderMain(true);
   } catch (err) {
