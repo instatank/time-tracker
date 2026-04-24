@@ -622,6 +622,63 @@ html, body {
 .new-session-btn:hover  { opacity: 0.92; }
 .new-session-btn:active { opacity: 0.82; transform: scale(0.99); }
 
+/* ── + New Session row (button 2/3 left · search 1/3 right) ──── */
+.proj-actions-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  align-items: stretch;
+}
+.proj-actions-row .new-session-btn {
+  flex: 2;
+  margin-bottom: 0;
+}
+.proj-search {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+.proj-search input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0 2rem 0 2rem;     /* left pad for icon, right pad for clear */
+  color: var(--text);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.proj-search input::placeholder { color: var(--text3); }
+.proj-search input:focus { border-color: var(--border2); }
+.proj-search .search-icon {
+  position: absolute;
+  left: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text3);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+.proj-search .search-clear {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.2rem;
+  line-height: 1;
+  display: none;
+}
+.proj-search .search-clear.visible { display: block; }
+.proj-search .search-clear:hover { color: var(--text2); }
+
 /* ── Session cards ───────────────────────────────────────────── */
 .session-card {
   background: var(--surface);
@@ -651,6 +708,17 @@ html, body {
 .session-date {
   color: var(--text);
   font-weight: 500;
+}
+.session-proj-badge {
+  font-size: 0.62rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(59,130,246,0.12);
+  color: var(--accent);
+  border: 1px solid rgba(59,130,246,0.35);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
 }
 .session-dur {
   color: var(--text2);
@@ -796,41 +864,37 @@ html, body {
 .review-chip.chip-pending { background: #2a1a08; color: #d4922a; }
 .review-chip.chip-learned { background: #1e1440; color: #8b7fdd; }
 
-/* Grouped review display (saved session cards, expanded) */
-.review-group { margin-top: 0.5rem; }
+/* Grouped review display (saved session cards, expanded) — tight, zero dead-space */
+.review-group {
+  margin: 0;
+  padding: 0;
+  line-height: 1.4;
+  white-space: normal;     /* override the pre-wrap on .session-section */
+}
+.review-group + .review-group { margin-top: 2px; }  /* hair-thin separator between groups */
 .review-group-label {
-  display: block;
-  font-size: 0.68rem;
-  font-weight: 600;
+  display: inline;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.25rem;
+  letter-spacing: 0.04em;
+  margin-right: 0.45rem;
 }
 .review-group.done    .review-group-label { color: #7bc44a; }
 .review-group.pending .review-group-label { color: #d4922a; }
 .review-group.learned .review-group-label { color: #8b7fdd; }
-.review-group ul {
-  margin: 0;
-  padding-left: 1.1rem;
-  list-style: disc;
-}
-.review-group li {
+.review-items {
   font-size: 0.86rem;
   color: var(--text);
-  line-height: 1.45;
-  padding: 0.05rem 0;
 }
-.review-group.done    li::marker { color: #7bc44a; }
-.review-group.pending li::marker { color: #d4922a; }
-.review-group.learned li::marker { color: #8b7fdd; }
 .review-extra {
-  margin-top: 0.5rem;
-  padding-top: 0.4rem;
+  margin-top: 6px;
+  padding-top: 5px;
   border-top: 1px dashed var(--border);
   font-size: 0.82rem;
   color: var(--text2);
   white-space: pre-wrap;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 .session-field-label.neutral { color: var(--text2); }
 
@@ -1627,17 +1691,9 @@ select option { background: var(--surface2); }
   <div class="sheet-title" id="block-sheet-title">Log Block</div>
   <div class="sheet-body">
     <div class="field">
-      <div style="display:flex;gap:0.4rem;align-items:center;">
-        <select id="f-time-hour" style="flex:1;"></select>
-        <span style="color:var(--text);font-weight:600;">:</span>
-        <select id="f-time-min" style="flex:1;">
-          <option value="00">00</option>
-          <option value="15">15</option>
-          <option value="30">30</option>
-          <option value="45">45</option>
-        </select>
-      </div>
-      <input type="hidden" id="f-time">
+      <!-- Native time picker: one tap opens a combined hour+minute drum on mobile.
+           step="900" constrains mobile pickers to 15-min increments; JS snaps on blur for desktop. -->
+      <input type="time" id="f-time" step="900" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.7rem;color:var(--text);font-size:0.95rem;font-variant-numeric:tabular-nums;outline:none" />
     </div>
     <div class="field">
       <div class="pill-row">
@@ -1883,8 +1939,23 @@ let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { habit_sta
 })();
 let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
 let projects        = loadLocal(SK.PROJECTS, DEFAULT_PROJECTS.slice()); // string[]
-let selectedProject = projects[0] || null;
+// `null` = "All" (not "empty state"). Default to the project of the most recent session
+// across all projects — so the pill you last worked under auto-selects on load. Falls
+// back to All if there are no sessions yet.
+let selectedProject = (function computeDefaultSelectedProject() {
+  let latestTime = '';
+  let latestProject = null;
+  for (const name of Object.keys(sessions || {})) {
+    for (const s of sessions[name] || []) {
+      const t = s.createdAt || s.date || '';
+      if (t > latestTime) { latestTime = t; latestProject = name; }
+    }
+  }
+  // Only honour the computed default if that project still exists in the list
+  return (latestProject && projects.includes(latestProject)) ? latestProject : null;
+})();
 let projectCreating = false;
+let projectSessionSearch = '';                       // free-text filter for session list
 let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
 let expandedSessions   = new Set();                  // sessionIds currently expanded in list view
 let tagHistory         = loadLocal(SK.TAG_HISTORY, []); // user's custom tag history (string[], all start with '#')
@@ -1906,6 +1977,7 @@ let tombstonesSessions  = loadLocal(SK.TOMBSTONES_SESSIONS, {}); // { id: ts }
 let tombstonesLearning  = loadLocal(SK.TOMBSTONES_LEARNING, {}); // { id: ts }
 let projectsSubTab      = 'projects';                  // 'projects' | 'learning'
 let learningFilter      = 'all';                       // 'all' | a tag e.g. '#ai'
+let learningSearch      = '';                          // free-text filter for learning list
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
 let selLearningType     = '';                          // current form source type
 let learningFormNotesOpen = false;                     // whether the "Full notes" textarea is expanded in the form
@@ -2641,6 +2713,9 @@ function renderProjects() {
   }
 
   // ── Projects sub-tab (original) ──
+  // "All" pill first, then each project, then "+ new"
+  const allPill = `<button class="proj-pill-lg ${selectedProject === null ? 'active' : ''}" onclick="selectProject(null)">All</button>`;
+
   const pills = projects.map(p => `
     <button class="proj-pill-lg ${p === selectedProject ? 'active' : ''}"
             onclick="selectProject('${esc(p).replace(/'/g, "\\'")}')">${esc(p)}</button>
@@ -2653,13 +2728,15 @@ function renderProjects() {
          onblur="createProjectFromInput()" />`
     : `<button class="proj-pill-lg new-pill" onclick="startProjectCreate()">+ new</button>`;
 
-  const content = !selectedProject
+  // Empty state only when there are literally no projects yet
+  const content = (projects.length === 0)
     ? `<div class="proj-empty">Create a project to get started.</div>`
     : renderSessionsList(selectedProject);
 
   return `<div class="view">
     ${toggle}
     <div class="proj-scroller">
+      ${allPill}
       ${pills}
       ${newPill}
     </div>
@@ -2673,18 +2750,61 @@ window.setProjectsSubTab = function(t) {
 };
 
 // ── Session list + cards ─────────────────────────────────────
+// projectName === null  → "All": aggregate sessions across every project
+// projectName === 'Foo' → only that project's sessions
 function renderSessionsList(projectName) {
-  const list = (sessions[projectName] || []).slice().sort((a, b) =>
-    (b.createdAt || '').localeCompare(a.createdAt || '')
-  );
+  let list;
+  if (projectName === null) {
+    list = Object.values(sessions).flat();
+  } else {
+    list = (sessions[projectName] || []).slice();
+  }
+  list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  // Free-text search across before/during/after, tags, projectName
+  const q = projectSessionSearch.trim().toLowerCase();
+  if (q) {
+    list = list.filter(s => {
+      const hay = [
+        s.before || '', s.during || '', s.after || '',
+        s.projectName || '',
+        (s.tags || []).join(' '),
+        (s.done || []).join(' '), (s.pending || []).join(' '), (s.learned || []).join(' '),
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  const hasSearch = projectSessionSearch.length > 0;
+  const emptyMsg = q
+    ? `No sessions match <strong style="color:var(--text)">"${esc(projectSessionSearch)}"</strong>.`
+    : (projectName === null
+        ? 'No sessions yet. Pick a project above, then tap + New Session.'
+        : `No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.`);
+
   const cards = list.length
     ? list.map(renderSessionCard).join('')
-    : `<div class="proj-empty" style="padding:1.5rem 1rem">No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.</div>`;
+    : `<div class="proj-empty" style="padding:1.5rem 1rem">${emptyMsg}</div>`;
+
   return `
-    <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
+    <div class="proj-actions-row">
+      <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
+      <div class="proj-search">
+        <span class="search-icon">&#128269;</span>
+        <input type="text" placeholder="Search…" value="${esc(projectSessionSearch)}" oninput="setProjSearch(this.value)" />
+        <button class="search-clear ${hasSearch ? 'visible' : ''}" onclick="setProjSearch('')">&times;</button>
+      </div>
+    </div>
     ${cards}
   `;
 }
+
+window.setProjSearch = function(q) {
+  projectSessionSearch = q;
+  renderMain(true);                        // preserve scroll
+  const input = document.querySelector('.proj-search input');
+  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+};
 
 // Render the Review body — grouped (Done / Pending / Learned) when structured items exist;
 // falls back to raw after text. Legacy sessions without stored arrays are parsed on the fly.
@@ -2703,23 +2823,15 @@ function renderReviewBody(s) {
     extras = p.extras;
   }
   const groups = [];
+  const joinItems = xs => xs.map(esc).join(' · ');
   if (done && done.length) {
-    groups.push(`<div class="review-group done">
-      <span class="review-group-label">✓ Done</span>
-      <ul>${done.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
-    </div>`);
+    groups.push(`<div class="review-group done"><span class="review-group-label">✓ Done</span><span class="review-items">${joinItems(done)}</span></div>`);
   }
   if (pending && pending.length) {
-    groups.push(`<div class="review-group pending">
-      <span class="review-group-label">⏳ Pending</span>
-      <ul>${pending.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
-    </div>`);
+    groups.push(`<div class="review-group pending"><span class="review-group-label">⏳ Pending</span><span class="review-items">${joinItems(pending)}</span></div>`);
   }
   if (learned && learned.length) {
-    groups.push(`<div class="review-group learned">
-      <span class="review-group-label">💡 Learned</span>
-      <ul>${learned.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
-    </div>`);
+    groups.push(`<div class="review-group learned"><span class="review-group-label">💡 Learned</span><span class="review-items">${joinItems(learned)}</span></div>`);
   }
   // Structured categories + any unstructured leftover lines
   if (groups.length) {
@@ -2775,6 +2887,7 @@ function renderSessionCard(s) {
       <div class="session-card-hdr">
         <div class="session-hdr-left">
           <span class="session-date">${dateLabel}</span>
+          ${selectedProject === null ? `<span class="session-proj-badge">${esc(s.projectName || '')}</span>` : ''}
           ${tagPills}
         </div>
         <div class="card-actions">
@@ -2840,7 +2953,7 @@ window.toggleSessionExpand = function(id) {
 let selSessionDur = 60;  // default
 
 window.openNewSession = function() {
-  if (!selectedProject) { toast('Select a project first'); return; }
+  if (!selectedProject) { toast('Pick a project above to log a session'); return; }
   editingSessionId = null;
   editingSessionProject = null;
   // Reset form
@@ -3237,25 +3350,57 @@ function renderLearningSub() {
       onclick="setLearningFilter('${f}')">${esc(label)}</button>`;
   }).join('');
 
-  // Filter entries
-  const filtered = learning
-    .filter(e => learningFilter === 'all' || (e.tags || []).includes(learningFilter))
-    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  // Filter entries (tag filter first)
+  let filtered = learning
+    .filter(e => learningFilter === 'all' || (e.tags || []).includes(learningFilter));
+
+  // Free-text search across sourceName, sourceType, takeaway, fullNotes, tags
+  const q = learningSearch.trim().toLowerCase();
+  if (q) {
+    filtered = filtered.filter(e => {
+      const hay = [
+        e.sourceName || '', e.sourceType || '',
+        e.takeaway || '', e.fullNotes || '',
+        (e.tags || []).join(' '),
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  filtered = filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  const hasSearch = learningSearch.length > 0;
+  const emptyMsg = q
+    ? `No entries match <strong style="color:var(--text)">"${esc(learningSearch)}"</strong>.`
+    : (learning.length
+        ? `No entries matching <strong style="color:var(--text)">${esc(learningFilter)}</strong>.`
+        : `No learning entries yet.<br>Tap + Log Learning to start capturing takeaways.`);
 
   const cards = filtered.length
     ? filtered.map(renderLearningCard).join('')
-    : `<div class="learning-empty">
-         ${learning.length
-           ? `No entries matching <strong style="color:var(--text)">${esc(learningFilter)}</strong>.`
-           : `No learning entries yet.<br>Tap + Log Learning to start capturing takeaways.`}
-       </div>`;
+    : `<div class="learning-empty">${emptyMsg}</div>`;
 
   return `
     <div class="proj-scroller">${pills}</div>
-    <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
+    <div class="proj-actions-row">
+      <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
+      <div class="proj-search">
+        <span class="search-icon">&#128269;</span>
+        <input type="text" placeholder="Search…" value="${esc(learningSearch)}" oninput="setLearningSearch(this.value)" />
+        <button class="search-clear ${hasSearch ? 'visible' : ''}" onclick="setLearningSearch('')">&times;</button>
+      </div>
+    </div>
     ${cards}
   `;
 }
+
+window.setLearningSearch = function(q) {
+  learningSearch = q;
+  renderMain(true);
+  const input = document.querySelectorAll('.proj-search input')[0];
+  // In learning sub-tab there's only one .proj-search input (the other is on the sessions view)
+  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+};
 
 function renderLearningCard(e) {
   const expanded = expandedLearning.has(e.id);
@@ -3555,8 +3700,10 @@ async function loadProjectsFromCloud(uid) {
         const extras = projects.filter(p => !seen.has(p.toLowerCase()));
         projects = [...remote, ...extras];
         saveLocal(SK.PROJECTS, projects);
-        if (!selectedProject || !projects.includes(selectedProject)) {
-          selectedProject = projects[0] || null;
+        // Only reset if a concrete project was selected but is no longer in the list.
+        // `null` now means "All" — leave it alone.
+        if (selectedProject && !projects.includes(selectedProject)) {
+          selectedProject = null;
         }
         if (extras.length > 0) syncProjectsDoc();
         if (activeTab === 'projects') renderMain();
@@ -4210,26 +4357,31 @@ function renderWeeklyReview() {
   </div>`;
 }
 
-// ── Time selects: populate hours + sync hidden input ──────────
-(function initTimeSelects() {
-  const hSel = document.getElementById('f-time-hour');
-  hSel.innerHTML = Array.from({length:24}, (_, i) => {
-    const v = String(i).padStart(2,'0');
-    return `<option value="${v}">${v}</option>`;
-  }).join('');
-  const mSel = document.getElementById('f-time-min');
-  const hidden = document.getElementById('f-time');
-  const sync = () => { hidden.value = `${hSel.value}:${mSel.value}`; };
-  hSel.addEventListener('change', sync);
-  mSel.addEventListener('change', sync);
+// ── Time input: snap to 15-min increments (safety net for desktop where step= is cosmetic) ──
+(function initTimeSnap() {
+  const inp = document.getElementById('f-time');
+  if (!inp) return;
+  const snap = () => {
+    const v = inp.value;                                    // "HH:MM" or ""
+    if (!v) return;
+    const [hRaw, mRaw] = v.split(':');
+    let h = parseInt(hRaw || '0') || 0;
+    let m = parseInt(mRaw || '0') || 0;
+    // Snap minutes to nearest 15, carrying the hour if we land on 60
+    let snappedM = Math.round(m / 15) * 15;
+    if (snappedM === 60) { snappedM = 0; h = (h + 1) % 24; }
+    const out = `${String(h).padStart(2,'0')}:${String(snappedM).padStart(2,'0')}`;
+    if (out !== v) inp.value = out;
+  };
+  inp.addEventListener('blur', snap);
+  inp.addEventListener('change', snap);
 })();
 
 function setTimeValue(timeStr) {
   const [hh, mm] = (timeStr || '00:00').split(':');
-  const snapped = String(Math.round(parseInt(mm || 0) / 15) * 15 % 60).padStart(2, '0');
-  document.getElementById('f-time-hour').value = hh;
-  document.getElementById('f-time-min').value = snapped;
-  document.getElementById('f-time').value = `${hh}:${snapped}`;
+  const snappedM = Math.round(parseInt(mm || '0') / 15) * 15 % 60;
+  const val = `${String(parseInt(hh || '0') || 0).padStart(2,'0')}:${String(snappedM).padStart(2,'0')}`;
+  document.getElementById('f-time').value = val;
 }
 
 // ── Sheet: Log Block ──────────────────────────────────────────
