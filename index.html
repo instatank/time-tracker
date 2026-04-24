@@ -1865,7 +1865,7 @@ const CTYPES = [
 // Legacy: Insight type removed from selector but old entries still render gracefully
 const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -1905,6 +1905,12 @@ let learningTagCustomOpen = false;
 
 // ── Learning (Projects → Learning sub-tab) ────────────────────
 let learning            = loadLocal(SK.LEARNING, []); // LearningEntry[]
+// Tombstones: IDs deleted locally but whose cloud deletion may not yet be confirmed.
+// On every load-from-cloud we (a) exclude these IDs from the merged list and (b) retry
+// the delete if Firestore still has the doc. This makes deletions idempotent and
+// survives refresh-before-network-completes and offline deletes.
+let tombstonesSessions  = loadLocal(SK.TOMBSTONES_SESSIONS, {}); // { id: ts }
+let tombstonesLearning  = loadLocal(SK.TOMBSTONES_LEARNING, {}); // { id: ts }
 let projectsSubTab      = 'projects';                  // 'projects' | 'learning'
 let learningFilter      = 'all';                       // 'all' | a tag e.g. '#ai'
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
@@ -2810,6 +2816,9 @@ window.deleteSession = function(sessionId, projectName) {
     list.splice(idx, 1);
     sessions[projectName] = list;
     saveLocal(SK.SESSIONS, sessions);
+    // Record tombstone BEFORE firing cloud delete — survives refresh-before-network-completes
+    tombstonesSessions[sessionId] = Date.now();
+    saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
     // Clear back-link on any linked block (keep the block itself — it may be meaningful on Today)
     if (removed.linkedBlockId) {
       const bIdx = blocks.findIndex(b => b.id === removed.linkedBlockId);
@@ -2819,7 +2828,7 @@ window.deleteSession = function(sessionId, projectName) {
         syncBlockDoc(blocks[bIdx]);
       }
     }
-    // Remove from cloud
+    // Remove from cloud; tombstone stays until a subsequent cloud load confirms it's gone
     if (user) {
       deleteDoc(doc(db, 'users', user.uid, 'sessions', sessionId))
         .catch(err => console.error('[DayOS] Session delete error:', err));
@@ -3180,13 +3189,28 @@ async function loadSessionsFromCloud(uid) {
     const snap = await getDocs(collection(db, 'users', uid, 'sessions'));
     const remote = snap.docs.map(d => d.data());
     const remoteIds = new Set(remote.map(s => s.id));
-    // Remote is authoritative: start with all remote items
+    // Retry any tombstoned delete that Firestore still has; drop tombstones confirmed gone
+    const tombIds = Object.keys(tombstonesSessions);
+    let tombChanged = false;
+    tombIds.forEach(id => {
+      if (remoteIds.has(id)) {
+        deleteDoc(doc(db, 'users', uid, 'sessions', id))
+          .catch(err => console.error('[DayOS] Session tombstone retry error:', err));
+      } else {
+        delete tombstonesSessions[id];
+        tombChanged = true;
+      }
+    });
+    if (tombChanged) saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
+    const tombSet = new Set(Object.keys(tombstonesSessions));
+    // Remote is authoritative: start with all remote items (minus tombstoned)
     const byId = {};
-    remote.forEach(s => { byId[s.id] = s; });
+    remote.forEach(s => { if (!tombSet.has(s.id)) byId[s.id] = s; });
     // Add local items that were never synced (created offline / not yet pushed)
     // Local items that ARE synced but absent from remote were deleted on another device → drop them
     const localExtras = [];
     Object.values(sessions).flat().forEach(s => {
+      if (tombSet.has(s.id)) return;
       if (remoteIds.has(s.id)) return;
       if (s._synced) return; // synced before → deleted elsewhere → omit
       byId[s.id] = s;
@@ -3292,6 +3316,8 @@ window.deleteLearning = function(entryId) {
     if (idx === -1) { toast('Entry not found'); return; }
     learning.splice(idx, 1);
     saveLocal(SK.LEARNING, learning);
+    tombstonesLearning[entryId] = Date.now();
+    saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
     if (user) {
       deleteDoc(doc(db, 'users', user.uid, 'learning', entryId))
         .catch(err => console.error('[DayOS] Learning delete error:', err));
@@ -3446,12 +3472,27 @@ async function loadLearningFromCloud(uid) {
     const snap = await getDocs(collection(db, 'users', uid, 'learning'));
     const remote = snap.docs.map(d => d.data());
     const remoteIds = new Set(remote.map(e => e.id));
-    // Remote is authoritative: start with all remote items
+    // Retry any tombstoned delete that Firestore still has; drop tombstones confirmed gone
+    const tombIds = Object.keys(tombstonesLearning);
+    let tombChanged = false;
+    tombIds.forEach(id => {
+      if (remoteIds.has(id)) {
+        deleteDoc(doc(db, 'users', uid, 'learning', id))
+          .catch(err => console.error('[DayOS] Learning tombstone retry error:', err));
+      } else {
+        delete tombstonesLearning[id];
+        tombChanged = true;
+      }
+    });
+    if (tombChanged) saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
+    const tombSet = new Set(Object.keys(tombstonesLearning));
+    // Remote is authoritative: start with all remote items (minus tombstoned)
     const byId = {};
-    remote.forEach(e => { byId[e.id] = e; });
+    remote.forEach(e => { if (!tombSet.has(e.id)) byId[e.id] = e; });
     // Add local items never synced (created offline); drop synced items absent from remote (deleted elsewhere)
     const localExtras = [];
     learning.forEach(e => {
+      if (tombSet.has(e.id)) return;
       if (remoteIds.has(e.id)) return;
       if (e._synced) return; // synced before → deleted elsewhere → omit
       byId[e.id] = e;
