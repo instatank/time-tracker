@@ -1938,9 +1938,12 @@ let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { habit_sta
 })();
 let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
 let projects        = loadLocal(SK.PROJECTS, DEFAULT_PROJECTS.slice()); // string[]
+let projectCreating = false;
+let projectSessionSearch = '';                       // free-text filter for session list
+let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
 // `null` = "All" (not "empty state"). Default to the project of the most recent session
 // across all projects — so the pill you last worked under auto-selects on load. Falls
-// back to All if there are no sessions yet.
+// back to All if there are no sessions yet. Must run AFTER `sessions` is declared above.
 let selectedProject = (function computeDefaultSelectedProject() {
   let latestTime = '';
   let latestProject = null;
@@ -1953,9 +1956,6 @@ let selectedProject = (function computeDefaultSelectedProject() {
   // Only honour the computed default if that project still exists in the list
   return (latestProject && projects.includes(latestProject)) ? latestProject : null;
 })();
-let projectCreating = false;
-let projectSessionSearch = '';                       // free-text filter for session list
-let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
 let expandedSessions   = new Set();                  // sessionIds currently expanded in list view
 let tagHistory         = loadLocal(SK.TAG_HISTORY, []); // user's custom tag history (string[], all start with '#')
 // Per-form tag picker state (each form maintains its own Set so they don't collide)
