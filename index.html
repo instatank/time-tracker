@@ -1879,7 +1879,6 @@ import { getAuth, GoogleAuthProvider,
          onAuthStateChanged }               from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { getFirestore, collection, doc,
          getDocs, getDoc, setDoc, deleteDoc,
-         onSnapshot,
          writeBatch }                       from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 // ── Firebase ──────────────────────────────────────────────────
@@ -3289,52 +3288,52 @@ async function syncSessionDoc(s) {
   } catch (err) { console.error('[DayOS] Session sync error:', err); }
 }
 
-// Real-time subscription: Firestore pushes all changes (added/modified/removed) to the client.
-// Deletes from ANY device instantly update local state — no polling, no merge races.
-// Tombstones are kept only as a short-term guard against local writes (setDoc) landing
-// after a local delete on the same device.
-let _sessionsUnsubscribe = null;
-function subscribeSessions(uid) {
-  if (_sessionsUnsubscribe) _sessionsUnsubscribe();
-  _sessionsUnsubscribe = onSnapshot(
-    collection(db, 'users', uid, 'sessions'),
-    (snap) => {
-      const tombSet = new Set(Object.keys(tombstonesSessions));
-      const remoteIds = new Set();
-      const byProject = {};
-      snap.docs.forEach(d => {
-        const s = d.data();
-        remoteIds.add(s.id);
-        if (tombSet.has(s.id)) {
-          // Cloud still has a locally-deleted doc — retry the delete
-          deleteDoc(doc(db, 'users', uid, 'sessions', s.id))
-            .catch(err => console.error('[DayOS] Session tombstone retry error:', err));
-          return;
-        }
-        if (!s.projectName) return;
-        (byProject[s.projectName] = byProject[s.projectName] || []).push(s);
-      });
-      // Preserve any local-only, unsynced items (created offline, not yet acked by cloud)
-      Object.values(sessions).flat().forEach(s => {
-        if (remoteIds.has(s.id)) return;
-        if (tombSet.has(s.id)) return;
-        if (s._synced) return;
-        if (!s.projectName) return;
-        (byProject[s.projectName] = byProject[s.projectName] || []).push(s);
-        syncSessionDoc(s);
-      });
-      // Drop tombstones confirmed gone from cloud
-      let tombChanged = false;
-      Object.keys(tombstonesSessions).forEach(id => {
-        if (!remoteIds.has(id)) { delete tombstonesSessions[id]; tombChanged = true; }
-      });
-      if (tombChanged) saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
-      sessions = byProject;
-      saveLocal(SK.SESSIONS, sessions);
-      if (activeTab === 'projects') renderMain(true);
-    },
-    (err) => console.error('[DayOS] Sessions subscription error:', err)
-  );
+async function loadSessionsFromCloud(uid) {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'sessions'));
+    const remote = snap.docs.map(d => d.data());
+    const remoteIds = new Set(remote.map(s => s.id));
+    // Retry any tombstoned delete that Firestore still has; drop tombstones confirmed gone
+    const tombIds = Object.keys(tombstonesSessions);
+    let tombChanged = false;
+    tombIds.forEach(id => {
+      if (remoteIds.has(id)) {
+        deleteDoc(doc(db, 'users', uid, 'sessions', id))
+          .catch(err => console.error('[DayOS] Session tombstone retry error:', err));
+      } else {
+        delete tombstonesSessions[id];
+        tombChanged = true;
+      }
+    });
+    if (tombChanged) saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
+    const tombSet = new Set(Object.keys(tombstonesSessions));
+    // Remote is authoritative: start with all remote items (minus tombstoned)
+    const byId = {};
+    remote.forEach(s => { if (!tombSet.has(s.id)) byId[s.id] = s; });
+    // Add local items that were never synced (created offline / not yet pushed)
+    // Local items that ARE synced but absent from remote were deleted on another device → drop them
+    const localExtras = [];
+    Object.values(sessions).flat().forEach(s => {
+      if (tombSet.has(s.id)) return;
+      if (remoteIds.has(s.id)) return;
+      if (s._synced) return; // synced before → deleted elsewhere → omit
+      byId[s.id] = s;
+      localExtras.push(s);
+    });
+    // Re-partition by projectName
+    const merged = {};
+    Object.values(byId).forEach(s => {
+      if (!s.projectName) return;
+      if (!merged[s.projectName]) merged[s.projectName] = [];
+      merged[s.projectName].push(s);
+    });
+    sessions = merged;
+    saveLocal(SK.SESSIONS, sessions);
+    localExtras.forEach(s => syncSessionDoc(s));
+    if (activeTab === 'projects') renderMain(true);
+  } catch (err) {
+    console.error('[DayOS] Sessions load error:', err);
+  }
 }
 
 // ── Learning sub-tab ──────────────────────────────────────────
@@ -3600,43 +3599,44 @@ async function syncLearningDoc(e) {
   } catch (err) { console.error('[DayOS] Learning sync error:', err); }
 }
 
-let _learningUnsubscribe = null;
-function subscribeLearning(uid) {
-  if (_learningUnsubscribe) _learningUnsubscribe();
-  _learningUnsubscribe = onSnapshot(
-    collection(db, 'users', uid, 'learning'),
-    (snap) => {
-      const tombSet = new Set(Object.keys(tombstonesLearning));
-      const remoteIds = new Set();
-      const next = [];
-      snap.docs.forEach(d => {
-        const e = d.data();
-        remoteIds.add(e.id);
-        if (tombSet.has(e.id)) {
-          deleteDoc(doc(db, 'users', uid, 'learning', e.id))
-            .catch(err => console.error('[DayOS] Learning tombstone retry error:', err));
-          return;
-        }
-        next.push(e);
-      });
-      learning.forEach(e => {
-        if (remoteIds.has(e.id)) return;
-        if (tombSet.has(e.id)) return;
-        if (e._synced) return;
-        next.push(e);
-        syncLearningDoc(e);
-      });
-      let tombChanged = false;
-      Object.keys(tombstonesLearning).forEach(id => {
-        if (!remoteIds.has(id)) { delete tombstonesLearning[id]; tombChanged = true; }
-      });
-      if (tombChanged) saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
-      learning = next;
-      saveLocal(SK.LEARNING, learning);
-      if (activeTab === 'projects' && projectsSubTab === 'learning') renderMain(true);
-    },
-    (err) => console.error('[DayOS] Learning subscription error:', err)
-  );
+async function loadLearningFromCloud(uid) {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'learning'));
+    const remote = snap.docs.map(d => d.data());
+    const remoteIds = new Set(remote.map(e => e.id));
+    // Retry any tombstoned delete that Firestore still has; drop tombstones confirmed gone
+    const tombIds = Object.keys(tombstonesLearning);
+    let tombChanged = false;
+    tombIds.forEach(id => {
+      if (remoteIds.has(id)) {
+        deleteDoc(doc(db, 'users', uid, 'learning', id))
+          .catch(err => console.error('[DayOS] Learning tombstone retry error:', err));
+      } else {
+        delete tombstonesLearning[id];
+        tombChanged = true;
+      }
+    });
+    if (tombChanged) saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
+    const tombSet = new Set(Object.keys(tombstonesLearning));
+    // Remote is authoritative: start with all remote items (minus tombstoned)
+    const byId = {};
+    remote.forEach(e => { if (!tombSet.has(e.id)) byId[e.id] = e; });
+    // Add local items never synced (created offline); drop synced items absent from remote (deleted elsewhere)
+    const localExtras = [];
+    learning.forEach(e => {
+      if (tombSet.has(e.id)) return;
+      if (remoteIds.has(e.id)) return;
+      if (e._synced) return; // synced before → deleted elsewhere → omit
+      byId[e.id] = e;
+      localExtras.push(e);
+    });
+    learning = Object.values(byId);
+    saveLocal(SK.LEARNING, learning);
+    localExtras.forEach(e => syncLearningDoc(e));
+    if (activeTab === 'projects' && projectsSubTab === 'learning') renderMain(true);
+  } catch (err) {
+    console.error('[DayOS] Learning load error:', err);
+  }
 }
 
 window.selectProject = function(name) {
@@ -5213,15 +5213,12 @@ async function initialSync(uid) {
   const localCapturesBefore = captures.length;
   // Load projects list, tag history, sessions, and learning in parallel, but AWAIT sessions
   // and learning before the batch write below. Otherwise the batch write re-uploads whatever
-  // Projects + tag history still use a one-shot pull (they're tiny, rarely change).
+  // is in the `sessions`/`learning` globals at that instant (the stale localStorage copy),
+  // which can resurrect items that were deleted on this device.
   loadProjectsFromCloud(uid);
   loadTagHistoryFromCloud(uid);
-  // Sessions + learning use real-time Firestore subscriptions. The snapshot handler
-  // replaces local state with the cloud view (tombstone-filtered) on every change —
-  // so deletes from any device propagate instantly, and local deletes become
-  // the single source of truth the moment the cloud acks them.
-  subscribeSessions(uid);
-  subscribeLearning(uid);
+  const sessLoad  = loadSessionsFromCloud(uid);
+  const learnLoad = loadLearningFromCloud(uid);
   try {
     const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
@@ -5255,7 +5252,9 @@ async function initialSync(uid) {
     eodNotes    = mergedEodNotes;
     saveAll();
 
-    // Sessions + learning are live-subscribed; the snapshot handler owns their state.
+    // Wait for sessions + learning cloud merges so the batch write below uses the post-merge
+    // (tombstone-filtered) state — NOT the raw localStorage state that may still hold zombies.
+    await Promise.allSettled([sessLoad, learnLoad]);
 
     // Upload everything (including local-only items) to Firestore
     await firestoreBatchWrite(uid, mergedBlocks, mergedCaptures, mergedRatings, mergedLifeRatings, mergedEodNotes);
@@ -5319,9 +5318,6 @@ onAuthStateChanged(auth, u => {
     render(); // show app immediately — don't block on sync
     initialSync(u.uid); // sync in background
   } else {
-    // Tear down live subscriptions when the user signs out.
-    if (_sessionsUnsubscribe) { _sessionsUnsubscribe(); _sessionsUnsubscribe = null; }
-    if (_learningUnsubscribe) { _learningUnsubscribe(); _learningUnsubscribe = null; }
     setSyncStatus('idle');
     render();
   }
