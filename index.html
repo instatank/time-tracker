@@ -2911,11 +2911,13 @@ window.sessionCardTap = function(sessionId, projectName) {
 };
 
 window.deleteSession = function(sessionId, projectName) {
+  console.log('[DEL-SESS] click on id=', sessionId, 'project=', projectName);
   armOrConfirmDelete('sess-' + sessionId, () => {
+    console.log('[DEL-SESS] CONFIRMED');
     // Remove from local
     const list = sessions[projectName] || [];
     const idx = list.findIndex(x => x.id === sessionId);
-    if (idx === -1) { toast('Session not found'); return; }
+    if (idx === -1) { console.warn('[DEL-SESS] session not found!'); toast('Session not found'); return; }
     const removed = list[idx];
     list.splice(idx, 1);
     sessions[projectName] = list;
@@ -3443,16 +3445,22 @@ window.learningCardTap = function(entryId) {
 };
 
 window.deleteLearning = function(entryId) {
+  console.log('[DEL-LEARN] click on id=', entryId);
   armOrConfirmDelete('learn-' + entryId, () => {
+    console.log('[DEL-LEARN] CONFIRMED. Local before:', learning.length);
     const idx = learning.findIndex(e => e.id === entryId);
-    if (idx === -1) { toast('Entry not found'); return; }
+    if (idx === -1) { console.warn('[DEL-LEARN] entry not found in learning array!'); toast('Entry not found'); return; }
     learning.splice(idx, 1);
     saveLocal(SK.LEARNING, learning);
     tombstonesLearning[entryId] = Date.now();
     saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
+    console.log('[DEL-LEARN] spliced + tombstoned. Local after:', learning.length, 'tombstones:', Object.keys(tombstonesLearning));
     if (user) {
       deleteDoc(doc(db, 'users', user.uid, 'learning', entryId))
-        .catch(err => console.error('[DayOS] Learning delete error:', err));
+        .then(() => console.log('[DEL-LEARN] cloud delete OK for', entryId))
+        .catch(err => console.error('[DEL-LEARN] cloud delete FAILED:', err.code, err.message));
+    } else {
+      console.warn('[DEL-LEARN] no user signed in — cloud delete skipped');
     }
     toast('✓ Learning deleted');
     renderMain(true);
@@ -3601,9 +3609,11 @@ async function syncLearningDoc(e) {
 
 async function loadLearningFromCloud(uid) {
   try {
+    console.log('[LOAD-LEARN] fetching from cloud…');
     const snap = await getDocs(collection(db, 'users', uid, 'learning'));
     const remote = snap.docs.map(d => d.data());
     const remoteIds = new Set(remote.map(e => e.id));
+    console.log('[LOAD-LEARN] remote count:', remote.length, 'tombstones:', Object.keys(tombstonesLearning));
     // Retry any tombstoned delete that Firestore still has; drop tombstones confirmed gone
     const tombIds = Object.keys(tombstonesLearning);
     let tombChanged = false;
@@ -3632,6 +3642,7 @@ async function loadLearningFromCloud(uid) {
     });
     learning = Object.values(byId);
     saveLocal(SK.LEARNING, learning);
+    console.log('[LOAD-LEARN] merged. Final learning count:', learning.length, 'localExtras:', localExtras.length);
     localExtras.forEach(e => syncLearningDoc(e));
     if (activeTab === 'projects' && projectsSubTab === 'learning') renderMain(true);
   } catch (err) {
