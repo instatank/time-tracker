@@ -3309,11 +3309,18 @@ async function loadSessionsFromCloud(uid) {
     });
     if (tombChanged) saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
     const tombSet = new Set(Object.keys(tombstonesSessions));
-    // Remote is authoritative: start with all remote items (minus tombstoned)
+    // Remote is authoritative: start with all remote items (minus tombstoned).
+    // Mark each as _synced=true — this is the semantic "item has been observed in cloud",
+    // so on a future load if it's missing from remote we KNOW it was deleted elsewhere
+    // and must NOT be preserved+resynced by the local-scan fallback below.
     const byId = {};
-    remote.forEach(s => { if (!tombSet.has(s.id)) byId[s.id] = s; });
-    // Add local items that were never synced (created offline / not yet pushed)
-    // Local items that ARE synced but absent from remote were deleted on another device → drop them
+    remote.forEach(s => {
+      if (tombSet.has(s.id)) return;
+      s._synced = true;
+      byId[s.id] = s;
+    });
+    // Add local items that were never synced (created offline / not yet pushed).
+    // Local items that ARE synced but absent from remote were deleted on another device → drop them.
     const localExtras = [];
     Object.values(sessions).flat().forEach(s => {
       if (tombSet.has(s.id)) return;
@@ -3628,9 +3635,16 @@ async function loadLearningFromCloud(uid) {
     });
     if (tombChanged) saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
     const tombSet = new Set(Object.keys(tombstonesLearning));
-    // Remote is authoritative: start with all remote items (minus tombstoned)
+    // Remote is authoritative: start with all remote items (minus tombstoned).
+    // Mark each as _synced=true so the local-scan fallback below can reliably
+    // distinguish "seen-in-cloud-but-now-gone" (deleted elsewhere, omit) from
+    // "never-synced-unsynced-local" (offline-created, keep + push up).
     const byId = {};
-    remote.forEach(e => { if (!tombSet.has(e.id)) byId[e.id] = e; });
+    remote.forEach(e => {
+      if (tombSet.has(e.id)) return;
+      e._synced = true;
+      byId[e.id] = e;
+    });
     // Add local items never synced (created offline); drop synced items absent from remote (deleted elsewhere)
     const localExtras = [];
     learning.forEach(e => {
