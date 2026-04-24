@@ -4847,7 +4847,11 @@ function setAuthError(msg) {
 // ── Firestore batch write (handles >500 docs by splitting) ────
 async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allLifeRatings = {}, allEodNotes = {}) {
   // Sessions flatten: {projectName: [Session]} → flat array
-  const allSessions = Object.values(sessions).flat();
+  // Drop tombstoned IDs so a batch write can never resurrect a locally-deleted item
+  const sessTomb = new Set(Object.keys(tombstonesSessions));
+  const learnTomb = new Set(Object.keys(tombstonesLearning));
+  const allSessions = Object.values(sessions).flat().filter(s => !sessTomb.has(s.id));
+  const allLearning = learning.filter(e => !learnTomb.has(e.id));
   const ops = [
     ...allBlocks.map(b   => ({ ref: doc(db, 'users', uid, 'blocks',   b.id), data: b })),
     ...allCaptures.map(c => ({ ref: doc(db, 'users', uid, 'captures', c.id), data: c })),
@@ -4861,7 +4865,7 @@ async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allL
       ref: doc(db, 'users', uid, 'eod', date), data: { text }
     })),
     ...allSessions.map(s => ({ ref: doc(db, 'users', uid, 'sessions', s.id), data: s })),
-    ...learning.map(e    => ({ ref: doc(db, 'users', uid, 'learning', e.id), data: e })),
+    ...allLearning.map(e => ({ ref: doc(db, 'users', uid, 'learning', e.id), data: e })),
     { ref: doc(db, 'users', uid, 'meta', 'projects'),     data: { list: projects } },
     { ref: doc(db, 'users', uid, 'meta', 'tag_history'),  data: { history: tagHistory } },
   ];
@@ -5069,12 +5073,14 @@ async function initialSync(uid) {
   setSyncStatus('syncing');
   const localBlocksBefore   = blocks.length;
   const localCapturesBefore = captures.length;
-  // Load projects list, tag history, sessions, and learning in parallel
-  // (each is self-contained — handles its own merge + push-back-of-local-extras)
+  // Load projects list, tag history, sessions, and learning in parallel, but AWAIT sessions
+  // and learning before the batch write below. Otherwise the batch write re-uploads whatever
+  // is in the `sessions`/`learning` globals at that instant (the stale localStorage copy),
+  // which can resurrect items that were deleted on this device.
   loadProjectsFromCloud(uid);
   loadTagHistoryFromCloud(uid);
-  loadSessionsFromCloud(uid);
-  loadLearningFromCloud(uid);
+  const sessLoad  = loadSessionsFromCloud(uid);
+  const learnLoad = loadLearningFromCloud(uid);
   try {
     const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
@@ -5107,6 +5113,10 @@ async function initialSync(uid) {
     lifeRatings = mergedLifeRatings;
     eodNotes    = mergedEodNotes;
     saveAll();
+
+    // Wait for sessions + learning cloud merges so the batch write below uses the post-merge
+    // (tombstone-filtered) state — NOT the raw localStorage state that may still hold zombies.
+    await Promise.allSettled([sessLoad, learnLoad]);
 
     // Upload everything (including local-only items) to Firestore
     await firestoreBatchWrite(uid, mergedBlocks, mergedCaptures, mergedRatings, mergedLifeRatings, mergedEodNotes);
