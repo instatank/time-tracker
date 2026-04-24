@@ -3158,6 +3158,7 @@ window.saveSession = async function() {
       learned: review.learned,
       tags,
       // linkedBlockId, projectName, date, createdAt all preserved from `existing`
+      _synced: false,  // mark dirty — cleared once cloud write verifies
     };
     list[idx] = updated;
     sessions[activeProject] = list;
@@ -3193,6 +3194,7 @@ window.saveSession = async function() {
     tags,
     linkedBlockId: null,
     createdAt: nowISTIso(),
+    _synced: false,  // explicit — flipped to true after cloud verifies
   };
 
   // ── Direction 1: auto-link to an existing time block ──
@@ -3377,23 +3379,32 @@ async function loadSessionsFromCloud(uid) {
     });
     if (tombChanged) saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
     const tombSet = new Set(Object.keys(tombstonesSessions));
-    // Remote is authoritative: start with all remote items (minus tombstoned).
-    // Mark each as _synced=true — this is the semantic "item has been observed in cloud",
-    // so on a future load if it's missing from remote we KNOW it was deleted elsewhere
-    // and must NOT be preserved+resynced by the local-scan fallback below.
+    // Remote is authoritative for items we've already synced. Mark each as _synced=true
+    // so a future load can tell "observed in cloud" from "pending upload".
     const byId = {};
     remote.forEach(s => {
       if (tombSet.has(s.id)) return;
       s._synced = true;
       byId[s.id] = s;
     });
-    // Add local items that were never synced (created offline / not yet pushed).
-    // Local items that ARE synced but absent from remote were deleted on another device → drop them.
+    // Fold in local items with precise semantics:
+    //   _synced === true  → already in cloud, remote wins → skip.
+    //   _synced === false → dirty (new or edited, cloud-write pending) → PREFER LOCAL + re-push.
+    //                       This is what rescues edits when an earlier setDoc failed silently.
+    //   _synced undefined → legacy (pre-flag) — safest default is: only preserve if remote
+    //                       doesn't have it (otherwise remote wins; avoids re-uploading
+    //                       unchanged items and burning write quota).
     const localExtras = [];
     Object.values(sessions).flat().forEach(s => {
       if (tombSet.has(s.id)) return;
+      if (s._synced === true) return;
+      if (s._synced === false) {
+        byId[s.id] = s;
+        localExtras.push(s);
+        return;
+      }
+      // Legacy (_synced undefined): only preserve when remote doesn't have it
       if (remoteIds.has(s.id)) return;
-      if (s._synced) return; // synced before → deleted elsewhere → omit
       byId[s.id] = s;
       localExtras.push(s);
     });
@@ -3659,6 +3670,7 @@ window.saveLearning = function() {
     createdAt: editingLearningId
       ? (learning.find(e => e.id === editingLearningId)?.createdAt || nowISTIso())
       : nowISTIso(),
+    _synced: false,  // mark dirty — cleared once cloud write verifies
   };
 
   const isEdit = !!editingLearningId;
@@ -3715,22 +3727,29 @@ async function loadLearningFromCloud(uid) {
     });
     if (tombChanged) saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
     const tombSet = new Set(Object.keys(tombstonesLearning));
-    // Remote is authoritative: start with all remote items (minus tombstoned).
-    // Mark each as _synced=true so the local-scan fallback below can reliably
-    // distinguish "seen-in-cloud-but-now-gone" (deleted elsewhere, omit) from
-    // "never-synced-unsynced-local" (offline-created, keep + push up).
+    // Remote is authoritative for items already synced. Mark each _synced=true
+    // so a future load can distinguish "observed in cloud" from "pending upload".
     const byId = {};
     remote.forEach(e => {
       if (tombSet.has(e.id)) return;
       e._synced = true;
       byId[e.id] = e;
     });
-    // Add local items never synced (created offline); drop synced items absent from remote (deleted elsewhere)
+    // Semantics mirror sessions:
+    //   _synced === true  → remote wins → skip.
+    //   _synced === false → pending write (new or edit) → PREFER LOCAL + re-push.
+    //                       (This is what rescues edits when setDoc had failed silently.)
+    //   _synced undefined → legacy — preserve only if remote doesn't already have it.
     const localExtras = [];
     learning.forEach(e => {
       if (tombSet.has(e.id)) return;
+      if (e._synced === true) return;
+      if (e._synced === false) {
+        byId[e.id] = e;
+        localExtras.push(e);
+        return;
+      }
       if (remoteIds.has(e.id)) return;
-      if (e._synced) return; // synced before → deleted elsewhere → omit
       byId[e.id] = e;
       localExtras.push(e);
     });
@@ -5089,12 +5108,11 @@ function setAuthError(msg) {
 
 // ── Firestore batch write (handles >500 docs by splitting) ────
 async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allLifeRatings = {}, allEodNotes = {}) {
-  // Sessions flatten: {projectName: [Session]} → flat array
-  // Drop tombstoned IDs so a batch write can never resurrect a locally-deleted item
-  const sessTomb = new Set(Object.keys(tombstonesSessions));
-  const learnTomb = new Set(Object.keys(tombstonesLearning));
-  const allSessions = Object.values(sessions).flat().filter(s => !sessTomb.has(s.id));
-  const allLearning = learning.filter(e => !learnTomb.has(e.id));
+  // NOTE: sessions + learning are intentionally NOT included here. They have their
+  // own per-doc sync paths (syncSessionDoc, syncLearningDoc, cloudDeleteWithVerify)
+  // plus offline-retry via _synced=false flags and tombstones. Including them
+  // in this batch caused huge write amplification on every sign-in and was
+  // pushing users into Firestore quota limits.
   const ops = [
     ...allBlocks.map(b   => ({ ref: doc(db, 'users', uid, 'blocks',   b.id), data: b })),
     ...allCaptures.map(c => ({ ref: doc(db, 'users', uid, 'captures', c.id), data: c })),
@@ -5107,8 +5125,6 @@ async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allL
     ...Object.entries(allEodNotes).map(([date, text]) => ({
       ref: doc(db, 'users', uid, 'eod', date), data: { text }
     })),
-    ...allSessions.map(s => ({ ref: doc(db, 'users', uid, 'sessions', s.id), data: s })),
-    ...allLearning.map(e => ({ ref: doc(db, 'users', uid, 'learning', e.id), data: e })),
     { ref: doc(db, 'users', uid, 'meta', 'projects'),     data: { list: projects } },
     { ref: doc(db, 'users', uid, 'meta', 'tag_history'),  data: { history: tagHistory } },
   ];
