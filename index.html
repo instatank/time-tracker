@@ -648,12 +648,6 @@ html, body {
   flex: 1;
   min-width: 0;
 }
-.session-hdr-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  flex-shrink: 0;
-}
 .session-date {
   color: var(--text);
   font-weight: 500;
@@ -667,42 +661,40 @@ html, body {
   border: 1px solid var(--border2);
 }
 
-/* ── Edit button (session & learning cards) — light yellow ────── */
-.card-edit-btn {
-  background: rgba(250,204,21,0.1);
-  border: 1px solid rgba(250,204,21,0.45);
-  color: #facc15;
-  font-size: 0.72rem;
-  line-height: 1;
-  padding: 2px 8px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: opacity 0.15s, background 0.15s;
+/* ── Card action buttons (Edit = yellow, Delete = red) ────────── */
+/* Matches the DFT tick/cross style: round, 30×30, 1.5px border, icon only. */
+.card-actions {
+  display: flex;
+  gap: 1rem;                  /* same spacing as DFT tick/skip */
   flex-shrink: 0;
+  align-items: center;
 }
-.card-edit-btn:hover  { background: rgba(250,204,21,0.22); }
-.card-edit-btn:active { opacity: 0.85; }
-
-/* ── Delete button (session & learning cards) — red ───────────── */
-.card-delete-btn {
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.5);
-  color: var(--danger);
-  font-size: 0.72rem;
+.card-edit-btn, .card-delete-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  background: none;
+  font-size: 0.85rem;
   line-height: 1;
-  padding: 2px 8px;
-  border-radius: 999px;
   cursor: pointer;
-  transition: opacity 0.15s, background 0.15s;
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
 }
-.card-delete-btn:hover  { background: rgba(239,68,68,0.22); }
-.card-delete-btn:active { opacity: 0.85; }
+.card-edit-btn   { border-color: #facc15; color: #facc15; }
+.card-edit-btn:hover   { background: rgba(250,204,21,0.15); }
+.card-delete-btn { border-color: #ef4444; color: #ef4444; }
+.card-delete-btn:hover { background: rgba(239,68,68,0.15); }
 .card-delete-btn.armed {
-  background: rgba(239,68,68,0.3);
-  border-color: var(--danger);
+  background: rgba(239,68,68,0.28);
   color: #fff;
-  font-weight: 600;
+  font-weight: 700;
+  width: auto;
+  padding: 0 10px;
+  border-radius: 999px;
 }
 .session-section {
   margin-top: 0.6rem;
@@ -2785,8 +2777,8 @@ function renderSessionCard(s) {
           <span class="session-date">${dateLabel}</span>
           ${tagPills}
         </div>
-        <div class="session-hdr-actions">
-          <button class="card-edit-btn" onclick="event.stopPropagation();openEditSession('${s.id}','${projEsc}')" title="Edit session">✎ Edit</button>
+        <div class="card-actions">
+          <button class="card-edit-btn" onclick="event.stopPropagation();openEditSession('${s.id}','${projEsc}')" title="Edit session">✎</button>
           <button class="card-delete-btn" data-delkey="${delKey}" onclick="event.stopPropagation();deleteSession('${s.id}','${projEsc}')" title="Delete session">🗑</button>
         </div>
       </div>
@@ -3280,10 +3272,12 @@ function renderLearningCard(e) {
           <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
           <span class="learning-type-badge">${esc(e.sourceType || '—')}</span>
         </div>
-        <div style="display:flex;align-items:center;gap:0.35rem;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:0.6rem;flex-shrink:0">
           <span class="learning-date">${dateLabel}</span>
-          <button class="card-edit-btn" onclick="event.stopPropagation();openEditLearning('${e.id}')" title="Edit entry">✎</button>
-          <button class="card-delete-btn" data-delkey="${delKey}" onclick="event.stopPropagation();deleteLearning('${e.id}')" title="Delete entry">🗑</button>
+          <div class="card-actions">
+            <button class="card-edit-btn" onclick="event.stopPropagation();openEditLearning('${e.id}')" title="Edit entry">✎</button>
+            <button class="card-delete-btn" data-delkey="${delKey}" onclick="event.stopPropagation();deleteLearning('${e.id}')" title="Delete entry">🗑</button>
+          </div>
         </div>
       </div>
       <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
