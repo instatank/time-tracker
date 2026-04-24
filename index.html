@@ -1691,9 +1691,19 @@ select option { background: var(--surface2); }
   <div class="sheet-title" id="block-sheet-title">Log Block</div>
   <div class="sheet-body">
     <div class="field">
-      <!-- Native time picker: one tap opens a combined hour+minute drum on mobile.
-           step="900" constrains mobile pickers to 15-min increments; JS snaps on blur for desktop. -->
-      <input type="time" id="f-time" step="900" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.7rem;color:var(--text);font-size:0.95rem;font-variant-numeric:tabular-nums;outline:none" />
+      <!-- Two selects so the minute wheel is always limited to 00 / 15 / 30 / 45,
+           independent of browser behaviour (native <input type="time"> ignores step on desktop). -->
+      <div style="display:flex;gap:0.4rem;align-items:center;">
+        <select id="f-time-hour" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.7rem;color:var(--text);font-size:0.95rem;font-variant-numeric:tabular-nums;outline:none"></select>
+        <span style="color:var(--text);font-weight:600;">:</span>
+        <select id="f-time-min" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.7rem;color:var(--text);font-size:0.95rem;font-variant-numeric:tabular-nums;outline:none">
+          <option value="00">00</option>
+          <option value="15">15</option>
+          <option value="30">30</option>
+          <option value="45">45</option>
+        </select>
+      </div>
+      <input type="hidden" id="f-time">
     </div>
     <div class="field">
       <div class="pill-row">
@@ -4485,31 +4495,33 @@ function renderWeeklyReview() {
   </div>`;
 }
 
-// ── Time input: snap to 15-min increments (safety net for desktop where step= is cosmetic) ──
-(function initTimeSnap() {
-  const inp = document.getElementById('f-time');
-  if (!inp) return;
-  const snap = () => {
-    const v = inp.value;                                    // "HH:MM" or ""
-    if (!v) return;
-    const [hRaw, mRaw] = v.split(':');
-    let h = parseInt(hRaw || '0') || 0;
-    let m = parseInt(mRaw || '0') || 0;
-    // Snap minutes to nearest 15, carrying the hour if we land on 60
-    let snappedM = Math.round(m / 15) * 15;
-    if (snappedM === 60) { snappedM = 0; h = (h + 1) % 24; }
-    const out = `${String(h).padStart(2,'0')}:${String(snappedM).padStart(2,'0')}`;
-    if (out !== v) inp.value = out;
-  };
-  inp.addEventListener('blur', snap);
-  inp.addEventListener('change', snap);
+// ── Time selects: populate hours 00-23, keep hidden #f-time synced "HH:MM" ──
+(function initTimeSelects() {
+  const hSel = document.getElementById('f-time-hour');
+  const mSel = document.getElementById('f-time-min');
+  const hidden = document.getElementById('f-time');
+  if (!hSel || !mSel || !hidden) return;
+  hSel.innerHTML = Array.from({ length: 24 }, (_, i) => {
+    const v = String(i).padStart(2, '0');
+    return `<option value="${v}">${v}</option>`;
+  }).join('');
+  const sync = () => { hidden.value = `${hSel.value}:${mSel.value}`; };
+  hSel.addEventListener('change', sync);
+  mSel.addEventListener('change', sync);
+  sync();                                  // initial value
 })();
 
 function setTimeValue(timeStr) {
   const [hh, mm] = (timeStr || '00:00').split(':');
   const snappedM = Math.round(parseInt(mm || '0') / 15) * 15 % 60;
-  const val = `${String(parseInt(hh || '0') || 0).padStart(2,'0')}:${String(snappedM).padStart(2,'0')}`;
-  document.getElementById('f-time').value = val;
+  const h = String(parseInt(hh || '0') || 0).padStart(2, '0');
+  const m = String(snappedM).padStart(2, '0');
+  const hSel = document.getElementById('f-time-hour');
+  const mSel = document.getElementById('f-time-min');
+  const hidden = document.getElementById('f-time');
+  if (hSel)   hSel.value = h;
+  if (mSel)   mSel.value = m;
+  if (hidden) hidden.value = `${h}:${m}`;
 }
 
 // ── Sheet: Log Block ──────────────────────────────────────────
