@@ -1913,7 +1913,7 @@ const CTYPES = [
 // Legacy: Insight type removed from selector but old entries still render gracefully
 const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -1974,6 +1974,8 @@ let learning            = loadLocal(SK.LEARNING, []); // LearningEntry[]
 // survives refresh-before-network-completes and offline deletes.
 let tombstonesSessions  = loadLocal(SK.TOMBSTONES_SESSIONS, {}); // { id: ts }
 let tombstonesLearning  = loadLocal(SK.TOMBSTONES_LEARNING, {}); // { id: ts }
+let tombstonesBlocks    = loadLocal(SK.TOMBSTONES_BLOCKS,   {}); // { id: ts }
+let tombstonesCaptures  = loadLocal(SK.TOMBSTONES_CAPTURES, {}); // { id: ts }
 let projectsSubTab      = 'projects';                  // 'projects' | 'learning'
 let learningFilter      = 'all';                       // 'all' | a tag e.g. '#ai'
 let learningSearch      = '';                          // free-text filter for learning list
@@ -2028,6 +2030,8 @@ function saveAll() {
   saveLocal(SK.SESSIONS, sessions);
   saveLocal(SK.TAG_HISTORY, tagHistory);
   saveLocal(SK.LEARNING, learning);
+  saveLocal(SK.TOMBSTONES_BLOCKS, tombstonesBlocks);
+  saveLocal(SK.TOMBSTONES_CAPTURES, tombstonesCaptures);
 }
 
 // ── Utils ─────────────────────────────────────────────────────
@@ -4663,12 +4667,12 @@ window.saveBlock = function() {
   if (editingBlockId) {
     const idx = blocks.findIndex(b => b.id === editingBlockId);
     if (idx > -1) {
-      blocks[idx] = { ...blocks[idx], start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, projectTag: selBlockProject || '', tags: extractTags(label + ' ' + noteVal) };
+      blocks[idx] = { ...blocks[idx], start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, projectTag: selBlockProject || '', tags: extractTags(label + ' ' + noteVal), _synced: false };
       syncBlockDoc(blocks[idx]);
       toast('Block updated');
     }
   } else {
-    const b = { id: uid(), date, start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, projectTag: selBlockProject || '', tags: extractTags(label + ' ' + noteVal) };
+    const b = { id: uid(), date, start_time: timeVal, duration_min: duration, category: selCat, label, note: noteVal, energy_level: selEnergy, projectTag: selBlockProject || '', tags: extractTags(label + ' ' + noteVal), _synced: false };
     blocks.push(b);
     syncBlockDoc(b);
     toast('Block logged');
@@ -4749,12 +4753,12 @@ window.saveCapture = function() {
   if (editingCaptureId) {
     const idx = captures.findIndex(c => c.id === editingCaptureId);
     if (idx > -1) {
-      captures[idx] = { ...captures[idx], type: selCapType, body, project_tag: projectTag, tags };
+      captures[idx] = { ...captures[idx], type: selCapType, body, project_tag: projectTag, tags, _synced: false };
       syncCaptureDoc(captures[idx]);
       toast('Entry updated');
     }
   } else {
-    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags };
+    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags, _synced: false };
     captures.push(c);
     syncCaptureDoc(c);
     toast('Captured');
@@ -4801,7 +4805,21 @@ window.openCapOpts = function(id) {
 window.deleteBlock = function(id) {
   blocks = blocks.filter(b => b.id !== id);
   saveLocal(SK.BLOCKS, blocks);
-  if (user) { deleteDoc(doc(db, 'users', user.uid, 'blocks', id)).catch(() => {}); }
+  // Tombstone so the item can't resurrect from cloud on refresh even if deleteDoc fails.
+  tombstonesBlocks[id] = Date.now();
+  saveLocal(SK.TOMBSTONES_BLOCKS, tombstonesBlocks);
+  if (user) {
+    cloudDeleteWithVerify(doc(db, 'users', user.uid, 'blocks', id), 'DEL-BLOCK')
+      .then(res => {
+        if (res.ok) {
+          delete tombstonesBlocks[id];
+          saveLocal(SK.TOMBSTONES_BLOCKS, tombstonesBlocks);
+        } else {
+          toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
+          console.error('[DEL-BLOCK] verification failed:', res.reason);
+        }
+      });
+  }
   closeSheets();
   render();
   toast('Block deleted');
@@ -4810,7 +4828,20 @@ window.deleteBlock = function(id) {
 window.deleteCapture = function(id) {
   captures = captures.filter(c => c.id !== id);
   saveLocal(SK.CAPTURES, captures);
-  if (user) { deleteDoc(doc(db, 'users', user.uid, 'captures', id)).catch(() => {}); }
+  tombstonesCaptures[id] = Date.now();
+  saveLocal(SK.TOMBSTONES_CAPTURES, tombstonesCaptures);
+  if (user) {
+    cloudDeleteWithVerify(doc(db, 'users', user.uid, 'captures', id), 'DEL-CAPTURE')
+      .then(res => {
+        if (res.ok) {
+          delete tombstonesCaptures[id];
+          saveLocal(SK.TOMBSTONES_CAPTURES, tombstonesCaptures);
+        } else {
+          toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
+          console.error('[DEL-CAPTURE] verification failed:', res.reason);
+        }
+      });
+  }
   closeSheets();
   render();
   toast('Entry deleted');
@@ -5287,9 +5318,17 @@ window.forcePullFromCloud = async function() {
     eodSnap.docs.forEach(d => { remoteEodNotes[d.id] = d.data().text; });
     console.log('[DayOS] Pull raw from Firestore → blocks:', remoteBlocks.length, '| captures:', remoteCaptures.length);
 
-    // Merge: keep all local + all remote (local fills gaps, remote wins same ID)
-    blocks      = mergeById(blocks, remoteBlocks);
-    captures    = mergeById(captures, remoteCaptures);
+    // Tombstone + _synced aware merge (blocks/captures)
+    blocks   = mergeWithTombstones({
+      local: blocks, remote: remoteBlocks,
+      tombstones: tombstonesBlocks, tombKey: SK.TOMBSTONES_BLOCKS,
+      cloudPath: ['users', user.uid, 'blocks'], syncFn: syncBlockDoc
+    });
+    captures = mergeWithTombstones({
+      local: captures, remote: remoteCaptures,
+      tombstones: tombstonesCaptures, tombKey: SK.TOMBSTONES_CAPTURES,
+      cloudPath: ['users', user.uid, 'captures'], syncFn: syncCaptureDoc
+    });
     ratings     = { ...ratings, ...remoteRatings };
     lifeRatings = { ...lifeRatings, ...remoteLifeRatings };
     eodNotes    = { ...eodNotes, ...remoteEodNotes };
@@ -5320,12 +5359,35 @@ function setSyncStatus(s) {
 // ── Firebase Sync ─────────────────────────────────────────────
 async function syncBlockDoc(b) {
   if (!user) return;
-  try { await setDoc(doc(db, 'users', user.uid, 'blocks', b.id), b); } catch {}
+  const ref = doc(db, 'users', user.uid, 'blocks', b.id);
+  const res = await cloudWriteWithVerify(ref, b, 'SYNC-BLOCK');
+  if (!res.ok) {
+    toast('⚠️ Block save failed: ' + res.reason, 7000);
+    console.error('[SYNC-BLOCK] verification failed:', res.reason);
+    return;
+  }
+  // Flip _synced → true on the local copy so future loads trust remote for this id.
+  const idx = blocks.findIndex(x => x.id === b.id);
+  if (idx !== -1 && !blocks[idx]._synced) {
+    blocks[idx]._synced = true;
+    saveLocal(SK.BLOCKS, blocks);
+  }
 }
 
 async function syncCaptureDoc(c) {
   if (!user) return;
-  try { await setDoc(doc(db, 'users', user.uid, 'captures', c.id), c); } catch {}
+  const ref = doc(db, 'users', user.uid, 'captures', c.id);
+  const res = await cloudWriteWithVerify(ref, c, 'SYNC-CAPTURE');
+  if (!res.ok) {
+    toast('⚠️ Capture save failed: ' + res.reason, 7000);
+    console.error('[SYNC-CAPTURE] verification failed:', res.reason);
+    return;
+  }
+  const idx = captures.findIndex(x => x.id === c.id);
+  if (idx !== -1 && !captures[idx]._synced) {
+    captures[idx]._synced = true;
+    saveLocal(SK.CAPTURES, captures);
+  }
 }
 
 async function initialSync(uid) {
@@ -5360,8 +5422,18 @@ async function initialSync(uid) {
     const remoteEodNotes    = {};
     eodSnap.docs.forEach(d => { remoteEodNotes[d.id] = d.data().text; });
 
-    const mergedBlocks      = mergeById(blocks, remoteBlocks);
-    const mergedCaptures    = mergeById(captures, remoteCaptures);
+    // Tombstone + _synced aware merge for blocks/captures so local deletes and dirty edits
+    // are respected across refreshes (matches sessions/learning behaviour).
+    const mergedBlocks   = mergeWithTombstones({
+      local: blocks, remote: remoteBlocks,
+      tombstones: tombstonesBlocks, tombKey: SK.TOMBSTONES_BLOCKS,
+      cloudPath: ['users', uid, 'blocks'], syncFn: syncBlockDoc
+    });
+    const mergedCaptures = mergeWithTombstones({
+      local: captures, remote: remoteCaptures,
+      tombstones: tombstonesCaptures, tombKey: SK.TOMBSTONES_CAPTURES,
+      cloudPath: ['users', uid, 'captures'], syncFn: syncCaptureDoc
+    });
     const mergedRatings     = { ...ratings, ...remoteRatings };
     const mergedLifeRatings = { ...lifeRatings, ...remoteLifeRatings };
     const mergedEodNotes    = { ...eodNotes, ...remoteEodNotes };
@@ -5411,6 +5483,55 @@ function mergeById(local, remote) {
   local.forEach(x => { map[x.id] = x; });
   remote.forEach(x => { map[x.id] = x; }); // remote wins
   return Object.values(map);
+}
+
+// Tombstone + _synced aware merge for blocks and captures. Mirrors the logic
+// used for sessions/learning. Side effects: retries deleteDoc for tombstoned
+// items still in remote, drops tombstones confirmed gone, re-pushes locally
+// dirty items via `syncFn`.
+function mergeWithTombstones({ local, remote, tombstones, tombKey, cloudPath, syncFn }) {
+  const remoteIds = new Set(remote.map(x => x.id));
+  // Retry any tombstoned delete that cloud still has; drop tombstones confirmed gone
+  let tombChanged = false;
+  Object.keys(tombstones).forEach(id => {
+    if (remoteIds.has(id)) {
+      deleteDoc(doc(db, ...cloudPath, id))
+        .catch(err => console.error('[' + tombKey + '] tombstone retry error:', err));
+    } else {
+      delete tombstones[id];
+      tombChanged = true;
+    }
+  });
+  if (tombChanged) saveLocal(tombKey, tombstones);
+  const tombSet = new Set(Object.keys(tombstones));
+
+  // Remote is authoritative for items we've already synced
+  const byId = {};
+  remote.forEach(x => {
+    if (tombSet.has(x.id)) return;
+    x._synced = true;
+    byId[x.id] = x;
+  });
+  // Merge local:
+  //   _synced === true  → remote wins (skip local)
+  //   _synced === false → dirty pending-write; LOCAL wins + re-push
+  //   _synced undefined → legacy; preserve only when remote doesn't have it
+  const localExtras = [];
+  local.forEach(x => {
+    if (tombSet.has(x.id)) return;
+    if (x._synced === true) return;
+    if (x._synced === false) {
+      byId[x.id] = x;
+      localExtras.push(x);
+      return;
+    }
+    if (remoteIds.has(x.id)) return;
+    byId[x.id] = x;
+    localExtras.push(x);
+  });
+  // Fire-and-forget retry of local-only items (they're unsynced)
+  if (syncFn) localExtras.forEach(x => { try { syncFn(x); } catch {} });
+  return Object.values(byId);
 }
 
 // ── Auth state ────────────────────────────────────────────────
