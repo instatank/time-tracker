@@ -2072,6 +2072,61 @@ function tapOrDoubleTap(key, single, double) {
 // ── Tap-to-confirm delete pattern ─────────────────────────────
 // First tap arms the delete (button turns red + toast); a second tap within
 // CONFIRM_MS actually performs it. Otherwise the pending delete expires quietly.
+// Cloud delete with verification + retry. Returns {ok: boolean, reason?}.
+// This is the ROBUST version of deleteDoc: it retries, and verifies the doc
+// really is gone by doing a getDoc afterwards. Surfaces any silent rule-block.
+async function cloudDeleteWithVerify(path, label) {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await deleteDoc(path);
+      // Verify it's actually gone
+      const check = await getDoc(path);
+      if (!check.exists()) {
+        console.log(`[${label}] verified gone after attempt ${attempt}`);
+        return { ok: true };
+      }
+      console.warn(`[${label}] delete appeared to succeed but doc still exists. Attempt ${attempt}/${maxAttempts}`);
+    } catch (err) {
+      console.error(`[${label}] delete attempt ${attempt} error:`, err.code || err.name, err.message);
+      if (err.code === 'permission-denied') {
+        return { ok: false, reason: 'blocked by Firestore rules (permission-denied)' };
+      }
+      if (attempt === maxAttempts) {
+        return { ok: false, reason: err.message || err.code || 'unknown error' };
+      }
+    }
+    await new Promise(r => setTimeout(r, 250 * attempt));
+  }
+  return { ok: false, reason: 'doc still exists after ' + maxAttempts + ' delete attempts (check Firestore rules)' };
+}
+
+// Cloud write with verification. Returns {ok: boolean, reason?}.
+async function cloudWriteWithVerify(path, data, label) {
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await setDoc(path, data);
+      const check = await getDoc(path);
+      if (check.exists()) {
+        console.log(`[${label}] verified written after attempt ${attempt}`);
+        return { ok: true };
+      }
+      console.warn(`[${label}] setDoc appeared to succeed but doc missing. Attempt ${attempt}/${maxAttempts}`);
+    } catch (err) {
+      console.error(`[${label}] write attempt ${attempt} error:`, err.code || err.name, err.message);
+      if (err.code === 'permission-denied') {
+        return { ok: false, reason: 'blocked by Firestore rules (permission-denied)' };
+      }
+      if (attempt === maxAttempts) {
+        return { ok: false, reason: err.message || err.code || 'unknown error' };
+      }
+    }
+    await new Promise(r => setTimeout(r, 250 * attempt));
+  }
+  return { ok: false, reason: 'verification failed' };
+}
+
 const _pendingDeletes = new Map(); // key -> timeoutId
 const DELETE_CONFIRM_MS = 3000;
 function armOrConfirmDelete(key, doDelete) {
@@ -2934,10 +2989,19 @@ window.deleteSession = function(sessionId, projectName) {
         syncBlockDoc(blocks[bIdx]);
       }
     }
-    // Remove from cloud; tombstone stays until a subsequent cloud load confirms it's gone
+    // Remove from cloud (verified). Tombstone stays until cloud confirms the doc is gone.
     if (user) {
-      deleteDoc(doc(db, 'users', user.uid, 'sessions', sessionId))
-        .catch(err => console.error('[DayOS] Session delete error:', err));
+      cloudDeleteWithVerify(doc(db, 'users', user.uid, 'sessions', sessionId), 'DEL-SESS')
+        .then(res => {
+          if (res.ok) {
+            // Cloud delete confirmed — safe to drop the tombstone
+            delete tombstonesSessions[sessionId];
+            saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
+          } else {
+            toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
+            console.error('[DEL-SESS] verification failed:', res.reason);
+          }
+        });
     }
     toast('✓ Session deleted');
     renderMain(true);
@@ -3277,17 +3341,21 @@ document.querySelectorAll('.sess-dur-pill').forEach(btn => {
 // Firestore: users/{uid}/sessions/{sessionId} (flat; projectName stored as field on each doc)
 async function syncSessionDoc(s) {
   if (!user) return;
-  try {
-    await setDoc(doc(db, 'users', user.uid, 'sessions', s.id), s);
-    const proj = s.projectName;
-    if (sessions[proj]) {
-      const idx = sessions[proj].findIndex(x => x.id === s.id);
-      if (idx !== -1 && !sessions[proj][idx]._synced) {
-        sessions[proj][idx]._synced = true;
-        saveLocal(SK.SESSIONS, sessions);
-      }
+  const ref = doc(db, 'users', user.uid, 'sessions', s.id);
+  const res = await cloudWriteWithVerify(ref, s, 'SYNC-SESS');
+  if (!res.ok) {
+    toast('⚠️ Session save failed: ' + res.reason, 7000);
+    console.error('[SYNC-SESS] verification failed:', res.reason);
+    return;
+  }
+  const proj = s.projectName;
+  if (sessions[proj]) {
+    const idx = sessions[proj].findIndex(x => x.id === s.id);
+    if (idx !== -1 && !sessions[proj][idx]._synced) {
+      sessions[proj][idx]._synced = true;
+      saveLocal(SK.SESSIONS, sessions);
     }
-  } catch (err) { console.error('[DayOS] Session sync error:', err); }
+  }
 }
 
 async function loadSessionsFromCloud(uid) {
@@ -3463,9 +3531,17 @@ window.deleteLearning = function(entryId) {
     saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
     console.log('[DEL-LEARN] spliced + tombstoned. Local after:', learning.length, 'tombstones:', Object.keys(tombstonesLearning));
     if (user) {
-      deleteDoc(doc(db, 'users', user.uid, 'learning', entryId))
-        .then(() => console.log('[DEL-LEARN] cloud delete OK for', entryId))
-        .catch(err => console.error('[DEL-LEARN] cloud delete FAILED:', err.code, err.message));
+      cloudDeleteWithVerify(doc(db, 'users', user.uid, 'learning', entryId), 'DEL-LEARN')
+        .then(res => {
+          if (res.ok) {
+            // Cloud confirms gone — drop tombstone
+            delete tombstonesLearning[entryId];
+            saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
+          } else {
+            toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
+            console.error('[DEL-LEARN] verification failed:', res.reason);
+          }
+        });
     } else {
       console.warn('[DEL-LEARN] no user signed in — cloud delete skipped');
     }
@@ -3604,14 +3680,18 @@ window.saveLearning = function() {
 // Firestore sync — users/{uid}/learning/{id}
 async function syncLearningDoc(e) {
   if (!user) return;
-  try {
-    await setDoc(doc(db, 'users', user.uid, 'learning', e.id), e);
-    const idx = learning.findIndex(x => x.id === e.id);
-    if (idx !== -1 && !learning[idx]._synced) {
-      learning[idx]._synced = true;
-      saveLocal(SK.LEARNING, learning);
-    }
-  } catch (err) { console.error('[DayOS] Learning sync error:', err); }
+  const ref = doc(db, 'users', user.uid, 'learning', e.id);
+  const res = await cloudWriteWithVerify(ref, e, 'SYNC-LEARN');
+  if (!res.ok) {
+    toast('⚠️ Learning save failed: ' + res.reason, 7000);
+    console.error('[SYNC-LEARN] verification failed:', res.reason);
+    return;
+  }
+  const idx = learning.findIndex(x => x.id === e.id);
+  if (idx !== -1 && !learning[idx]._synced) {
+    learning[idx]._synced = true;
+    saveLocal(SK.LEARNING, learning);
+  }
 }
 
 async function loadLearningFromCloud(uid) {
