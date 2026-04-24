@@ -451,6 +451,9 @@ html, body {
 .tag-pill.tag-insight { background: var(--tag-insight-bg); color: var(--tag-insight-text); }
 .tag-pill.tag-dft     { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
 .tag-pill.tag-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
+.tag-pill.tag-project { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
+.tag-pill.tag-project::before { content: '• '; opacity: 0.7; letter-spacing: -1px; }
+.tag-pill.tag-other   { background: var(--muted-bg);       color: var(--muted-text); }
 .tag-pill.tag-1pct    { background: var(--tag-win-bg);     color: var(--tag-win-text); } /* legacy alias for #1% */
 
 /* ── Tag picker (sheets) ──────────────────────────────────────── */
@@ -475,7 +478,25 @@ html, body {
 .tag-pick-pill.tag-insight { background: var(--tag-insight-bg); color: var(--tag-insight-text); }
 .tag-pick-pill.tag-dft     { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
 .tag-pick-pill.tag-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
+.tag-pick-pill.tag-project { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
+.tag-pick-pill.tag-project::before { content: '• '; opacity: 0.7; letter-spacing: -1px; }
+.tag-pick-pill.tag-other   { background: var(--muted-bg);       color: var(--muted-text); }
 .tag-pick-pill.selected { border-color: currentColor; font-weight: 600; }
+.tag-picker-group { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; width: 100%; }
+.tag-picker-group-label {
+  font-size: 0.6rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 4px;
+}
+.tag-picker-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+  opacity: 0.6;
+}
 .tag-pick-pill.custom-pill {
   background: transparent;
   border: 1px dashed var(--border2);
@@ -839,6 +860,76 @@ html, body {
 }
 .proj-search .search-clear.visible { display: block; }
 .proj-search .search-clear:hover { color: var(--text2); }
+
+/* ── Related Captures (Projects tab) ─────────────────────────── */
+.related-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.related-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.related-item:hover { border-color: var(--border2); }
+.related-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text2);
+  margin-bottom: 0.2rem;
+}
+.related-type {
+  text-transform: capitalize;
+  color: var(--accent);
+  font-weight: 600;
+}
+.related-date { margin-left: auto; color: var(--text3); }
+.related-preview {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Today's Wins panel ──────────────────────────────────────── */
+.wins-panel .sec-title { color: var(--tag-win-text); }
+.wins-count {
+  font-size: 0.7rem;
+  background: var(--tag-win-bg);
+  color: var(--tag-win-text);
+  padding: 1px 7px;
+  border-radius: 10px;
+  margin-left: 0.35rem;
+  font-weight: 600;
+}
+.win-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tag-win-text);
+  border-radius: var(--r);
+  padding: 0.45rem 0.7rem;
+  margin-bottom: 0.35rem;
+}
+.win-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text2);
+  margin-bottom: 0.15rem;
+}
+.win-source { text-transform: capitalize; color: var(--text); font-weight: 500; }
+.win-time   { margin-left: auto; color: var(--text3); }
+.win-body   {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* ── Session cards ───────────────────────────────────────────── */
 .session-card {
@@ -2596,6 +2687,91 @@ function moreBtn(expanded, hidden, fn) {
   </button>`;
 }
 
+// ── Today's Wins panel ──────────────────────────────────────
+// Surfaces every #win-tagged entry from Journal captures, Project sessions,
+// and Learning entries, scoped to today's date.
+function getTodayWins(d) {
+  const wins = [];
+  captures.forEach(c => {
+    if (capDateIST(c) !== d) return;
+    if (!(c.tags || []).includes('#win')) return;
+    wins.push({
+      source: 'journal',
+      id: c.id,
+      body: c.body || '',
+      timestamp: c.timestamp,
+      sourceType: 'journal',
+    });
+  });
+  Object.values(sessions).forEach(list => {
+    (list || []).forEach(s => {
+      if (s.date !== d) return;
+      if (!(s.tags || []).includes('#win')) return;
+      wins.push({
+        source: 'session',
+        id: s.id,
+        project: s.projectName,
+        body: s.before || s.during || s.after || '',
+        timestamp: s.createdAt || (s.date + 'T00:00:00'),
+        sourceType: 'session',
+      });
+    });
+  });
+  learning.forEach(e => {
+    if (e.date !== d) return;
+    if (!(e.tags || []).includes('#win')) return;
+    wins.push({
+      source: 'learning',
+      id: e.id,
+      body: e.takeaway || '',
+      timestamp: e.createdAt || e.timestamp || '',
+      sourceType: 'learning',
+    });
+  });
+  return wins.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+}
+
+function renderWinsPanel(d) {
+  const wins = getTodayWins(d);
+  if (!wins.length) return '';
+  const items = wins.map(w => {
+    const icon = w.source === 'learning' ? '📚' : w.source === 'session' ? '🗂️' : '📓';
+    const label = w.source === 'session' ? esc(w.project || 'Session') : w.source;
+    const body = w.body.length > 140 ? esc(w.body.slice(0, 140)) + '…' : esc(w.body);
+    const handler = w.source === 'session'
+      ? `onclick="openWinSession('${w.id}','${esc(w.project || '').replace(/'/g, "\\'")}')"`
+      : `onclick="openRelatedRef('${w.sourceType}','${w.id}')"`;
+    return `<div class="win-item" ${handler} style="cursor:pointer">
+      <div class="win-meta">
+        <span>${icon}</span>
+        <span class="win-source">${label}</span>
+        <span class="win-time">${fmtTime(w.timestamp)}</span>
+      </div>
+      <div class="win-body">${body}</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="section wins-panel">
+      <div class="sec-hdr">
+        <span class="sec-title">🏆 Today's Wins <span class="wins-count">${wins.length}</span></span>
+      </div>
+      ${items}
+    </div>`;
+}
+
+// Tap a session win → jump to its project in the Projects tab.
+window.openWinSession = function(sessionId, projectName) {
+  activeTab = 'projects';
+  projectsSubTab = 'projects';
+  if (projectName) selectedProject = projectName;
+  expandedSessions.add(sessionId);
+  render();
+  setTimeout(() => {
+    const el = document.querySelector(`[data-session-id="${sessionId}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 60);
+};
+
 function renderToday() {
   const d = todayStr();
   const bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
@@ -2620,6 +2796,8 @@ function renderToday() {
     </div>
 
     ${renderDftPanel(d)}
+
+    ${renderWinsPanel(d)}
 
     <div class="section">
       <div class="sec-hdr">
@@ -2870,8 +3048,22 @@ function renderTagPills(tags) {
   ).join('')}</div>`;
 }
 
+// Normalise a project name or #tag into a comparable slug (no '#', no spaces, lowercase).
+function projectSlug(s) {
+  return (s || '').toString().toLowerCase().replace(/^#/, '').replace(/\s+/g, '');
+}
+
+// True when `tag` matches any active project from the canonical `projects` list.
+function isProjectTag(tag) {
+  if (!tag) return false;
+  const s = projectSlug(tag);
+  if (!s) return false;
+  return projects.some(p => projectSlug(p) === s);
+}
+
 // Single source of truth for tag → CSS modifier class.
-// Tags with no known class fall through to the default neutral gray .tag-pill styling.
+// Content tags get their specific colour; project tags get the shared blue + dot;
+// everything else is the neutral gray `.tag-other` styling.
 function tagClassFor(tag) {
   const t = (tag || '').toLowerCase();
   if (t === '#win')     return 'tag-win';
@@ -2879,30 +3071,25 @@ function tagClassFor(tag) {
   if (t === '#dft')     return 'tag-dft';
   if (t === '#pending') return 'tag-pending';
   if (t === '#1%')      return 'tag-1pct';
-  return '';
+  if (isProjectTag(t))  return 'tag-project';
+  return 'tag-other';
 }
 
 // ── Shared two-layer tag picker (sessions + captures + learning) ──
 // ctx is 'session' | 'capture' | 'learning'. Each context owns its own selected-Set,
-// customOpen boolean, DOM container id, and base pre-populated tags.
-const TAG_PREPOPULATED_BASE = ['#win', '#insight', '#pending', '#dft']; // universal — excluded from tagHistory
+// customOpen boolean, and DOM container id.
+//
+// Layer 1 (pills) renders two visually separated groups:
+//   - Content tags  (#win / #insight / #dft / #pending) — describe the nature of the entry
+//   - Project tags  (derived from the active `projects` list) — describe context/affiliation
+// Layer 2 is inline #hashtag detection at save time (each form's save handler merges it into tags[]).
+const TAG_CONTENT_BASE = ['#win', '#insight', '#dft', '#pending'];
+const TAG_PREPOPULATED_BASE = TAG_CONTENT_BASE; // kept as alias; still excluded from tagHistory
 
 const TAG_PICKER_CONFIG = {
-  session: {
-    containerId: 'session-tag-picker',
-    base: ['#win', '#insight', '#pending', '#dft'],
-    includeProjectTag: true,
-  },
-  capture: {
-    containerId: 'capture-tag-picker',
-    base: ['#win', '#insight', '#pending', '#dft'],
-    includeProjectTag: false,
-  },
-  learning: {
-    containerId: 'learning-tag-picker',
-    base: ['#ai', '#trading', '#building', '#uot', '#mindset', '#insight'],
-    includeProjectTag: false,
-  },
+  session:  { containerId: 'session-tag-picker'  },
+  capture:  { containerId: 'capture-tag-picker'  },
+  learning: { containerId: 'learning-tag-picker' },
 };
 
 function tagPickerState(ctx) {
@@ -2919,30 +3106,29 @@ function setTagCustomOpen(ctx, v) {
   else                         captureTagCustomOpen  = v;
 }
 
+function renderPickPill(ctx, t, selected) {
+  return `<button type="button" class="tag-pick-pill ${tagClassFor(t)} ${selected ? 'selected' : ''}"
+    onclick="toggleTagPick('${ctx}','${esc(t).replace(/'/g, "\\'")}')">${esc(t)}</button>`;
+}
+
 function renderTagPicker(ctx) {
-  const { set, open, containerId, base, includeProjectTag } = tagPickerState(ctx);
+  const { set, open, containerId } = tagPickerState(ctx);
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  // Build ordered pill list: context base → [current project tag if session] → user's tag history
-  const pre = base.slice();
-  if (includeProjectTag && selectedProject) {
-    pre.push('#' + selectedProject.toLowerCase().replace(/\s+/g, ''));
-  }
-  const seen = new Set(pre);
-  const extras = tagHistory.filter(t => !seen.has(t));
-  const allTags = [...pre, ...extras];
+  const projectTags = projects.map(p => '#' + projectSlug(p));
+  const knownSet = new Set([...TAG_CONTENT_BASE, ...projectTags]);
 
-  // Plus: any currently-selected tags that aren't in pre or history (e.g. loaded from an edited entry)
-  set.forEach(t => {
-    if (!seen.has(t) && !extras.includes(t)) allTags.push(t);
-  });
+  const contentHtml = TAG_CONTENT_BASE
+    .map(t => renderPickPill(ctx, t, set.has(t)))
+    .join('');
+  const projectHtml = projectTags
+    .map(t => renderPickPill(ctx, t, set.has(t)))
+    .join('');
 
-  const pills = allTags.map(t => {
-    const selected = set.has(t);
-    return `<button type="button" class="tag-pick-pill ${tagClassFor(t)} ${selected ? 'selected' : ''}"
-      onclick="toggleTagPick('${ctx}','${esc(t).replace(/'/g, "\\'")}')">${esc(t)}</button>`;
-  }).join('');
+  // Extras: tags selected on this entry that aren't in the two groups (e.g. custom tags on edit).
+  const extras = [...set].filter(t => !knownSet.has(t));
+  const extrasHtml = extras.map(t => renderPickPill(ctx, t, true)).join('');
 
   const customEl = open
     ? `<input class="tag-custom-input" id="${containerId}-custom"
@@ -2951,7 +3137,19 @@ function renderTagPicker(ctx) {
          onblur="confirmTagCustom('${ctx}')" />`
     : `<button type="button" class="tag-pick-pill custom-pill" onclick="openTagCustom('${ctx}')"># custom</button>`;
 
-  container.innerHTML = pills + customEl;
+  const projectGroupHtml = projectTags.length
+    ? `<div class="tag-picker-divider"></div><div class="tag-picker-group">${projectHtml}</div>`
+    : '';
+  const extrasGroupHtml = extras.length
+    ? `<div class="tag-picker-divider"></div><div class="tag-picker-group">${extrasHtml}</div>`
+    : '';
+
+  container.innerHTML = `
+    <div class="tag-picker-group">${contentHtml}</div>
+    ${projectGroupHtml}
+    ${extrasGroupHtml}
+    <div class="tag-picker-group" style="margin-top:4px">${customEl}</div>
+  `;
 }
 
 window.toggleTagPick = function(ctx, tag) {
@@ -3059,7 +3257,7 @@ function renderCapFull(c) {
         <button class="card-swipe-edit" onclick="openCaptureEdit('${c.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
         <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteCapture('${c.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="capture-item" onclick="capCardTap('${c.id}')">
+      <div class="capture-item" data-capture-id="${c.id}" onclick="capCardTap('${c.id}')">
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
@@ -3197,6 +3395,7 @@ function renderSessionsList(projectName) {
       </div>
     </div>
     ${cards}
+    ${renderRelatedCaptures(projectName)}
   `;
 }
 
@@ -3205,6 +3404,88 @@ window.setProjSearch = function(q) {
   renderMain(true);                        // preserve scroll
   const input = document.querySelector('.proj-search input');
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+};
+
+// Related Captures — Journal captures + Learning entries whose tags[] contains
+// this project's slug. Rendered from local in-memory state (the projectRefs
+// Firestore collection is the cloud-queryable mirror, not the source of truth
+// for display).
+function getRelatedCapturesFor(projectName) {
+  const slug = projectSlug(projectName);
+  if (!slug) return [];
+  const refs = [];
+  captures.forEach(c => {
+    const tagMatch     = (c.tags || []).some(t => projectSlug(t) === slug);
+    // Legacy fallback: pre-refactor Project-type captures stored their
+    // affiliation only in `project_tag` and never wrote it into tags[].
+    // We surface those here so old data isn't lost.
+    const legacyMatch  = c.project_tag && projectSlug(c.project_tag) === slug;
+    if (!tagMatch && !legacyMatch) return;
+    refs.push({
+      sourceType: 'journal',
+      sourceId:   c.id,
+      preview:    (c.body || '').slice(0, 80),
+      date:       capDateIST(c),
+      timestamp:  c.timestamp,
+      tags:       c.tags || [],
+    });
+  });
+  learning.forEach(e => {
+    if (!(e.tags || []).some(t => projectSlug(t) === slug)) return;
+    refs.push({
+      sourceType: 'learning',
+      sourceId:   e.id,
+      preview:    (e.takeaway || '').slice(0, 80),
+      date:       e.date,
+      timestamp:  e.createdAt || e.timestamp || '',
+      tags:       e.tags || [],
+    });
+  });
+  return refs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+}
+
+function renderRelatedCaptures(projectName) {
+  const refs = getRelatedCapturesFor(projectName);
+  if (!refs.length) return '';
+  const items = refs.map(r => {
+    const icon = r.sourceType === 'learning' ? '📚' : '📓';
+    const dateLabel = r.date ? fmtDate(r.date) : '';
+    return `<div class="related-item" onclick="openRelatedRef('${r.sourceType}','${r.sourceId}')">
+      <div class="related-meta">
+        <span>${icon}</span>
+        <span class="related-type">${r.sourceType}</span>
+        <span class="related-date">${dateLabel}</span>
+      </div>
+      <div class="related-preview">${esc(r.preview)}</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="section" style="margin-top:1rem">
+      <div class="sec-hdr"><span class="sec-title">Related Captures (${refs.length})</span></div>
+      <div class="related-list">${items}</div>
+    </div>
+  `;
+}
+
+// Tap on a related capture → jump to its native tab, scroll/expand the entry.
+window.openRelatedRef = function(sourceType, sourceId) {
+  if (sourceType === 'journal') {
+    activeTab = 'journal';
+    render();
+    setTimeout(() => {
+      const el = document.querySelector(`[data-capture-id="${sourceId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+  } else if (sourceType === 'learning') {
+    activeTab = 'projects';
+    projectsSubTab = 'learning';
+    expandedLearning.add(sourceId);
+    render();
+    setTimeout(() => {
+      const el = document.querySelector(`[data-learning-id="${sourceId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+  }
 };
 
 // Render the Review body — grouped (Done / Pending / Learned) when structured items exist;
@@ -3289,7 +3570,7 @@ function renderSessionCard(s) {
         <button class="card-swipe-edit" onclick="openEditSession('${s.id}','${projEsc}')" title="Edit session" aria-label="Edit">${ICON_PENCIL}</button>
         <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteSession('${s.id}','${projEsc}')" title="Delete session" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="session-card" onclick="sessionCardTap('${s.id}','${projEsc}')">
+      <div class="session-card" data-session-id="${s.id}" onclick="sessionCardTap('${s.id}','${projEsc}')">
         <div class="session-card-hdr">
           <div class="session-hdr-left">
             <span class="session-date">${dateLabel}</span>
@@ -3892,7 +4173,7 @@ function renderLearningCard(e) {
         <button class="card-swipe-edit" onclick="openEditLearning('${e.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
         <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteLearning('${e.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="learningCardTap('${e.id}')">
+      <div class="learning-card ${expanded ? 'expanded' : ''}" data-learning-id="${e.id}" onclick="learningCardTap('${e.id}')">
         <div class="learning-card-hdr">
           <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
           <span class="learning-date">${dateLabel}</span>
@@ -3920,6 +4201,7 @@ window.deleteLearning = function(entryId) {
     console.log('[DEL-LEARN] CONFIRMED. Local before:', learning.length);
     const idx = learning.findIndex(e => e.id === entryId);
     if (idx === -1) { console.warn('[DEL-LEARN] entry not found in learning array!'); toast('Entry not found'); return; }
+    const removed = learning[idx];
     learning.splice(idx, 1);
     saveLocal(SK.LEARNING, learning);
     tombstonesLearning[entryId] = Date.now();
@@ -3940,6 +4222,7 @@ window.deleteLearning = function(entryId) {
     } else {
       console.warn('[DEL-LEARN] no user signed in — cloud delete skipped');
     }
+    deleteAllProjectRefsForEntry('learning', entryId, removed && removed.tags || []);
     toast('✓ Learning deleted');
     renderMain(true);
   });
@@ -4058,14 +4341,22 @@ window.saveLearning = function() {
   };
 
   const isEdit = !!editingLearningId;
+  let prevTags = [];
   if (isEdit) {
     const idx = learning.findIndex(e => e.id === editingLearningId);
-    if (idx > -1) learning[idx] = entry;
+    if (idx > -1) {
+      prevTags = learning[idx].tags || [];
+      learning[idx] = entry;
+    }
   } else {
     learning.push(entry);
   }
   saveLocal(SK.LEARNING, learning);
   syncLearningDoc(entry);
+  syncProjectRefsForEntry({
+    sourceType: 'learning', sourceId: entry.id, tags: entry.tags, prev: prevTags,
+    preview: entry.takeaway, date: entry.date, createdAt: entry.createdAt,
+  });
   editingLearningId = null;
 
   closeSheets();
@@ -5170,14 +5461,24 @@ window.saveCapture = function() {
   if (editingCaptureId) {
     const idx = captures.findIndex(c => c.id === editingCaptureId);
     if (idx > -1) {
-      captures[idx] = { ...captures[idx], type: selCapType, body, project_tag: projectTag, tags, _synced: false };
+      const prev = captures[idx];
+      const prevTags = prev.tags || [];
+      captures[idx] = { ...prev, type: selCapType, body, project_tag: projectTag, tags, _synced: false };
       syncCaptureDoc(captures[idx]);
+      syncProjectRefsForEntry({
+        sourceType: 'journal', sourceId: captures[idx].id, tags, prev: prevTags,
+        preview: body, date: capDateIST(captures[idx]), createdAt: captures[idx].timestamp,
+      });
       toast('Entry updated');
     }
   } else {
     const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags, _synced: false };
     captures.push(c);
     syncCaptureDoc(c);
+    syncProjectRefsForEntry({
+      sourceType: 'journal', sourceId: c.id, tags, prev: [],
+      preview: body, date: capDateIST(c), createdAt: c.timestamp,
+    });
     toast('Captured');
   }
   saveLocal(SK.CAPTURES, captures);
@@ -5243,6 +5544,7 @@ window.deleteBlock = function(id) {
 };
 
 window.deleteCapture = function(id) {
+  const removed = captures.find(c => c.id === id);
   captures = captures.filter(c => c.id !== id);
   saveLocal(SK.CAPTURES, captures);
   tombstonesCaptures[id] = Date.now();
@@ -5259,6 +5561,7 @@ window.deleteCapture = function(id) {
         }
       });
   }
+  if (removed) deleteAllProjectRefsForEntry('journal', id, removed.tags || []);
   closeSheets();
   render();
   toast('Entry deleted');
@@ -5831,6 +6134,68 @@ async function syncCaptureDoc(c) {
     captures[idx]._synced = true;
     saveLocal(SK.CAPTURES, captures);
   }
+}
+
+// ── Project References (cross-linking without spillover) ─────
+// Each Journal capture or Learning entry tagged with a project name writes
+// a lightweight reference doc at projectRefs/{uid}/{projectSlug}/{refId}. The
+// original entry stays in its native tab — only a pointer is written here.
+// refId = `${sourceType}_${sourceId}` so one entry ⇒ one ref per project,
+// making edits idempotent.
+function refIdFor(sourceType, sourceId) {
+  return `${sourceType}_${sourceId}`;
+}
+
+// Given an entry's tags[], return the canonical project names that appear in it.
+function projectTagsInEntry(tags) {
+  if (!Array.isArray(tags) || !tags.length) return [];
+  const slugs = new Set(tags.map(t => projectSlug(t)).filter(Boolean));
+  return projects.filter(p => slugs.has(projectSlug(p)));
+}
+
+async function writeProjectRef(projectName, data) {
+  if (!user) return;
+  try {
+    await setDoc(
+      doc(db, 'projectRefs', user.uid, projectSlug(projectName), data.refId),
+      {
+        sourceType: data.sourceType,
+        sourceId:   data.sourceId,
+        preview:    (data.preview || '').slice(0, 80),
+        date:       data.date || '',
+        tags:       Array.isArray(data.tags) ? data.tags : [],
+        createdAt:  data.createdAt || nowISTIso(),
+      }
+    );
+  } catch (err) { console.error('[DayOS] projectRef write error:', err); }
+}
+
+async function deleteProjectRef(projectName, refId) {
+  if (!user) return;
+  try {
+    await deleteDoc(doc(db, 'projectRefs', user.uid, projectSlug(projectName), refId));
+  } catch (err) { console.error('[DayOS] projectRef delete error:', err); }
+}
+
+// Upsert refs for each current project tag; delete refs for project tags that
+// were removed (edit path). `prev` is the previous tag array (empty on create).
+function syncProjectRefsForEntry(opts) {
+  const { sourceType, sourceId, tags, prev, preview, date, createdAt } = opts;
+  const refId = refIdFor(sourceType, sourceId);
+  const nextProjects = projectTagsInEntry(tags);
+  const prevProjects = projectTagsInEntry(prev || []);
+  prevProjects.forEach(p => {
+    if (!nextProjects.includes(p)) deleteProjectRef(p, refId);
+  });
+  nextProjects.forEach(p => {
+    writeProjectRef(p, { refId, sourceType, sourceId, preview, date, tags, createdAt });
+  });
+}
+
+// Called on entry delete — tidy up every ref this entry wrote.
+function deleteAllProjectRefsForEntry(sourceType, sourceId, tags) {
+  const refId = refIdFor(sourceType, sourceId);
+  projectTagsInEntry(tags).forEach(p => deleteProjectRef(p, refId));
 }
 
 async function initialSync(uid) {
