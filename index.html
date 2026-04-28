@@ -3447,8 +3447,8 @@ function renderSessionsList(projectName) {
         </div>
       </div>`
     : `<div class="proj-actions-row">
-        <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
         <button class="proj-search-icon-btn" onclick="openProjSearch()" aria-label="Search sessions">&#128269;</button>
+        <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
       </div>`;
 
   return `
@@ -3466,19 +3466,29 @@ window.setProjSearch = function(q) {
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
 };
 
+// Outside-click → collapse the search overlay. Listener is registered after
+// the opening tap finishes propagating (setTimeout) so the same tap doesn't
+// immediately bubble up and close it.
+function _projSearchOutsideHandler(e) {
+  const wrap = document.querySelector('.proj-actions-row .proj-search');
+  if (!wrap || !wrap.contains(e.target)) closeProjSearch();
+}
+
 window.openProjSearch = function() {
   projSearchOpen = true;
   renderMain(true);
-  // Focus the input after the render flushes so the keyboard pops on mobile.
   setTimeout(() => {
     const input = document.querySelector('.proj-actions-row .proj-search input');
     if (input) input.focus();
+    document.addEventListener('click', _projSearchOutsideHandler, true);
   }, 0);
 };
 
 window.closeProjSearch = function() {
+  if (!projSearchOpen) return;
   projSearchOpen = false;
   projectSessionSearch = '';
+  document.removeEventListener('click', _projSearchOutsideHandler, true);
   renderMain(true);
 };
 
@@ -4225,8 +4235,8 @@ function renderLearningSub() {
         </div>
       </div>`
     : `<div class="proj-actions-row">
-        <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
         <button class="proj-search-icon-btn" onclick="openLearnSearch()" aria-label="Search learning">&#128269;</button>
+        <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
       </div>`;
 
   return `
@@ -4245,18 +4255,26 @@ window.setLearningSearch = function(q) {
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
 };
 
+function _learnSearchOutsideHandler(e) {
+  const wrap = document.querySelector('.proj-actions-row .proj-search');
+  if (!wrap || !wrap.contains(e.target)) closeLearnSearch();
+}
+
 window.openLearnSearch = function() {
   learnSearchOpen = true;
   renderMain(true);
   setTimeout(() => {
     const input = document.querySelector('.proj-actions-row .proj-search input');
     if (input) input.focus();
+    document.addEventListener('click', _learnSearchOutsideHandler, true);
   }, 0);
 };
 
 window.closeLearnSearch = function() {
+  if (!learnSearchOpen) return;
   learnSearchOpen = false;
   learningSearch = '';
+  document.removeEventListener('click', _learnSearchOutsideHandler, true);
   renderMain(true);
 };
 
