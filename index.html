@@ -1432,49 +1432,6 @@ html, body {
 }
 .learning-notes-toggle:hover { color: var(--accent); }
 
-.journal-search {
-  position: relative;
-  margin-bottom: 0.75rem;
-}
-.journal-search input {
-  width: 100%;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.55rem 2.2rem 0.55rem 2.2rem;
-  color: var(--text);
-  font-size: 0.85rem;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.journal-search input::placeholder { color: var(--text3); }
-.journal-search input:focus { border-color: var(--border2); }
-.journal-search .search-icon {
-  position: absolute;
-  left: 0.7rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text3);
-  font-size: 0.85rem;
-  pointer-events: none;
-}
-.journal-search .search-clear {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--text3);
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 0.2rem;
-  line-height: 1;
-  display: none;
-}
-.journal-search .search-clear.visible { display: block; }
-.journal-search .search-clear:hover { color: var(--text2); }
-
 .prompt-card {
   display: flex;
   align-items: center;
@@ -2415,6 +2372,7 @@ let journalFilter = 'all';
 let journalProjectFilter = null;
 let journalExpanded = false;
 let journalSearch = '';
+let journalSearchOpen = false;                          // Journal tab: search overlay expanded?
 let dashRange = 'week';
 let dashDay = todayStr(); // selected date for Day view
 let showWeeklyReview = false;
@@ -3023,20 +2981,29 @@ function renderJournal() {
       `).join('')}
     </div>` : '';
 
-  return `<div class="view">
-    <div class="journal-search">
-      <span class="search-icon">&#128269;</span>
-      <input type="text" placeholder="Search entries..." value="${esc(journalSearch)}" oninput="setJSearch(this.value)" />
-      <button class="search-clear ${hasSearch ? 'visible' : ''}" onclick="setJSearch('')">&times;</button>
-    </div>
+  // Row 1 — bigger sub-tab-style pills (All / Journal / Quick Note / Project)
+  // with the search icon on the left. Tapping the icon expands an input that
+  // overlays the entire row; tapping outside or the × dismisses it.
+  const primaryRow = journalSearchOpen
+    ? `<div class="proj-actions-row">
+        <div class="proj-search">
+          <span class="search-icon">&#128269;</span>
+          <input type="text" placeholder="Search entries…" value="${esc(journalSearch)}" oninput="setJSearch(this.value)" />
+          <button class="search-clear visible" onclick="closeJournalSearch()" aria-label="Close search">&times;</button>
+        </div>
+      </div>`
+    : `<div class="proj-scroller">
+        <button class="proj-search-icon-btn" onclick="openJournalSearch()" aria-label="Search entries">&#128269;</button>
+        ${['all','journal','note','project'].map(f => `
+          <button class="proj-pill-lg ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
+            ${f === 'all' ? 'All' : (typeLabel[f] || f)}
+          </button>`).join('')}
+      </div>`;
 
-    <div class="filter-row">
-      ${['all','journal','note','project'].map(f => `
-        <button class="fpill ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
-          ${f === 'all' ? 'All' : (typeLabel[f] || f)}
-        </button>`).join('')}
-    </div>
-    <div class="filter-row" style="margin-top:-0.5rem">
+  return `<div class="view">
+    ${primaryRow}
+
+    <div class="filter-row" style="margin-top:-0.25rem">
       ${['#win','#insight','#dft','#1%'].map(f => `
         <button class="fpill ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
           ${f}
@@ -5938,8 +5905,32 @@ window.toggleJournal = function() { journalExpanded = !journalExpanded; renderMa
 window.setJSearch = function(q) {
   journalSearch = q;
   renderMain(true);
-  const input = document.querySelector('.journal-search input');
+  // Re-focus the journal-tab search input after re-render so typing stays continuous.
+  const input = document.querySelector('.proj-actions-row .proj-search input');
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+};
+
+function _journalSearchOutsideHandler(e) {
+  const wrap = document.querySelector('.proj-actions-row .proj-search');
+  if (!wrap || !wrap.contains(e.target)) closeJournalSearch();
+}
+
+window.openJournalSearch = function() {
+  journalSearchOpen = true;
+  renderMain(true);
+  setTimeout(() => {
+    const input = document.querySelector('.proj-actions-row .proj-search input');
+    if (input) input.focus();
+    document.addEventListener('click', _journalSearchOutsideHandler, true);
+  }, 0);
+};
+
+window.closeJournalSearch = function() {
+  if (!journalSearchOpen) return;
+  journalSearchOpen = false;
+  journalSearch = '';
+  document.removeEventListener('click', _journalSearchOutsideHandler, true);
+  renderMain(true);
 };
 window.setDashRange = function(r) { dashRange = r; if (r === 'day') dashDay = todayStr(); renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
