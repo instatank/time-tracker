@@ -899,7 +899,9 @@ html, body {
   touch-action: pan-y;        /* let vertical scroll through; we own horizontal */
 }
 .card-swipe-wrap > .session-card,
-.card-swipe-wrap > .learning-card {
+.card-swipe-wrap > .learning-card,
+.card-swipe-wrap > .block-item,
+.card-swipe-wrap > .capture-item {
   margin-bottom: 0;            /* parent wrap owns the spacing now */
   position: relative;
   z-index: 1;
@@ -908,7 +910,9 @@ html, body {
   will-change: transform;
 }
 .card-swipe-wrap.swiped > .session-card,
-.card-swipe-wrap.swiped > .learning-card { transform: translateX(-88px); }
+.card-swipe-wrap.swiped > .learning-card,
+.card-swipe-wrap.swiped > .block-item,
+.card-swipe-wrap.swiped > .capture-item { transform: translateX(-88px); }
 
 .card-swipe-actions {
   position: absolute;
@@ -2684,33 +2688,47 @@ function renderToday() {
 
 function renderBlock(b) {
   const cat = catById(b.category);
+  const delKey = 'block-' + b.id;
   return `
-    <div class="block-item" onclick="openBlockOpts('${b.id}')">
-      <div class="block-time">${b.start_time ? fmtTime(b.date + 'T' + b.start_time) : ''}</div>
-      <div class="block-body">
-        <div class="block-top">
-          <span class="cat-dot" style="background:${cat.color}"></span>
-          <span class="cat-label" style="color:${cat.color}">${cat.label}</span>
-          ${b.duration_min ? `<span class="block-dur">${b.duration_min}m</span>` : ''}
+    <div class="card-swipe-wrap">
+      <div class="card-swipe-actions">
+        <button class="card-swipe-edit" onclick="openLogBlock('${b.id}')" title="Edit block" aria-label="Edit">${ICON_PENCIL}</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteBlock('${b.id}')" title="Delete block" aria-label="Delete">${ICON_TRASH}</button>
+      </div>
+      <div class="block-item" onclick="blockCardTap('${b.id}')">
+        <div class="block-time">${b.start_time ? fmtTime(b.date + 'T' + b.start_time) : ''}</div>
+        <div class="block-body">
+          <div class="block-top">
+            <span class="cat-dot" style="background:${cat.color}"></span>
+            <span class="cat-label" style="color:${cat.color}">${cat.label}</span>
+            ${b.duration_min ? `<span class="block-dur">${b.duration_min}m</span>` : ''}
+          </div>
+          <div class="block-label">${esc(b.label)}</div>
+          ${b.note ? `<div class="block-note">${esc(b.note)}</div>` : ''}
+          ${b.energy_level ? `<span class="energy-badge energy-${b.energy_level.toLowerCase()}">${b.energy_level} energy</span>` : ''}
         </div>
-        <div class="block-label">${esc(b.label)}</div>
-        ${b.note ? `<div class="block-note">${esc(b.note)}</div>` : ''}
-        ${b.energy_level ? `<span class="energy-badge energy-${b.energy_level.toLowerCase()}">${b.energy_level} energy</span>` : ''}
       </div>
     </div>`;
 }
 
 function renderCapPreview(c) {
   const ct = ctypeById(c.type);
+  const delKey = 'cap-' + c.id;
   return `
-    <div class="capture-item" onclick="openCapOpts('${c.id}')">
-      <div class="cap-meta">
-        <span>${ct.icon}</span>
-        <span class="cap-type">${ct.label}</span>
-        ${c.project_tag ? `<span class="project-tag">#${esc(c.project_tag)}</span>` : ''}
-        <span class="cap-time">${fmtTime(c.timestamp)}</span>
+    <div class="card-swipe-wrap">
+      <div class="card-swipe-actions">
+        <button class="card-swipe-edit" onclick="openCaptureEdit('${c.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteCapture('${c.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="cap-body-preview">${esc(c.body)}</div>
+      <div class="capture-item" onclick="capCardTap('${c.id}')">
+        <div class="cap-meta">
+          <span>${ct.icon}</span>
+          <span class="cap-type">${ct.label}</span>
+          ${c.project_tag ? `<span class="project-tag">#${esc(c.project_tag)}</span>` : ''}
+          <span class="cap-time">${fmtTime(c.timestamp)}</span>
+        </div>
+        <div class="cap-body-preview">${esc(c.body)}</div>
+      </div>
     </div>`;
 }
 
@@ -3025,16 +3043,23 @@ function renderCapFull(c) {
   const date = capDateIST(c);
   const isToday = date === todayStr();
   const dateLabel = isToday ? `Today · ${fmtTime(c.timestamp)}` : `${fmtDate(date)} · ${fmtTime(c.timestamp)}`;
+  const delKey = 'cap-' + c.id;
   return `
-    <div class="capture-item" onclick="openCapOpts('${c.id}')">
-      <div class="cap-meta">
-        <span>${ct.icon}</span>
-        <span class="cap-type">${ct.label}</span>
-        ${c.project_tag ? `<span class="project-tag">#${esc(c.project_tag)}</span>` : ''}
-        <span class="cap-time">${dateLabel}</span>
+    <div class="card-swipe-wrap">
+      <div class="card-swipe-actions">
+        <button class="card-swipe-edit" onclick="openCaptureEdit('${c.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteCapture('${c.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>
-      ${renderTagPills(c.tags)}
+      <div class="capture-item" onclick="capCardTap('${c.id}')">
+        <div class="cap-meta">
+          <span>${ct.icon}</span>
+          <span class="cap-type">${ct.label}</span>
+          ${c.project_tag ? `<span class="project-tag">#${esc(c.project_tag)}</span>` : ''}
+          <span class="cap-time">${dateLabel}</span>
+        </div>
+        <div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>
+        ${renderTagPills(c.tags)}
+      </div>
     </div>`;
 }
 
@@ -3044,17 +3069,24 @@ function renderBlockInJournal(b) {
   const timeStr = b.start_time ? ' · ' + fmtTime(b.date + 'T' + b.start_time) : '';
   const dateLabel = isToday ? 'Today' + timeStr : fmtDate(b.date) + timeStr;
   const blockTags = extractTags((b.label || '') + ' ' + (b.note || ''));
+  const delKey = 'block-' + b.id;
   return `
-    <div class="capture-item" onclick="openBlockOpts('${b.id}')">
-      <div class="cap-meta">
-        <span class="cat-dot" style="background:${cat.color};width:8px;height:8px;border-radius:50%;display:inline-block"></span>
-        <span class="cap-type" style="color:${cat.color}">${esc(cat.label)}</span>
-        ${b.duration_min ? `<span class="block-dur">${b.duration_min}m</span>` : ''}
-        <span class="cap-time">${dateLabel}</span>
+    <div class="card-swipe-wrap">
+      <div class="card-swipe-actions">
+        <button class="card-swipe-edit" onclick="openLogBlock('${b.id}')" title="Edit block" aria-label="Edit">${ICON_PENCIL}</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteBlock('${b.id}')" title="Delete block" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="cap-body" style="margin-top:0.25rem">${esc(b.label)}</div>
-      ${b.note ? `<div class="cap-body" style="margin-top:0.1rem;color:var(--text2);font-size:0.8rem">${esc(b.note)}</div>` : ''}
-      ${renderTagPills(blockTags)}
+      <div class="capture-item" onclick="blockCardTap('${b.id}')">
+        <div class="cap-meta">
+          <span class="cat-dot" style="background:${cat.color};width:8px;height:8px;border-radius:50%;display:inline-block"></span>
+          <span class="cap-type" style="color:${cat.color}">${esc(cat.label)}</span>
+          ${b.duration_min ? `<span class="block-dur">${b.duration_min}m</span>` : ''}
+          <span class="cap-time">${dateLabel}</span>
+        </div>
+        <div class="cap-body" style="margin-top:0.25rem">${esc(b.label)}</div>
+        ${b.note ? `<div class="cap-body" style="margin-top:0.1rem;color:var(--text2);font-size:0.8rem">${esc(b.note)}</div>` : ''}
+        ${renderTagPills(blockTags)}
+      </div>
     </div>`;
 }
 
@@ -3269,6 +3301,22 @@ window.sessionCardTap = function(sessionId, projectName) {
   tapOrDoubleTap('sess-' + sessionId,
     () => toggleSessionExpand(sessionId),
     () => openEditSession(sessionId, projectName)
+  );
+};
+
+// Today / Journal block + capture taps — block has no expand state so single
+// tap opens the existing options sheet (Edit / Delete / Cancel) as a fallback;
+// double tap fast-paths to the Edit form. Swipe-left reveals Edit + Delete.
+window.blockCardTap = function(id) {
+  tapOrDoubleTap('block-' + id,
+    () => openBlockOpts(id),
+    () => openLogBlock(id)
+  );
+};
+window.capCardTap = function(id) {
+  tapOrDoubleTap('cap-' + id,
+    () => openCapOpts(id),
+    () => openCaptureEdit(id)
   );
 };
 
@@ -6098,7 +6146,7 @@ applyTheme(_themePref);
   const onDown = (e) => {
     // Don't start a new swipe if the press is on the action buttons themselves
     if (e.target.closest('.card-swipe-actions')) return;
-    const card = e.target.closest('.session-card, .learning-card');
+    const card = e.target.closest('.session-card, .learning-card, .block-item, .capture-item');
     if (!card) return;
     const wrap = card.parentElement;
     if (!wrap || !wrap.classList.contains('card-swipe-wrap')) return;
