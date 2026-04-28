@@ -1224,6 +1224,16 @@ html, body {
   font-weight: 600;
   font-size: 0.95rem;
   line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;       /* single line in preview; ellipsises any overflow */
+}
+.learning-card.expanded .learning-source-name {
+  white-space: normal;       /* full text when card is expanded */
+  overflow: visible;
+  text-overflow: clip;
   word-break: break-word;
 }
 .learning-type-badge {
@@ -3831,10 +3841,8 @@ function renderLearningCard(e) {
         </div>
         <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
         ${pillsRow}
-        ${e.fullNotes
-          ? (expanded
-              ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
-              : `<span class="learning-notes-indicator">▸ notes</span>`)
+        ${e.fullNotes && expanded
+          ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
           : ''}
       </div>
     </div>
