@@ -1238,6 +1238,19 @@ html, body {
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
+/* Source-type pill that lives inline with the hashtag pills on a learning card */
+.learning-source-pill {
+  font-size: 0.62rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(59,130,246,0.12);
+  color: var(--accent);
+  border: 1px solid rgba(59,130,246,0.35);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
 .learning-date {
   color: var(--text3);
   font-size: 0.72rem;
@@ -3712,18 +3725,35 @@ async function loadSessionsFromCloud(uid) {
 const LEARNING_TYPES = ['Course', 'Book', 'Podcast', 'Video', 'Article', 'Other'];
 const LEARNING_FILTER_PILLS = ['#ai', '#trading', '#building', '#uot', '#mindset'];
 
+// Combined filter chips: All → source types → hashtag tags. Source-type ids
+// use the "type:" prefix so the same handler can route both filter kinds.
+function getLearningFilterOptions() {
+  return [
+    { id: 'all', label: 'All' },
+    ...LEARNING_TYPES.map(t       => ({ id: 'type:' + t, label: t })),
+    ...LEARNING_FILTER_PILLS.map(t => ({ id: t,           label: t })),
+  ];
+}
+function learningFilterMatches(filter, e) {
+  if (filter === 'all') return true;
+  if (filter.startsWith('type:')) return e.sourceType === filter.slice(5);
+  return (e.tags || []).includes(filter);
+}
+function learningFilterLabel(filter) {
+  if (filter.startsWith('type:')) return filter.slice(5);
+  return filter;
+}
+
 function renderLearningSub() {
-  // Filter pill row (neutral gray pills with blue-accent active state — same as project pills)
-  const pills = ['all', ...LEARNING_FILTER_PILLS].map(f => {
-    const active = learningFilter === f;
-    const label = f === 'all' ? 'All' : f;
+  // Filter pill row — source types AND hashtags share the same chip style.
+  const pills = getLearningFilterOptions().map(f => {
+    const active = learningFilter === f.id;
     return `<button class="proj-pill-lg ${active ? 'active' : ''}"
-      onclick="setLearningFilter('${f}')">${esc(label)}</button>`;
+      onclick="setLearningFilter('${f.id}')">${esc(f.label)}</button>`;
   }).join('');
 
-  // Filter entries (tag filter first)
-  let filtered = learning
-    .filter(e => learningFilter === 'all' || (e.tags || []).includes(learningFilter));
+  // Filter entries (source-type or hashtag)
+  let filtered = learning.filter(e => learningFilterMatches(learningFilter, e));
 
   // Free-text search across sourceName, sourceType, takeaway, fullNotes, tags
   const q = learningSearch.trim().toLowerCase();
@@ -3744,7 +3774,7 @@ function renderLearningSub() {
   const emptyMsg = q
     ? `No entries match <strong style="color:var(--text)">"${esc(learningSearch)}"</strong>.`
     : (learning.length
-        ? `No entries matching <strong style="color:var(--text)">${esc(learningFilter)}</strong>.`
+        ? `No entries matching <strong style="color:var(--text)">${esc(learningFilterLabel(learningFilter))}</strong>.`
         : `No learning entries yet.<br>Tap + Log Learning to start capturing takeaways.`);
 
   const cards = filtered.length
@@ -3776,9 +3806,16 @@ window.setLearningSearch = function(q) {
 function renderLearningCard(e) {
   const expanded = expandedLearning.has(e.id);
   const dateLabel = fmtDate(e.date || (e.createdAt || '').slice(0, 10));
+  // Source type is the FIRST pill (blue-tinted classification chip), hashtags follow.
+  const typePill = e.sourceType
+    ? `<span class="learning-source-pill">${esc(e.sourceType)}</span>`
+    : '';
   const tagPills = (e.tags || []).map(t =>
     `<span class="tag-pill ${tagClassFor(t)}" style="font-size:0.7rem;padding:2px 8px">${esc(t)}</span>`
   ).join('');
+  const pillsRow = (typePill || tagPills)
+    ? `<div class="session-tags">${typePill}${tagPills}</div>`
+    : '';
 
   const delKey = 'learn-' + e.id;
   return `
@@ -3789,14 +3826,11 @@ function renderLearningCard(e) {
       </div>
       <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="learningCardTap('${e.id}')">
         <div class="learning-card-hdr">
-          <div class="learning-source-group">
-            <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
-            <span class="learning-type-badge">${esc(e.sourceType || '—')}</span>
-          </div>
+          <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
           <span class="learning-date">${dateLabel}</span>
         </div>
         <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
-        ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
+        ${pillsRow}
         ${e.fullNotes
           ? (expanded
               ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
