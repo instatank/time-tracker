@@ -3328,11 +3328,12 @@ function renderProjects() {
     ? `<div class="proj-empty">Create a project to get started.</div>`
     : renderSessionsList(selectedProject);
 
-  // Row 2: content-tag filter chips (matches Journal-tab row-2 pattern). State
-  // composes with selectedProject — e.g. DayOS sessions tagged #win.
+  // Row 2: topical hashtag chips, matching the Learning sub-tab's row-2
+  // (display only — content tags like #win/#insight are still saved on
+  // sessions; they're just not surfaced as filter chips on this page).
   const tagFilterRow = projects.length === 0 ? '' : `
     <div class="filter-row" style="margin-top:-0.25rem">
-      ${TAG_CONTENT_BASE.map(t => `
+      ${LEARNING_FILTER_PILLS.map(t => `
         <button class="fpill ${projectsTagFilter === t ? 'active' : ''}" onclick="setProjectsTagFilter('${t}')">${t}</button>
       `).join('')}
     </div>`;
