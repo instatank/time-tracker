@@ -845,11 +845,14 @@ html, body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  padding: 0 2rem 0 2rem;     /* left pad for icon, right pad for clear */
+  padding: 0 2.2rem 0 2.2rem; /* left pad for icon, right pad for clear */
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   outline: none;
   transition: border-color 0.15s;
+  /* Twice the natural input height so the expanded overlay feels comfortable
+     to type into across all three contexts (Journal, Projects, Learning). */
+  min-height: 5.5rem;
 }
 .proj-search input::placeholder { color: var(--text3); }
 .proj-search input:focus { border-color: var(--border2); }
