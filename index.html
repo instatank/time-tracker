@@ -812,9 +812,27 @@ html, body {
   align-items: stretch;
 }
 .proj-actions-row .new-session-btn {
-  flex: 2;
+  flex: 1;
   margin-bottom: 0;
 }
+/* Compact search button (collapsed state). Tapping it expands the input
+   across the row, covering the + New Session / + Log Learning button. */
+.proj-search-icon-btn {
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+}
+.proj-search-icon-btn:hover { border-color: var(--border2); color: var(--text); }
+.proj-search-icon-btn:active { transform: scale(0.96); }
 .proj-search {
   flex: 1;
   position: relative;
@@ -2333,6 +2351,7 @@ let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
 let projects        = loadLocal(SK.PROJECTS, DEFAULT_PROJECTS.slice()); // string[]
 let projectCreating = false;
 let projectSessionSearch = '';                       // free-text filter for session list
+let projSearchOpen        = false;                     // Projects sub-tab: search overlay expanded?
 let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
 // `null` = "All" (not "empty state"). Default to the project of the most recent session
 // across all projects — so the pill you last worked under auto-selects on load. Falls
@@ -2376,6 +2395,7 @@ let projectsSubTab      = (function () {                // persisted: 'projects'
 let learningFilter      = 'all';                       // 'all' | 'type:<X>' | '#tag'
 let projectsTagFilter   = 'all';                       // Projects sub-tab row-2 filter: 'all' | '#win' | '#insight' | '#pending' | '#dft'
 let learningSearch      = '';                          // free-text filter for learning list
+let learnSearchOpen     = false;                       // Learning sub-tab: search overlay expanded?
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
 let selLearningType     = '';                          // current form source type
 let learningFormNotesOpen = false;                     // whether the "Full notes" textarea is expanded in the form
@@ -3403,7 +3423,6 @@ function renderSessionsList(projectName) {
     });
   }
 
-  const hasSearch = projectSessionSearch.length > 0;
   const tagFilterActive = projectsTagFilter !== 'all';
   const emptyMsg = q
     ? `No sessions match <strong style="color:var(--text)">"${esc(projectSessionSearch)}"</strong>.`
@@ -3417,15 +3436,23 @@ function renderSessionsList(projectName) {
     ? list.map(renderSessionCard).join('')
     : `<div class="proj-empty" style="padding:1.5rem 1rem">${emptyMsg}</div>`;
 
+  // Collapsed: + New Session (full flex) + small search icon button.
+  // Expanded: input takes the full row, hiding the + button until dismissed.
+  const actionsRow = projSearchOpen
+    ? `<div class="proj-actions-row">
+        <div class="proj-search">
+          <span class="search-icon">&#128269;</span>
+          <input type="text" placeholder="Search sessions…" value="${esc(projectSessionSearch)}" oninput="setProjSearch(this.value)" />
+          <button class="search-clear visible" onclick="closeProjSearch()" aria-label="Close search">&times;</button>
+        </div>
+      </div>`
+    : `<div class="proj-actions-row">
+        <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
+        <button class="proj-search-icon-btn" onclick="openProjSearch()" aria-label="Search sessions">&#128269;</button>
+      </div>`;
+
   return `
-    <div class="proj-actions-row">
-      <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
-      <div class="proj-search">
-        <span class="search-icon">&#128269;</span>
-        <input type="text" placeholder="Search…" value="${esc(projectSessionSearch)}" oninput="setProjSearch(this.value)" />
-        <button class="search-clear ${hasSearch ? 'visible' : ''}" onclick="setProjSearch('')">&times;</button>
-      </div>
-    </div>
+    ${actionsRow}
     ${cards}
     ${renderRelatedCaptures(projectName)}
   `;
@@ -3434,8 +3461,25 @@ function renderSessionsList(projectName) {
 window.setProjSearch = function(q) {
   projectSessionSearch = q;
   renderMain(true);                        // preserve scroll
-  const input = document.querySelector('.proj-search input');
+  // Re-focus the input after re-render so typing feels continuous.
+  const input = document.querySelector('.proj-actions-row .proj-search input');
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+};
+
+window.openProjSearch = function() {
+  projSearchOpen = true;
+  renderMain(true);
+  // Focus the input after the render flushes so the keyboard pops on mobile.
+  setTimeout(() => {
+    const input = document.querySelector('.proj-actions-row .proj-search input');
+    if (input) input.focus();
+  }, 0);
+};
+
+window.closeProjSearch = function() {
+  projSearchOpen = false;
+  projectSessionSearch = '';
+  renderMain(true);
 };
 
 // Related Captures — Journal captures + Learning entries whose tags[] contains
@@ -4162,7 +4206,6 @@ function renderLearningSub() {
 
   filtered = filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
-  const hasSearch = learningSearch.length > 0;
   const emptyMsg = q
     ? `No entries match <strong style="color:var(--text)">"${esc(learningSearch)}"</strong>.`
     : (learning.length
@@ -4173,17 +4216,23 @@ function renderLearningSub() {
     ? filtered.map(renderLearningCard).join('')
     : `<div class="learning-empty">${emptyMsg}</div>`;
 
+  const actionsRow = learnSearchOpen
+    ? `<div class="proj-actions-row">
+        <div class="proj-search">
+          <span class="search-icon">&#128269;</span>
+          <input type="text" placeholder="Search learning…" value="${esc(learningSearch)}" oninput="setLearningSearch(this.value)" />
+          <button class="search-clear visible" onclick="closeLearnSearch()" aria-label="Close search">&times;</button>
+        </div>
+      </div>`
+    : `<div class="proj-actions-row">
+        <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
+        <button class="proj-search-icon-btn" onclick="openLearnSearch()" aria-label="Search learning">&#128269;</button>
+      </div>`;
+
   return `
     <div class="proj-scroller">${sourceTypeRow}</div>
     <div class="filter-row" style="margin-top:-0.25rem">${tagRow}</div>
-    <div class="proj-actions-row">
-      <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
-      <div class="proj-search">
-        <span class="search-icon">&#128269;</span>
-        <input type="text" placeholder="Search…" value="${esc(learningSearch)}" oninput="setLearningSearch(this.value)" />
-        <button class="search-clear ${hasSearch ? 'visible' : ''}" onclick="setLearningSearch('')">&times;</button>
-      </div>
-    </div>
+    ${actionsRow}
     ${cards}
   `;
 }
@@ -4191,9 +4240,24 @@ function renderLearningSub() {
 window.setLearningSearch = function(q) {
   learningSearch = q;
   renderMain(true);
-  const input = document.querySelectorAll('.proj-search input')[0];
-  // In learning sub-tab there's only one .proj-search input (the other is on the sessions view)
+  // Re-focus the learning sub-tab's search input (only one .proj-search exists per tab).
+  const input = document.querySelector('.proj-actions-row .proj-search input');
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
+};
+
+window.openLearnSearch = function() {
+  learnSearchOpen = true;
+  renderMain(true);
+  setTimeout(() => {
+    const input = document.querySelector('.proj-actions-row .proj-search input');
+    if (input) input.focus();
+  }, 0);
+};
+
+window.closeLearnSearch = function() {
+  learnSearchOpen = false;
+  learningSearch = '';
+  renderMain(true);
 };
 
 function renderLearningCard(e) {
