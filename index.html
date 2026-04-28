@@ -925,28 +925,33 @@ html, body {
 .card-swipe-wrap.swiped > .card-swipe-actions { pointer-events: auto; }
 
 .card-swipe-edit, .card-swipe-delete {
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  border: 1.5px solid;
   background: none;
-  font-size: 1rem;
+  border: none;
+  outline: none;
+  padding: 8px;
   cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  padding: 0;
-  transition: background 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease;
 }
-.card-swipe-edit   { border-color: #facc15; color: #facc15; background: rgba(250,204,21,0.10); }
-.card-swipe-edit:hover   { background: rgba(250,204,21,0.22); }
-.card-swipe-delete { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.10); }
-.card-swipe-delete:hover { background: rgba(239,68,68,0.22); }
-.card-swipe-delete.armed {
-  background: rgba(239,68,68,0.30);
-  color: #fff;
-  font-weight: 700;
-  width: auto;
-  padding: 0 12px;
-  border-radius: 999px;
+.card-swipe-edit svg, .card-swipe-delete svg {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2;
+  display: block;
 }
+.card-swipe-edit   { color: #facc15; }      /* yellow pencil */
+.card-swipe-delete { color: var(--danger); } /* red bin */
+.card-swipe-edit:active,
+.card-swipe-delete:active { transform: scale(0.92); }
+/* Armed state: same icon, just larger + filled — no background chrome */
+.card-swipe-delete.armed { transform: scale(1.18); }
+.card-swipe-delete.armed svg path,
+.card-swipe-delete.armed svg rect { fill: var(--danger); fill-opacity: 0.25; }
 
 /* ── (Legacy inline edit/delete buttons no longer rendered, kept for safety) ── */
 .card-actions {
@@ -2402,6 +2407,10 @@ async function cloudWriteWithVerify(path, data, label) {
   return { ok: false, reason: 'verification failed' };
 }
 
+// Bare-icon SVGs for swipe action buttons. stroke="currentColor" → CSS color owns the colour.
+const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-15.5z"/></svg>`;
+const ICON_TRASH  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+
 const _pendingDeletes = new Map(); // key -> timeoutId
 const DELETE_CONFIRM_MS = 3000;
 function armOrConfirmDelete(key, doDelete) {
@@ -2412,14 +2421,13 @@ function armOrConfirmDelete(key, doDelete) {
   } else {
     const t = setTimeout(() => {
       _pendingDeletes.delete(key);
-      // Reset button appearance if it's still on screen
+      // Reset visual state — keep the SVG in place, just drop the .armed class.
       const btn = document.querySelector(`[data-delkey="${key}"]`);
-      if (btn) { btn.classList.remove('armed'); btn.textContent = '🗑'; }
+      if (btn) btn.classList.remove('armed');
     }, DELETE_CONFIRM_MS);
     _pendingDeletes.set(key, t);
-    // Visual feedback — swap icon/label
     const btn = document.querySelector(`[data-delkey="${key}"]`);
-    if (btn) { btn.classList.add('armed'); btn.textContent = '⚠ confirm'; }
+    if (btn) btn.classList.add('armed');           // CSS handles the visual change
     toast('Tap again to delete', 3000);
   }
 }
@@ -3214,8 +3222,8 @@ function renderSessionCard(s) {
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
-        <button class="card-swipe-edit" onclick="openEditSession('${s.id}','${projEsc}')" title="Edit session">✎</button>
-        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteSession('${s.id}','${projEsc}')" title="Delete session">🗑</button>
+        <button class="card-swipe-edit" onclick="openEditSession('${s.id}','${projEsc}')" title="Edit session" aria-label="Edit">${ICON_PENCIL}</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteSession('${s.id}','${projEsc}')" title="Delete session" aria-label="Delete">${ICON_TRASH}</button>
       </div>
       <div class="session-card" onclick="sessionCardTap('${s.id}','${projEsc}')">
         <div class="session-card-hdr">
@@ -3777,8 +3785,8 @@ function renderLearningCard(e) {
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
-        <button class="card-swipe-edit" onclick="openEditLearning('${e.id}')" title="Edit entry">✎</button>
-        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteLearning('${e.id}')" title="Delete entry">🗑</button>
+        <button class="card-swipe-edit" onclick="openEditLearning('${e.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteLearning('${e.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
       <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="learningCardTap('${e.id}')">
         <div class="learning-card-hdr">
