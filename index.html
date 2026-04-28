@@ -890,11 +890,68 @@ html, body {
   border: 1px solid var(--border2);
 }
 
-/* ── Card action buttons (Edit = yellow, Delete = red) ────────── */
-/* Matches the DFT tick/cross style: round, 30×30, 1.5px border, icon only. */
+/* ── Swipe-to-reveal Edit / Delete (session + learning cards) ── */
+.card-swipe-wrap {
+  position: relative;
+  margin-bottom: 0.5rem;
+  border-radius: var(--r);
+  overflow: hidden;
+  touch-action: pan-y;        /* let vertical scroll through; we own horizontal */
+}
+.card-swipe-wrap > .session-card,
+.card-swipe-wrap > .learning-card {
+  margin-bottom: 0;            /* parent wrap owns the spacing now */
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  transition: transform 0.22s cubic-bezier(.2,.8,.2,1);
+  will-change: transform;
+}
+.card-swipe-wrap.swiped > .session-card,
+.card-swipe-wrap.swiped > .learning-card { transform: translateX(-128px); }
+
+.card-swipe-actions {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  padding: 0 0.6rem;
+  z-index: 0;
+  background: var(--bg);
+  pointer-events: none;       /* re-enabled when wrap is .swiped */
+}
+.card-swipe-wrap.swiped > .card-swipe-actions { pointer-events: auto; }
+
+.card-swipe-edit, .card-swipe-delete {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  background: none;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.card-swipe-edit   { border-color: #facc15; color: #facc15; background: rgba(250,204,21,0.10); }
+.card-swipe-edit:hover   { background: rgba(250,204,21,0.22); }
+.card-swipe-delete { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.10); }
+.card-swipe-delete:hover { background: rgba(239,68,68,0.22); }
+.card-swipe-delete.armed {
+  background: rgba(239,68,68,0.30);
+  color: #fff;
+  font-weight: 700;
+  width: auto;
+  padding: 0 12px;
+  border-radius: 999px;
+}
+
+/* ── (Legacy inline edit/delete buttons no longer rendered, kept for safety) ── */
 .card-actions {
   display: flex;
-  gap: 1rem;                  /* same spacing as DFT tick/skip */
+  gap: 1rem;
   flex-shrink: 0;
   align-items: center;
 }
@@ -3155,22 +3212,24 @@ function renderSessionCard(s) {
 
   const delKey = 'sess-' + s.id;
   return `
-    <div class="session-card" onclick="sessionCardTap('${s.id}','${projEsc}')">
-      <div class="session-card-hdr">
-        <div class="session-hdr-left">
-          <span class="session-date">${dateLabel}</span>
-          ${selectedProject === null ? `<span class="session-proj-badge">${esc(s.projectName || '')}</span>` : ''}
-          ${tagPills}
-        </div>
-        <div class="card-actions">
-          <button class="card-edit-btn" onclick="event.stopPropagation();openEditSession('${s.id}','${projEsc}')" title="Edit session">✎</button>
-          <button class="card-delete-btn" data-delkey="${delKey}" onclick="event.stopPropagation();deleteSession('${s.id}','${projEsc}')" title="Delete session">🗑</button>
-        </div>
+    <div class="card-swipe-wrap">
+      <div class="card-swipe-actions">
+        <button class="card-swipe-edit" onclick="openEditSession('${s.id}','${projEsc}')" title="Edit session">✎</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteSession('${s.id}','${projEsc}')" title="Delete session">🗑</button>
       </div>
-      ${bodyParts.join('')}
-      <div class="session-footer">
-        ${hintHtml}
-        <span class="session-footer-right">${rightHtml}</span>
+      <div class="session-card" onclick="sessionCardTap('${s.id}','${projEsc}')">
+        <div class="session-card-hdr">
+          <div class="session-hdr-left">
+            <span class="session-date">${dateLabel}</span>
+            ${selectedProject === null ? `<span class="session-proj-badge">${esc(s.projectName || '')}</span>` : ''}
+            ${tagPills}
+          </div>
+        </div>
+        ${bodyParts.join('')}
+        <div class="session-footer">
+          ${hintHtml}
+          <span class="session-footer-right">${rightHtml}</span>
+        </div>
       </div>
     </div>
   `;
@@ -3716,27 +3775,27 @@ function renderLearningCard(e) {
 
   const delKey = 'learn-' + e.id;
   return `
-    <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="learningCardTap('${e.id}')">
-      <div class="learning-card-hdr">
-        <div class="learning-source-group">
-          <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
-          <span class="learning-type-badge">${esc(e.sourceType || '—')}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.6rem;flex-shrink:0">
-          <span class="learning-date">${dateLabel}</span>
-          <div class="card-actions">
-            <button class="card-edit-btn" onclick="event.stopPropagation();openEditLearning('${e.id}')" title="Edit entry">✎</button>
-            <button class="card-delete-btn" data-delkey="${delKey}" onclick="event.stopPropagation();deleteLearning('${e.id}')" title="Delete entry">🗑</button>
-          </div>
-        </div>
+    <div class="card-swipe-wrap">
+      <div class="card-swipe-actions">
+        <button class="card-swipe-edit" onclick="openEditLearning('${e.id}')" title="Edit entry">✎</button>
+        <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteLearning('${e.id}')" title="Delete entry">🗑</button>
       </div>
-      <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
-      ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
-      ${e.fullNotes
-        ? (expanded
-            ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
-            : `<span class="learning-notes-indicator">▸ notes</span>`)
-        : ''}
+      <div class="learning-card ${expanded ? 'expanded' : ''}" onclick="learningCardTap('${e.id}')">
+        <div class="learning-card-hdr">
+          <div class="learning-source-group">
+            <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
+            <span class="learning-type-badge">${esc(e.sourceType || '—')}</span>
+          </div>
+          <span class="learning-date">${dateLabel}</span>
+        </div>
+        <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
+        ${tagPills ? `<div class="session-tags">${tagPills}</div>` : ''}
+        ${e.fullNotes
+          ? (expanded
+              ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
+              : `<span class="learning-notes-indicator">▸ notes</span>`)
+          : ''}
+      </div>
     </div>
   `;
 }
@@ -5968,6 +6027,104 @@ _prefersLightMQ.addEventListener?.('change', () => {
 });
 
 applyTheme(_themePref);
+
+// ── Swipe-to-reveal (session + learning cards) ───────────────
+// Pointer-event delegation: works for touch on mobile and mouse on desktop.
+// One open card at a time. Tap on open card body or anywhere outside closes it.
+(function initCardSwipe() {
+  const OPEN_PX = 128;             // matches CSS .swiped translateX
+  const ACTIVATE_THRESHOLD = 60;   // how far user must drag to commit "open"
+  const AXIS_LOCK_PX = 8;          // movement before deciding axis
+
+  let st = null;                    // active swipe state
+  let openWrap = null;              // wrap currently in .swiped state
+  let suppressNextClick = false;    // true on pointerup if a swipe just ended
+
+  const closeOpen = () => {
+    if (!openWrap) return;
+    openWrap.classList.remove('swiped');
+    openWrap = null;
+  };
+
+  const onDown = (e) => {
+    // Don't start a new swipe if the press is on the action buttons themselves
+    if (e.target.closest('.card-swipe-actions')) return;
+    const card = e.target.closest('.session-card, .learning-card');
+    if (!card) return;
+    const wrap = card.parentElement;
+    if (!wrap || !wrap.classList.contains('card-swipe-wrap')) return;
+    st = {
+      wrap, card,
+      startX: e.clientX, startY: e.clientY,
+      dragging: false,
+      openOffset: wrap.classList.contains('swiped') ? -OPEN_PX : 0,
+    };
+  };
+
+  const onMove = (e) => {
+    if (!st) return;
+    const dx = e.clientX - st.startX;
+    const dy = e.clientY - st.startY;
+    if (!st.dragging) {
+      if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
+      if (Math.abs(dy) > Math.abs(dx)) { st = null; return; }   // vertical scroll wins
+      st.dragging = true;
+    }
+    let offset = st.openOffset + dx;
+    if (offset > 0) offset = 0;
+    if (offset < -OPEN_PX * 1.4) offset = -OPEN_PX * 1.4;
+    st.card.style.transition = 'none';
+    st.card.style.transform = `translateX(${offset}px)`;
+    e.preventDefault();
+  };
+
+  const onUp = (e) => {
+    if (!st) return;
+    const { wrap, card, startX, dragging, openOffset } = st;
+    st = null;
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const finalOffset = openOffset + dx;
+    card.style.transition = '';
+    card.style.transform = '';
+    suppressNextClick = true;
+    setTimeout(() => { suppressNextClick = false; }, 50);
+    if (finalOffset < -ACTIVATE_THRESHOLD) {
+      if (openWrap && openWrap !== wrap) openWrap.classList.remove('swiped');
+      wrap.classList.add('swiped');
+      openWrap = wrap;
+    } else {
+      wrap.classList.remove('swiped');
+      if (openWrap === wrap) openWrap = null;
+    }
+  };
+
+  const onClickCapture = (e) => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    if (openWrap) {
+      const insideOpen = openWrap.contains(e.target);
+      const onActions  = !!e.target.closest('.card-swipe-actions');
+      if (insideOpen && !onActions) {
+        closeOpen();
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+      if (!insideOpen) closeOpen();
+    }
+  };
+
+  document.addEventListener('pointerdown', onDown);
+  document.addEventListener('pointermove', onMove, { passive: false });
+  document.addEventListener('pointerup', onUp);
+  document.addEventListener('pointercancel', () => { if (st) { st.card.style.transition = ''; st.card.style.transform = ''; st = null; } });
+  document.addEventListener('click', onClickCapture, true);   // capture phase
+})();
 
 // ── Service Worker ────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
