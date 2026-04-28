@@ -2353,7 +2353,6 @@ let projectsSubTab      = (function () {                // persisted: 'projects'
   return (saved === 'projects' || saved === 'learning') ? saved : 'projects';
 })();
 let learningFilter      = 'all';                       // 'all' | 'type:<X>' | '#tag'
-let projectsTagFilter   = 'all';                       // Projects sub-tab row-2 filter: 'all' | '#win' | '#insight' | '#pending' | '#dft'
 let learningSearch      = '';                          // free-text filter for learning list
 let learnSearchOpen     = false;                       // Learning sub-tab: search overlay expanded?
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
@@ -3328,16 +3327,6 @@ function renderProjects() {
     ? `<div class="proj-empty">Create a project to get started.</div>`
     : renderSessionsList(selectedProject);
 
-  // Row 2: topical hashtag chips, matching the Learning sub-tab's row-2
-  // (display only — content tags like #win/#insight are still saved on
-  // sessions; they're just not surfaced as filter chips on this page).
-  const tagFilterRow = projects.length === 0 ? '' : `
-    <div class="filter-row" style="margin-top:-0.25rem">
-      ${LEARNING_FILTER_PILLS.map(t => `
-        <button class="fpill ${projectsTagFilter === t ? 'active' : ''}" onclick="setProjectsTagFilter('${t}')">${t}</button>
-      `).join('')}
-    </div>`;
-
   return `<div class="view">
     ${toggle}
     <div class="proj-scroller">
@@ -3345,7 +3334,6 @@ function renderProjects() {
       ${pills}
       ${newPill}
     </div>
-    ${tagFilterRow}
     ${content}
   </div>`;
 }
@@ -3354,12 +3342,6 @@ window.setProjectsSubTab = function(t) {
   projectsSubTab = t;
   try { localStorage.setItem('dayos_projects_subtab', t); } catch {}
   renderMain();
-};
-
-window.setProjectsTagFilter = function(t) {
-  // Toggle: tapping the active hashtag clears the filter back to 'all'
-  projectsTagFilter = (projectsTagFilter === t) ? 'all' : t;
-  renderMain(true);
 };
 
 // ── Session list + cards ─────────────────────────────────────
@@ -3373,12 +3355,6 @@ function renderSessionsList(projectName) {
     list = (sessions[projectName] || []).slice();
   }
   list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-
-  // Row-2 hashtag filter (#win / #insight / #pending / #dft) — composes with
-  // the current project selection.
-  if (projectsTagFilter !== 'all') {
-    list = list.filter(s => (s.tags || []).includes(projectsTagFilter));
-  }
 
   // Free-text search across before/during/after, tags, projectName
   const q = projectSessionSearch.trim().toLowerCase();
@@ -3394,14 +3370,11 @@ function renderSessionsList(projectName) {
     });
   }
 
-  const tagFilterActive = projectsTagFilter !== 'all';
   const emptyMsg = q
     ? `No sessions match <strong style="color:var(--text)">"${esc(projectSessionSearch)}"</strong>.`
-    : tagFilterActive
-        ? `No sessions tagged <strong style="color:var(--text)">${esc(projectsTagFilter)}</strong>${projectName === null ? '' : ` for <strong style="color:var(--text)">${esc(projectName)}</strong>`}.`
-        : (projectName === null
-            ? 'No sessions yet. Pick a project above, then tap + New Session.'
-            : `No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.`);
+    : (projectName === null
+        ? 'No sessions yet. Pick a project above, then tap + New Session.'
+        : `No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.`);
 
   const cards = list.length
     ? list.map(renderSessionCard).join('')
@@ -3498,13 +3471,7 @@ function getRelatedCapturesFor(projectName) {
       tags:       e.tags || [],
     });
   });
-  let out = refs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-  // Apply the Projects-tab row-2 hashtag filter so Related Captures stays in
-  // sync with the sessions list above.
-  if (projectsTagFilter !== 'all') {
-    out = out.filter(r => (r.tags || []).includes(projectsTagFilter));
-  }
-  return out;
+  return refs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
 }
 
 function renderRelatedCaptures(projectName) {
