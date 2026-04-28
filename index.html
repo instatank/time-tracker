@@ -2373,7 +2373,8 @@ let projectsSubTab      = (function () {                // persisted: 'projects'
   const saved = localStorage.getItem('dayos_projects_subtab');
   return (saved === 'projects' || saved === 'learning') ? saved : 'projects';
 })();
-let learningFilter      = 'all';                       // 'all' | a tag e.g. '#ai'
+let learningFilter      = 'all';                       // 'all' | 'type:<X>' | '#tag'
+let projectsTagFilter   = 'all';                       // Projects sub-tab row-2 filter: 'all' | '#win' | '#insight' | '#pending' | '#dft'
 let learningSearch      = '';                          // free-text filter for learning list
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
 let selLearningType     = '';                          // current form source type
@@ -3337,6 +3338,15 @@ function renderProjects() {
     ? `<div class="proj-empty">Create a project to get started.</div>`
     : renderSessionsList(selectedProject);
 
+  // Row 2: content-tag filter chips (matches Journal-tab row-2 pattern). State
+  // composes with selectedProject — e.g. DayOS sessions tagged #win.
+  const tagFilterRow = projects.length === 0 ? '' : `
+    <div class="filter-row" style="margin-top:-0.25rem">
+      ${TAG_CONTENT_BASE.map(t => `
+        <button class="fpill ${projectsTagFilter === t ? 'active' : ''}" onclick="setProjectsTagFilter('${t}')">${t}</button>
+      `).join('')}
+    </div>`;
+
   return `<div class="view">
     ${toggle}
     <div class="proj-scroller">
@@ -3344,6 +3354,7 @@ function renderProjects() {
       ${pills}
       ${newPill}
     </div>
+    ${tagFilterRow}
     ${content}
   </div>`;
 }
@@ -3352,6 +3363,12 @@ window.setProjectsSubTab = function(t) {
   projectsSubTab = t;
   try { localStorage.setItem('dayos_projects_subtab', t); } catch {}
   renderMain();
+};
+
+window.setProjectsTagFilter = function(t) {
+  // Toggle: tapping the active hashtag clears the filter back to 'all'
+  projectsTagFilter = (projectsTagFilter === t) ? 'all' : t;
+  renderMain(true);
 };
 
 // ── Session list + cards ─────────────────────────────────────
@@ -3365,6 +3382,12 @@ function renderSessionsList(projectName) {
     list = (sessions[projectName] || []).slice();
   }
   list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  // Row-2 hashtag filter (#win / #insight / #pending / #dft) — composes with
+  // the current project selection.
+  if (projectsTagFilter !== 'all') {
+    list = list.filter(s => (s.tags || []).includes(projectsTagFilter));
+  }
 
   // Free-text search across before/during/after, tags, projectName
   const q = projectSessionSearch.trim().toLowerCase();
@@ -3381,11 +3404,14 @@ function renderSessionsList(projectName) {
   }
 
   const hasSearch = projectSessionSearch.length > 0;
+  const tagFilterActive = projectsTagFilter !== 'all';
   const emptyMsg = q
     ? `No sessions match <strong style="color:var(--text)">"${esc(projectSessionSearch)}"</strong>.`
-    : (projectName === null
-        ? 'No sessions yet. Pick a project above, then tap + New Session.'
-        : `No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.`);
+    : tagFilterActive
+        ? `No sessions tagged <strong style="color:var(--text)">${esc(projectsTagFilter)}</strong>${projectName === null ? '' : ` for <strong style="color:var(--text)">${esc(projectName)}</strong>`}.`
+        : (projectName === null
+            ? 'No sessions yet. Pick a project above, then tap + New Session.'
+            : `No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.`);
 
   const cards = list.length
     ? list.map(renderSessionCard).join('')
@@ -3447,7 +3473,13 @@ function getRelatedCapturesFor(projectName) {
       tags:       e.tags || [],
     });
   });
-  return refs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  let out = refs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  // Apply the Projects-tab row-2 hashtag filter so Related Captures stays in
+  // sync with the sessions list above.
+  if (projectsTagFilter !== 'all') {
+    out = out.filter(r => (r.tags || []).includes(projectsTagFilter));
+  }
+  return out;
 }
 
 function renderRelatedCaptures(projectName) {
@@ -4080,15 +4112,8 @@ async function loadSessionsFromCloud(uid) {
 const LEARNING_TYPES = ['Course', 'Book', 'Podcast', 'Video', 'Article', 'Other'];
 const LEARNING_FILTER_PILLS = ['#ai', '#trading', '#building', '#uot', '#mindset'];
 
-// Combined filter chips: All → source types → hashtag tags. Source-type ids
-// use the "type:" prefix so the same handler can route both filter kinds.
-function getLearningFilterOptions() {
-  return [
-    { id: 'all', label: 'All' },
-    ...LEARNING_TYPES.map(t       => ({ id: 'type:' + t, label: t })),
-    ...LEARNING_FILTER_PILLS.map(t => ({ id: t,           label: t })),
-  ];
-}
+// Source-type filter ids use the "type:" prefix so the single learningFilter
+// state cleanly distinguishes them from hashtag filters.
 function learningFilterMatches(filter, e) {
   if (filter === 'all') return true;
   if (filter.startsWith('type:')) return e.sourceType === filter.slice(5);
@@ -4100,12 +4125,24 @@ function learningFilterLabel(filter) {
 }
 
 function renderLearningSub() {
-  // Filter pill row — source types AND hashtags share the same chip style.
-  const pills = getLearningFilterOptions().map(f => {
+  // Two-row pill layout (matches the Journal-tab pattern):
+  //   Row 1 — All + source types  (`.proj-pill-lg` in a horizontal scroller)
+  //   Row 2 — hashtag filter chips (`.fpill` in a `.filter-row`)
+  // Single `learningFilter` state — tapping a pill in either row replaces
+  // the active filter (rows are mutually exclusive, like the Journal tab).
+  const row1Items = [
+    { id: 'all', label: 'All' },
+    ...LEARNING_TYPES.map(t => ({ id: 'type:' + t, label: t })),
+  ];
+  const sourceTypeRow = row1Items.map(f => {
     const active = learningFilter === f.id;
     return `<button class="proj-pill-lg ${active ? 'active' : ''}"
       onclick="setLearningFilter('${f.id}')">${esc(f.label)}</button>`;
   }).join('');
+  const tagRow = LEARNING_FILTER_PILLS.map(t => `
+    <button class="fpill ${learningFilter === t ? 'active' : ''}"
+      onclick="setLearningFilter('${t}')">${t}</button>
+  `).join('');
 
   // Filter entries (source-type or hashtag)
   let filtered = learning.filter(e => learningFilterMatches(learningFilter, e));
@@ -4137,7 +4174,8 @@ function renderLearningSub() {
     : `<div class="learning-empty">${emptyMsg}</div>`;
 
   return `
-    <div class="proj-scroller">${pills}</div>
+    <div class="proj-scroller">${sourceTypeRow}</div>
+    <div class="filter-row" style="margin-top:-0.25rem">${tagRow}</div>
     <div class="proj-actions-row">
       <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
       <div class="proj-search">
