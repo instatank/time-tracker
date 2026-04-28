@@ -2937,8 +2937,10 @@ function renderJournal() {
     if (!projMap.has(k)) projMap.set(k, c.project_tag);
   });
   const projectNames = [...projMap.values()].sort();
-  // Set of known project hashtags, e.g. {'#timetracker', '#dayos'}
-  const knownProjectTags = new Set(projectNames.map(p => '#' + p.toLowerCase().replace(/\s+/g, '')));
+  // Set of known project hashtags, e.g. {'#timetracker', '#dayos'}.
+  // Use projectSlug so projects with punctuation (e.g. "Meal Co-Pilot")
+  // produce the same slug a user would type as `#mealcopilot`.
+  const knownProjectTags = new Set(projectNames.map(p => '#' + projectSlug(p)));
 
   let filtered;
   if (journalFilter === 'all') {
@@ -2956,10 +2958,10 @@ function renderJournal() {
   }
 
   if (journalFilter === 'project' && journalProjectFilter) {
-    const normJPF = journalProjectFilter.toLowerCase();
+    const slug = projectSlug(journalProjectFilter);
     filtered = filtered.filter(c =>
-      (c.project_tag || '').toLowerCase() === normJPF ||
-      (c.tags || []).includes('#' + normJPF.replace(/\s+/g, ''))
+      projectSlug(c.project_tag) === slug ||
+      (c.tags || []).some(t => projectSlug(t) === slug)
     );
   }
 
@@ -3048,9 +3050,13 @@ function renderTagPills(tags) {
   ).join('')}</div>`;
 }
 
-// Normalise a project name or #tag into a comparable slug (no '#', no spaces, lowercase).
+// Normalise a project name or #tag into a comparable slug. Mirrors the char
+// rules of `normalizeTag` (lowercase, leading '#' dropped, only [a-z0-9_%]
+// kept) so a project name like "Meal Co-Pilot" and a user-typed `#mealcopilot`
+// resolve to the same slug. Without that alignment, project tags wouldn't
+// be recognised and projectRefs wouldn't be written.
 function projectSlug(s) {
-  return (s || '').toString().toLowerCase().replace(/^#/, '').replace(/\s+/g, '');
+  return (s || '').toString().toLowerCase().replace(/^#/, '').replace(/[^a-z0-9_%]/g, '');
 }
 
 // True when `tag` matches any active project from the canonical `projects` list.
@@ -5454,8 +5460,14 @@ window.saveCapture = function() {
   const projectTag = document.getElementById('f-project-tag').value.trim();
   // Layer 1 (pill-selected) + Layer 2 (inline hashtags). Merge + dedupe.
   // Original body text is preserved verbatim — hashtags are NOT stripped.
+  // The legacy Project-capture-type "project tag" free-form field is also
+  // mirrored into tags[] so Project-type captures get a projectRef and show
+  // up in the Projects → Related Captures section consistently.
   const inlineTags = extractTags(body);
-  const tags = [...new Set([...captureFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
+  const projectTagFromField = projectTag ? [normalizeTag('#' + projectTag)] : [];
+  const tags = [...new Set(
+    [...captureFormTags, ...inlineTags, ...projectTagFromField].map(normalizeTag).filter(Boolean)
+  )];
   addToTagHistory(tags);
 
   if (editingCaptureId) {
@@ -5663,6 +5675,10 @@ window.doneDft = function() {
   captures.push(c);
   saveLocal(SK.CAPTURES, captures);
   syncCaptureDoc(c);
+  syncProjectRefsForEntry({
+    sourceType: 'journal', sourceId: c.id, tags: c.tags, prev: [],
+    preview: body, date: capDateIST(c), createdAt: c.timestamp,
+  });
   toast('DFT marked done ✓');
   render();
 };
@@ -5679,6 +5695,10 @@ window.skipDft = function() {
   captures.push(c);
   saveLocal(SK.CAPTURES, captures);
   syncCaptureDoc(c);
+  syncProjectRefsForEntry({
+    sourceType: 'journal', sourceId: c.id, tags: c.tags, prev: [],
+    preview: body, date: capDateIST(c), createdAt: c.timestamp,
+  });
   toast('DFT skipped');
   render();
 };
@@ -5710,7 +5730,13 @@ function sweepOldDfts() {
   if (changed) {
     saveLocal('dayos_dfts_v1', dfts);
     saveLocal(SK.CAPTURES, captures);
-    toSync.forEach(c => syncCaptureDoc(c));
+    toSync.forEach(c => {
+      syncCaptureDoc(c);
+      syncProjectRefsForEntry({
+        sourceType: 'journal', sourceId: c.id, tags: c.tags, prev: [],
+        preview: c.body, date: capDateIST(c), createdAt: c.timestamp,
+      });
+    });
   }
 }
 
