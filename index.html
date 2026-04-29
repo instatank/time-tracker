@@ -242,7 +242,13 @@ html, body {
   letter-spacing: 0.06em;
   color: var(--text);
 }
-.hdr-right { display: flex; align-items: center; gap: 0.75rem; }
+.hdr-right { display: flex; align-items: center; gap: 0.65rem; }
+.hdr-date {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text2);
+  white-space: nowrap;
+}
 .sync-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -329,9 +335,8 @@ html, body {
 .more-btn:active .more-btn-line, .more-btn:hover .more-btn-line { background: var(--accent); opacity: 0.5; }
 
 /* ── Today view ─────────────────────────────────────────────── */
-.today-header { margin-bottom: 1rem; }
-.today-date { font-size: 1.1rem; font-weight: 600; }
-.today-greeting { font-size: 0.85rem; color: var(--text2); margin-top: 2px; }
+/* Legacy .today-header / .today-date / .today-greeting removed — date now
+   lives in the global header bar. */
 
 /* Today-tab banners (B3) — single line, tappable, subtle.
    .today-banner-intention shows last week's saved intention all next week.
@@ -400,7 +405,7 @@ html, body {
 .action-row {
   display: flex;
   gap: 0.6rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.9rem;
 }
 .btn-log, .btn-cap {
   flex: 1;
@@ -3345,6 +3350,11 @@ function greeting() {
 function fmtDayHeader() {
   return new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', timeZone: TZ });
 }
+// Short header form: "Wed, Apr 29" — fixed-width 3-letter day + 3-letter month
+// so the header bar layout stays predictable as the date text changes.
+function fmtDayHeaderShort() {
+  return new Date().toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', timeZone: TZ });
+}
 function timeToISO(dateStr, timeStr) {
   return `${dateStr}T${timeStr}:00`;
 }
@@ -3405,6 +3415,7 @@ function renderHdr() {
   document.getElementById('hdr').innerHTML = `
     <span class="logo">DayOS</span>
     <div class="hdr-right">
+      <span class="hdr-date">${fmtDayHeaderShort()}</span>
       <span class="sync-dot ${syncStatus}" title="${syncStatus}"></span>
       <button class="auth-btn" onclick="openAuth()">${user ? (user.displayName?.split(' ')[0] || 'Me') : 'Sign in'}</button>
     </div>
@@ -3632,11 +3643,6 @@ function renderToday() {
     ${monthlySuggestBanner}
     ${intentionBanner}
     ${suggestBanner}
-    <div class="section today-header">
-      <div class="today-date">${fmtDayHeader()}</div>
-      <div class="today-greeting">${greeting()}</div>
-    </div>
-
     <div class="action-row">
       <button class="btn-log" onclick="openLogBlock()">+ Log Activity</button>
       <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
