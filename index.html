@@ -1960,6 +1960,108 @@ html, body {
 }
 /* Reserve bottom space so the sticky Save button doesn't cover content. */
 .wr-view { padding-bottom: 5rem; }
+
+/* ── Monthly Review (C1) ─────────────────────────────────── */
+.mr-view { padding-bottom: 5rem; }
+.mr-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.85rem 0.95rem;
+  margin-bottom: 0.85rem;
+}
+.mr-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 0.5rem;
+}
+.mr-help {
+  font-size: 0.72rem;
+  color: var(--text3);
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+.mr-field-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 0.25rem;
+}
+.mr-required { color: var(--danger); margin-left: 2px; }
+.mr-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.6rem;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.mr-input:focus { border-color: var(--border2); }
+.mr-input[readonly] { background: var(--surface); color: var(--text2); cursor: default; }
+.mr-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.mr-pill {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.mr-pill:hover { color: var(--text); }
+.mr-pill.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.mr-pill[disabled] { cursor: default; opacity: 0.6; }
+.mr-week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.mr-week-row:last-child { border-bottom: none; }
+.mr-week-label { color: var(--text2); flex-shrink: 0; }
+.mr-week-intent {
+  text-align: right;
+  font-style: italic;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mr-week-intent.muted { color: var(--text3); font-style: normal; }
+.mr-prev-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.78rem;
+  color: var(--text2);
+  margin-bottom: 0.7rem;
+  line-height: 1.4;
+}
+.mr-prev-card span { color: var(--text3); margin-right: 0.25rem; }
+.mr-prev-card strong { color: var(--text); font-weight: 600; }
 .wr-subline {
   font-size: 0.78rem;
   color: var(--text2);
@@ -7963,13 +8065,155 @@ async function loadMonthlyReviewsFromCloud(uid) {
   }
 }
 
-// Stub — full body lands in C1.3+. Returning a minimal placeholder keeps
-// the view routing safe if anyone opens the screen between these commits.
+// Live-toggle the Save button enabled state as the user types the focus.
+window.onMrFocusChange = function() {
+  const inp = document.getElementById('mr-focus');
+  const btn = document.getElementById('mr-save-btn');
+  if (!inp || !btn) return;
+  const has = inp.value.trim().length > 0;
+  btn.disabled = !has;
+  btn.classList.toggle('disabled', !has);
+};
+
+// Coherence pill picker — single-select, captured into draft.
+window.selectCoherence = function(value) {
+  if (!monthlyDraft) return;
+  monthlyDraft.coherence = (monthlyDraft.coherence === value) ? null : value;
+  // Re-paint the row in place rather than full re-render — preserves focus
+  // on any text field the user is currently typing into.
+  document.querySelectorAll('#mr-coherence-row .mr-pill').forEach(b => {
+    b.classList.toggle('active', b.dataset.value === monthlyDraft.coherence);
+  });
+};
+
 function renderMonthlyReview() {
-  return `<div class="view"><button class="wr-back" onclick="closeMonthlyReview()">← Back</button>
-    <div style="padding:1.5rem;color:var(--text2)">Monthly Review — ${esc(monthLabel(monthlyReviewYM || currentYM()))}<br>
-    Building this view…</div></div>`;
+  const ym = monthlyReviewYM || previousMonthYM(currentYM());
+  if (!monthlyDraft || monthlyDraft.ym !== ym) initMonthlyDraft(ym);
+
+  const stats = monthlyStats(ym);
+  const saved = monthlyReviews[ym];
+  // Past months that already have a saved review render read-only.
+  const isReadOnly = !!saved && ym < currentYM() && ym !== previousMonthYM(currentYM());
+
+  const prevYM = previousMonthYM(ym);
+  const prevReview = monthlyReviews[prevYM];
+
+  const subtitle = `${stats.weeklyIntentions.length || 0} weeks of data · ${stats.totalLoggedHrs.toFixed(0)} total hours logged`;
+
+  // ── Section 2: Direction Check (anchored above data) ──
+  const sectionDirection = `
+    <div class="mr-section">
+      <div class="mr-section-title">Direction Check</div>
+      <div class="mr-help">Answer these BEFORE looking at the data — anchor the reflection in your gut feel first.</div>
+      <label class="mr-field-label">What got clearer this month?</label>
+      <input type="text" class="mr-input" id="mr-clearer"
+        maxlength="200" ${isReadOnly ? 'readonly' : ''}
+        placeholder="Insight, realisation, decision that landed..."
+        value="${esc((saved && saved.directionCheck && saved.directionCheck.gotClearer) || '')}">
+      <label class="mr-field-label" style="margin-top:0.6rem">What's one thing that didn't go as planned?</label>
+      <input type="text" class="mr-input" id="mr-slipped"
+        maxlength="200" ${isReadOnly ? 'readonly' : ''}
+        placeholder="Where did execution or direction slip..."
+        value="${esc((saved && saved.directionCheck && saved.directionCheck.didntGoAsPlanned) || '')}">
+    </div>`;
+
+  // ── Section 6: Weekly Intention Recap ──
+  const intentionRows = stats.weeklyIntentions.map((wi, i) => {
+    const startMD = new Date(wi.weekStart + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const endMD   = new Date(wi.weekEnd   + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    return `<div class="mr-week-row">
+      <span class="mr-week-label">Week ${i + 1} — ${startMD}–${endMD}</span>
+      <span class="mr-week-intent ${wi.intention ? '' : 'muted'}">${wi.intention ? esc(wi.intention) : 'no review saved'}</span>
+    </div>`;
+  }).join('');
+  const coherenceOptions = [
+    { value: 'themed',    label: 'Yes — themed' },
+    { value: 'mixed',     label: 'Mixed' },
+    { value: 'scattered', label: 'Scattered' },
+  ];
+  const coherencePills = coherenceOptions.map(o => `
+    <button type="button" class="mr-pill ${monthlyDraft.coherence === o.value ? 'active' : ''}"
+      data-value="${o.value}"
+      onclick="selectCoherence('${o.value}')"
+      ${isReadOnly ? 'disabled' : ''}>${o.label}</button>`).join('');
+  const sectionWeekly = `
+    <div class="mr-section">
+      <div class="mr-section-title">Weekly Intention Recap</div>
+      ${intentionRows || '<div class="mr-help">No weeks fall fully inside this month.</div>'}
+      <div class="mr-help" style="margin-top:0.85rem">Did your weekly intentions ladder up to something coherent this month?</div>
+      <div class="mr-pill-row" id="mr-coherence-row">${coherencePills}</div>
+    </div>`;
+
+  // ── Section 7: Plan Next Month ──
+  const prevHeader = prevReview
+    ? `<div class="mr-prev-card">
+        <span>Last month —</span>
+        <strong>focus:</strong> ${esc(prevReview.oneFocus || '—')}
+        ${prevReview.oneExperiment ? ` · <strong>experiment:</strong> ${esc(prevReview.oneExperiment)}` : ''}
+      </div>`
+    : '';
+  const sectionPlan = `
+    <div class="mr-section">
+      <div class="mr-section-title">Plan Next Month</div>
+      ${prevHeader}
+      <label class="mr-field-label">One focus for next month <span class="mr-required">*</span></label>
+      <input type="text" class="mr-input" id="mr-focus"
+        maxlength="150" ${isReadOnly ? 'readonly' : ''}
+        oninput="onMrFocusChange()"
+        placeholder="What's the one thing that matters most..."
+        value="${esc((saved && saved.oneFocus) || '')}">
+      <label class="mr-field-label" style="margin-top:0.6rem">One experiment to try (optional)</label>
+      <input type="text" class="mr-input" id="mr-experiment"
+        maxlength="150" ${isReadOnly ? 'readonly' : ''}
+        placeholder="Something new to test or build into the rhythm..."
+        value="${esc((saved && saved.oneExperiment) || '')}">
+    </div>`;
+
+  // ── Header + nav ──
+  const navHeader = `
+    <div class="wr-nav-row">
+      <button class="wr-back" onclick="closeMonthlyReview()">← Back</button>
+      <div class="wr-week-nav">
+        <button class="wr-week-btn" onclick="shiftMonthlyReview(-1)">‹</button>
+        <span class="wr-daterange">${esc(monthLabel(ym))}</span>
+        <button class="wr-week-btn" onclick="shiftMonthlyReview(1)" ${ym >= previousMonthYM(currentYM()) ? 'disabled' : ''}>›</button>
+      </div>
+    </div>
+    <div class="wr-subline">${esc(subtitle)}</div>`;
+
+  // Save row (placeholder for sections 3–5; real save lands in C1.5)
+  const focusValue = (saved && saved.oneFocus) || '';
+  const saveRow = isReadOnly
+    ? `<div style="text-align:center;font-size:0.78rem;color:var(--text3);padding:1rem 0">Past month — read-only.</div>`
+    : `<button class="wr-save-btn ${focusValue ? '' : 'disabled'}" id="mr-save-btn"
+        onclick="saveMonthlyReview()" ${focusValue ? '' : 'disabled'}>
+        ${saved ? 'Update Review' : 'Save Review'}
+      </button>`;
+
+  return `<div class="view wr-view mr-view">
+    ${navHeader}
+    ${sectionDirection}
+    <div class="mr-section">
+      <div class="mr-section-title">Trend Charts</div>
+      <div class="mr-help">Charts coming next — wiring up data plumbing first.</div>
+    </div>
+    <div class="mr-section">
+      <div class="mr-section-title">Project Portfolio Audit</div>
+      <div class="mr-help">Project actions list coming next.</div>
+    </div>
+    <div class="mr-section">
+      <div class="mr-section-title">Learning Harvest &amp; Focus</div>
+      <div class="mr-help">Learning summary coming next.</div>
+    </div>
+    ${sectionWeekly}
+    ${sectionPlan}
+    ${saveRow}
+  </div>`;
 }
+
+// saveMonthlyReview lands in C1.5. Stub now so the Save button's onclick
+// doesn't reference an undefined function while we build the rest.
+window.saveMonthlyReview = window.saveMonthlyReview || function() { toast('Save coming soon'); };
 // Dismiss the auto-suggest banner for today only. Persists locally + cloud
 // so it stays dismissed across reloads / devices.
 window.dismissReviewBanner = function() {
