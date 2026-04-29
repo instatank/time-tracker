@@ -640,12 +640,14 @@ html, body {
   cursor: pointer;
 }
 .dj-task-text {
-  flex: 1;
+  display: block;
+  flex: 1 1 auto;
   min-width: 0;
   color: var(--text);
   font-size: 0.88rem;
-  line-height: 1.3;
-  word-break: break-word;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: normal;
   cursor: text;
 }
 .dj-task-text.completed {
@@ -698,9 +700,14 @@ html, body {
   font-family: inherit;
   resize: vertical;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, min-height 0.2s ease;
 }
 #f-daily-fields textarea:focus { border-color: var(--border2); }
+/* Reflection starts compact and expands on focus so it doesn't dominate the
+   modal until the user actually wants to write into it. Manual drag-resize
+   still works because `resize: vertical` overrides via inline style. */
+#f-daily-reflection             { min-height: 2.6rem; }
+#f-daily-reflection:focus       { min-height: 7rem; }
 .dj-saved-indicator {
   align-self: center;
   font-size: 0.7rem;
@@ -2240,8 +2247,7 @@ select option { background: var(--surface2); }
       <div class="dj-section">
         <label class="dj-section-label">REFLECTION</label>
         <textarea id="f-daily-reflection" placeholder="End of day reflection…"
-          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"
-          style="min-height:80px"></textarea>
+          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"></textarea>
       </div>
     </div>
     <div class="field">
