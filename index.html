@@ -2294,6 +2294,13 @@ html, body {
   transition: background 0.15s, border-color 0.15s;
 }
 .wr-open-btn:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.wr-open-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+.wr-open-row .wr-open-btn { margin-bottom: 0; flex: 1 1 auto; min-width: 0; }
 
 .view-toggle {
   display: flex;
@@ -5792,7 +5799,10 @@ function renderDashboard() {
 
     return `<div class="view">
       ${subTabs}
-      <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
+      <div class="wr-open-row">
+        <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
+        <button class="wr-open-btn" onclick="openMonthlyReview()">📅 Monthly Review</button>
+      </div>
 
       <div class="range-toggle">
         <button class="range-btn active" onclick="setDashRange('day')">Day</button>
@@ -5906,7 +5916,10 @@ function renderDashboard() {
 
   const html = `<div class="view">
     ${subTabs}
-    <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
+    <div class="wr-open-row">
+      <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
+      <button class="wr-open-btn" onclick="openMonthlyReview()">📅 Monthly Review</button>
+    </div>
 
     <div class="range-toggle">
       <button class="range-btn" onclick="setDashRange('day')">Day</button>
@@ -8589,9 +8602,69 @@ function renderMonthlyReview() {
   </div>`;
 }
 
-// saveMonthlyReview lands in C1.5. Stub now so the Save button's onclick
-// doesn't reference an undefined function while we build the rest.
-window.saveMonthlyReview = window.saveMonthlyReview || function() { toast('Save coming soon'); };
+// Persist a complete Monthly Review snapshot. Captures every form field +
+// the draft state (project actions, learning tag picks, coherence). Adds
+// any new project the user typed in Section 4 to projects[] before save.
+window.saveMonthlyReview = function() {
+  if (!monthlyReviewYM || !monthlyDraft) return;
+  const ym = monthlyReviewYM;
+  const focus = (document.getElementById('mr-focus')?.value || '').trim().slice(0, 150);
+  if (!focus) { toast('Add a focus before saving'); return; }
+  const stats = monthlyStats(ym);
+  // Project actions array — one entry per project listed in the draft, even
+  // if action is null (so the saved doc preserves the full surveyed set).
+  const projectActions = (projects || []).map(p => ({
+    projectName: p,
+    action: (monthlyDraft.projectActions || {})[p] || null,
+    monthlyHours: +((stats.projectMonthlyHrs[p] || 0).toFixed(2)),
+  }));
+  // Optional new-project addition.
+  const newProjRaw = (document.getElementById('mr-new-project')?.value || '').trim();
+  const newProjects = [];
+  if (newProjRaw) {
+    const exists = projects.some(p => projectSlug(p) === projectSlug(newProjRaw));
+    if (!exists) {
+      projects = [...projects, newProjRaw];
+      saveLocal(SK.PROJECTS, projects);
+      if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
+      newProjects.push(newProjRaw);
+    }
+  }
+  // Read remaining form fields.
+  const gotClearer  = (document.getElementById('mr-clearer')?.value         || '').trim().slice(0, 200);
+  const slipped     = (document.getElementById('mr-slipped')?.value         || '').trim().slice(0, 200);
+  const experiment  = (document.getElementById('mr-experiment')?.value      || '').trim().slice(0, 150);
+  const worthApply  = (document.getElementById('mr-worth-applying')?.value  || '').trim().slice(0, 200);
+  const learnFree   = (document.getElementById('mr-learn-freetext')?.value  || '').trim().slice(0, 150);
+
+  const review = {
+    month: ym,
+    monthLabel: monthLabel(ym),
+    directionCheck: { gotClearer, didntGoAsPlanned: slipped },
+    projectActions,
+    newProjects,
+    learningHarvest: {
+      totalEntries: stats.monthLearning.length,
+      byType:       stats.byType,
+      topTags:      stats.topTags,
+      worthApplying: worthApply,
+    },
+    learningFocusNext: {
+      tags:     (monthlyDraft.learnTags || []).slice(),
+      freeText: learnFree,
+    },
+    weeklyIntentionsCoherence: monthlyDraft.coherence || null,
+    oneFocus: focus,
+    oneExperiment: experiment || null,
+    savedAt: nowISTIso(),
+  };
+
+  monthlyReviews[ym] = review;
+  saveLocal('dayos_monthly_reviews_v1', monthlyReviews);
+  syncMonthlyReviewDoc(review);
+  toast('Monthly review saved ✓');
+  closeMonthlyReview();
+};
 // Dismiss the auto-suggest banner for today only. Persists locally + cloud
 // so it stays dismissed across reloads / devices.
 window.dismissReviewBanner = function() {
