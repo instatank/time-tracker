@@ -2317,6 +2317,18 @@ html, body {
   margin-bottom: 1rem;
 }
 .wr-open-row .wr-open-btn { margin-bottom: 0; flex: 1 1 auto; min-width: 0; }
+/* Trends-tab Row 3 — two toggles side-by-side
+   ([Totals | Over Time]   [Charts | Calendar]). Each toggle keeps its
+   intrinsic width; the row wraps on narrow viewports. */
+.dash-row3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-bottom: 0.85rem;
+  align-items: center;
+}
+.dash-row3 .view-toggle,
+.dash-row3 .range-toggle { margin-bottom: 0; }
 
 .view-toggle {
   display: flex;
@@ -5813,105 +5825,40 @@ let _chartInstance = null;
 
 function renderDashboard() {
   const td = todayStr();
+  // Per Trends-redesign D1: only Week and Month are reachable from the UI.
+  // Migrate any stale 'day' state to 'week'.
+  if (dashRange !== 'week' && dashRange !== 'month') dashRange = 'week';
 
-  // [Charts] | [Calendar] toggle — shown on every dashboard view
-  const subTabs = `<div class="range-toggle" style="margin-bottom:0.75rem;">
-      <button class="range-btn ${dashSubTab==='charts'?'active':''}" onclick="setDashSubTab('charts')">Charts</button>
-      <button class="range-btn ${dashSubTab==='calendar'?'active':''}" onclick="setDashSubTab('calendar')">Calendar</button>
+  // ── Top controls — three rows ──
+  // Row 1: Weekly | Monthly Review buttons
+  // Row 2: Week | Month period toggle
+  // Row 3: Totals | Over Time + Charts | Calendar (two adjacent toggles)
+  const topControls = `
+    <div class="wr-open-row">
+      <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
+      <button class="wr-open-btn" onclick="openMonthlyReview()">📅 Monthly Review</button>
+    </div>
+    <div class="range-toggle">
+      <button class="range-btn ${dashRange==='week'?'active':''}" onclick="setDashRange('week')">Week</button>
+      <button class="range-btn ${dashRange==='month'?'active':''}" onclick="setDashRange('month')">Month</button>
+    </div>
+    <div class="dash-row3">
+      <div class="view-toggle">
+        <button class="view-btn ${dashView==='totals'?'active':''}" onclick="setDashView('totals')">Totals</button>
+        <button class="view-btn ${dashView==='overtime'?'active':''}" onclick="setDashView('overtime')">Over Time</button>
+      </div>
+      <div class="range-toggle">
+        <button class="range-btn ${dashSubTab==='charts'?'active':''}" onclick="setDashSubTab('charts')">Charts</button>
+        <button class="range-btn ${dashSubTab==='calendar'?'active':''}" onclick="setDashSubTab('calendar')">Calendar</button>
+      </div>
     </div>`;
 
-  // Calendar view — re-uses the existing History layout unchanged
+  // Calendar view — uses the existing History layout. Top controls still
+  // render so the user can flip back to Charts without leaving the tab.
   if (dashSubTab === 'calendar') {
     return `<div class="view">
-      ${subTabs}
+      ${topControls}
       ${renderCalendarView()}
-    </div>`;
-  }
-
-  // ── Day view ────────────────────────────────────────────────
-  if (dashRange === 'day') {
-    const d = dashDay;
-    const dayBlocks = blocks.filter(b => b.date === d);
-    const breakdown = catBreakdown(dayBlocks);
-    const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
-    const skippedHrs = Math.max(0, 16 - wakingHrs);
-    const maxHrs = Math.max(...Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).map(([,v]) => v), skippedHrs, 0.1);
-    const sc = dayScore(d);
-    const r = ratings[d] || 0;
-    const leakClass = sc.leakHrs >= 1 ? 'bad' : sc.leakHrs > 0 ? 'warn' : 'good';
-    const dayLabel = new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-
-    const bars = [
-      ...CATS.map(c => {
-        const hrs = breakdown[c.id] || 0;
-        const pct = maxHrs > 0 ? (hrs / maxHrs) * 100 : 0;
-        return `
-          <div class="bar-row">
-            <span class="bar-lbl">${c.icon} ${c.label}</span>
-            <div class="bar-track">
-              <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
-            </div>
-            <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
-          </div>`;
-      }),
-      `<div class="bar-row">
-          <span class="bar-lbl">${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}</span>
-          <div class="bar-track">
-            <div class="bar-fill" style="width:${maxHrs > 0 ? (skippedHrs / maxHrs) * 100 : 0}%;background:${SKIPPED_CAT.color}"></div>
-          </div>
-          <span class="bar-val">${skippedHrs > 0 ? skippedHrs.toFixed(1) + 'h' : '—'}</span>
-        </div>`,
-    ].join('');
-
-    return `<div class="view">
-      ${subTabs}
-      <div class="wr-open-row">
-        <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
-        <button class="wr-open-btn" onclick="openMonthlyReview()">📅 Monthly Review</button>
-      </div>
-
-      <div class="range-toggle">
-        <button class="range-btn active" onclick="setDashRange('day')">Day</button>
-        <button class="range-btn" onclick="setDashRange('week')">Week</button>
-        <button class="range-btn" onclick="setDashRange('month')">Month</button>
-      </div>
-
-      <div class="day-nav">
-        <button class="cal-nav-btn" onclick="dashDayNav(-1)">‹</button>
-        <span class="day-nav-label">${dayLabel}</span>
-        <button class="cal-nav-btn" onclick="dashDayNav(1)" ${d >= td ? 'disabled style="opacity:0.3;cursor:default"' : ''}>›</button>
-      </div>
-
-      <div class="section">
-        <div class="sec-hdr"><span class="sec-title">Time by Category</span><span class="sec-meta">${wakingHrs.toFixed(1)}h waking</span></div>
-        <div class="bar-chart">${bars}</div>
-      </div>
-
-      <div class="section">
-        <div class="sec-hdr"><span class="sec-title">Day Score</span></div>
-        <div class="score-grid">
-          <div class="score-item">
-            <span class="score-val">${sc.deepWorkHrs.toFixed(1)}h</span>
-            <span class="score-label">Deep Work</span>
-          </div>
-          <div class="score-item">
-            <span class="score-val ${leakClass}">${sc.leakHrs.toFixed(1)}h</span>
-            <span class="score-label">Leaks</span>
-          </div>
-          <div class="score-item">
-            <span class="score-val ${sc.practiceDone ? 'good' : ''}">${sc.practiceDone ? '✓' : '–'}</span>
-            <span class="score-label">Practice</span>
-          </div>
-          <div class="score-item">
-            <span class="score-val ${sc.journalDone ? 'good' : ''}">${sc.journalDone ? '✓' : '–'}</span>
-            <span class="score-label">Journal</span>
-          </div>
-          <div class="score-item">
-            <span class="score-val ${r ? 'warn' : ''}">${r ? r + '★' : '–'}</span>
-            <span class="score-label">Rating</span>
-          </div>
-        </div>
-      </div>
     </div>`;
   }
 
@@ -5981,22 +5928,7 @@ function renderDashboard() {
     </div>`;
 
   const html = `<div class="view">
-    ${subTabs}
-    <div class="wr-open-row">
-      <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
-      <button class="wr-open-btn" onclick="openMonthlyReview()">📅 Monthly Review</button>
-    </div>
-
-    <div class="range-toggle">
-      <button class="range-btn" onclick="setDashRange('day')">Day</button>
-      <button class="range-btn ${dashRange==='week'?'active':''}" onclick="setDashRange('week')">Week</button>
-      <button class="range-btn ${dashRange==='month'?'active':''}" onclick="setDashRange('month')">Month</button>
-    </div>
-
-    <div class="view-toggle">
-      <button class="view-btn ${dashView==='totals'?'active':''}" onclick="setDashView('totals')">Totals</button>
-      <button class="view-btn ${dashView==='overtime'?'active':''}" onclick="setDashView('overtime')">Over Time</button>
-    </div>
+    ${topControls}
 
     ${chartSection}
 
