@@ -428,6 +428,21 @@ html, body {
 .cap-type { font-size: 0.72rem; font-weight: 600; color: var(--text2); }
 .cap-time { font-size: 0.7rem; color: var(--text3); margin-left: auto; }
 .cap-body { font-size: 0.88rem; color: var(--text); white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
+/* Collapsed capture cards line-clamp the body to 3 lines; tapping the card
+   sets `.expanded` on the container which lifts the clamp. Scoped to capture
+   cards via [data-capture-id] so block-in-journal cards (which use the same
+   .capture-item class) keep their existing full-text rendering. */
+.capture-item[data-capture-id] .cap-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.capture-item[data-capture-id].expanded .cap-body {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
+}
 .cap-body-preview {
   font-size: 0.88rem;
   color: var(--text);
@@ -715,6 +730,39 @@ html, body {
   color: var(--tick-color);
   font-weight: 500;
   margin-left: auto;
+}
+
+/* Inline editor lives directly inside the .capture-item when a Daily Journal
+   card is expanded. Compact section spacing + a subtle separator from the
+   meta row above. */
+.dj-inline-editor {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.dj-inline-editor .dj-section { margin-bottom: 0.7rem; }
+.dj-inline-editor textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s, min-height 0.2s ease;
+  min-height: 2.6rem;
+}
+.dj-inline-editor textarea:focus { border-color: var(--border2); min-height: 6rem; }
+.dj-inline-saved {
+  font-size: 0.68rem;
+  color: var(--tick-color);
+  font-weight: 500;
+  text-align: right;
+  margin-top: 0.25rem;
+  min-height: 0.8rem;
 }
 
 .eod-panel {
@@ -2500,6 +2548,8 @@ let learningFilter      = 'all';                       // 'all' | 'type:<X>' | '
 let learningSearch      = '';                          // free-text filter for learning list
 let learnSearchOpen     = false;                       // Learning sub-tab: search overlay expanded?
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
+let expandedCaptures    = new Set();                   // capture IDs expanded in journal feed
+let expandedDailyDates  = new Set();                   // daily-journal dates expanded inline
 let selLearningType     = '';                          // current form source type
 let learningFormNotesOpen = false;                     // whether the "Full notes" textarea is expanded in the form
 let editingLearningId   = null;
@@ -3448,7 +3498,7 @@ function renderCapFull(c) {
         <button class="card-swipe-edit" onclick="openCaptureEdit('${c.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
         <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteCapture('${c.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="capture-item" data-capture-id="${c.id}" onclick="capCardTap('${c.id}')">
+      <div class="capture-item ${expandedCaptures.has(c.id) ? 'expanded' : ''}" data-capture-id="${c.id}" onclick="capCardTap('${c.id}')">
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
@@ -3468,9 +3518,7 @@ function renderCapFull(c) {
 function renderDailyJournalCard(d) {
   const ct = ctypeById('daily');
   const isToday = d.date === todayStr();
-  const dateLabel = isToday
-    ? 'Today'
-    : fmtDate(d.date);
+  const dateLabel = isToday ? 'Today' : fmtDate(d.date);
   const tasks = d.tasks || [];
   const taskDone = tasks.filter(t => t.completed).length;
   const taskCount = tasks.length;
@@ -3478,33 +3526,83 @@ function renderDailyJournalCard(d) {
   const taskSummary = taskCount > 0
     ? `${taskCount} task${taskCount === 1 ? '' : 's'}${taskDone ? ' · ' + taskDone + ' done' : ''}`
     : '';
+  const expanded = expandedDailyDates.has(d.date);
   // Preview priority follows the modal's section order: Thoughts → Tasks → Reflection.
   let preview;
   if (firstLine(d.thoughts))           preview = firstLine(d.thoughts);
   else if (taskCount > 0)              preview = taskSummary;
   else if (firstLine(d.reflection))    preview = firstLine(d.reflection);
   else                                  preview = '(empty — tap to start)';
-  // Subtle inline task-count meta when the preview text comes from a different section.
   const taskMeta = (taskCount > 0 && preview !== taskSummary)
     ? `<span class="cap-time" style="margin-left:0.4rem">${taskSummary}</span>`
     : '';
   const delKey = 'daily-' + d.date;
+  // Body — preview when collapsed, full inline editor when expanded.
+  // Tap the .capture-item to toggle. Inputs use stopPropagation so typing
+  // doesn't accidentally collapse the card.
+  const body = expanded
+    ? renderDailyInlineEditor(d)
+    : `<div class="cap-body" style="margin-top:0.25rem">${esc(preview)}</div>
+       ${renderTagPills(d.tags)}`;
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
         <button class="card-swipe-edit" onclick="openDailyJournalEditor('${esc(d.date)}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
         <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteDailyJournal('${esc(d.date)}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="capture-item" data-daily-date="${esc(d.date)}" onclick="openDailyJournalEditor('${esc(d.date)}')">
+      <div class="capture-item ${expanded ? 'expanded' : ''}" data-daily-date="${esc(d.date)}" onclick="dailyCardTap('${esc(d.date)}')">
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
-          ${taskMeta}
+          ${expanded ? '' : taskMeta}
           <span class="cap-time">${dateLabel}</span>
         </div>
-        <div class="cap-body" style="margin-top:0.25rem">${esc(preview)}</div>
-        ${renderTagPills(d.tags)}
+        ${body}
       </div>
+    </div>`;
+}
+
+// Inline editor body for an expanded Daily Journal card. Uses date-suffixed
+// element IDs so multiple cards can be expanded at once without collisions.
+// All input handlers stopPropagation so typing doesn't bubble to the
+// .capture-item onclick (which would collapse the card).
+function renderDailyInlineEditor(d) {
+  const sfx = '-i-' + esc(d.date);
+  const tasks = d.tasks || [];
+  const taskRows = tasks.map(t => `
+    <div class="dj-task-row" data-task-id="${esc(t.id)}">
+      <input type="checkbox" class="dj-task-check" ${t.completed ? 'checked' : ''}
+        onclick="event.stopPropagation()"
+        onchange="toggleDailyTaskInline('${esc(d.date)}','${esc(t.id)}')">
+      <span class="dj-task-text ${t.completed ? 'completed' : ''}"
+        onclick="event.stopPropagation();editDailyTaskInline('${esc(d.date)}','${esc(t.id)}')">${esc(t.text || '')}</span>
+      <button type="button" class="dj-task-delete"
+        onclick="event.stopPropagation();deleteDailyTaskInline('${esc(d.date)}','${esc(t.id)}')" aria-label="Delete">×</button>
+    </div>
+  `).join('');
+  return `
+    <div class="dj-inline-editor" onclick="event.stopPropagation()">
+      <div class="dj-section">
+        <label class="dj-section-label">THOUGHTS</label>
+        <textarea id="f-daily-thoughts${sfx}" placeholder="Anything on your mind…"
+          oninput="onDailyInlineFieldChange('${esc(d.date)}')"
+          onblur="saveDailyInline('${esc(d.date)}')">${esc(d.thoughts || '')}</textarea>
+      </div>
+      <div class="dj-section">
+        <label class="dj-section-label">TASKS</label>
+        <div class="dj-tasks" id="f-daily-tasks${sfx}">${taskRows}</div>
+        <div id="f-daily-add-task-row${sfx}">
+          <button type="button" class="dj-add-task-btn" onclick="event.stopPropagation();openAddDailyTaskInline('${esc(d.date)}')">+ add task</button>
+        </div>
+      </div>
+      <div class="dj-section">
+        <label class="dj-section-label">REFLECTION</label>
+        <textarea id="f-daily-reflection${sfx}" placeholder="End of day reflection…"
+          oninput="onDailyInlineFieldChange('${esc(d.date)}')"
+          onblur="saveDailyInline('${esc(d.date)}')">${esc(d.reflection || '')}</textarea>
+      </div>
+      ${renderTagPills(d.tags)}
+      <div class="dj-inline-saved" id="dj-inline-saved${sfx}"></div>
     </div>`;
 }
 
@@ -3878,9 +3976,15 @@ window.blockCardTap = function(id) {
 };
 window.capCardTap = function(id) {
   tapOrDoubleTap('cap-' + id,
-    () => openCapOpts(id),
-    () => openCaptureEdit(id)
+    () => toggleCapExpand(id),    // single tap → expand/collapse inline
+    () => openCaptureEdit(id)     // double tap → open edit modal
   );
+};
+
+window.toggleCapExpand = function(id) {
+  if (expandedCaptures.has(id)) expandedCaptures.delete(id);
+  else                          expandedCaptures.add(id);
+  renderMain(true);
 };
 
 window.deleteSession = function(sessionId, projectName) {
@@ -6115,6 +6219,200 @@ window.openDailyJournalEditor = function(date) {
   }, 300);
 };
 
+// ── Inline Daily Journal expand (in-feed editor) ─────────────
+// Tap a daily card → toggle expanded state. Expanded shows the same three
+// sections as the modal editor, scoped to that card's date so multiple cards
+// can be expanded simultaneously. Auto-save behaves like the modal version.
+const _dailyInlineSaveTimers = {};
+const _dailyInlineConfirmingAddTask = {};
+
+window.dailyCardTap = function(date) {
+  tapOrDoubleTap('daily-' + date,
+    () => toggleDailyExpand(date),               // single tap → toggle expand
+    () => openDailyJournalEditor(date)           // double tap → open modal
+  );
+};
+
+window.toggleDailyExpand = function(date) {
+  if (expandedDailyDates.has(date)) {
+    // Collapsing — flush any pending auto-save first.
+    flushInlineDailySave(date);
+    expandedDailyDates.delete(date);
+  } else {
+    expandedDailyDates.add(date);
+  }
+  renderMain(true);
+};
+
+function inlineDailyId(field, date) { return `f-daily-${field}-i-${date}`; }
+
+window.onDailyInlineFieldChange = function(date) {
+  if (_dailyInlineSaveTimers[date]) clearTimeout(_dailyInlineSaveTimers[date]);
+  _dailyInlineSaveTimers[date] = setTimeout(() => {
+    delete _dailyInlineSaveTimers[date];
+    saveDailyInline(date);
+  }, 30000);
+  setInlineSavedLabel(date, 'Editing…');
+};
+
+function flushInlineDailySave(date) {
+  if (_dailyInlineSaveTimers[date]) {
+    clearTimeout(_dailyInlineSaveTimers[date]);
+    delete _dailyInlineSaveTimers[date];
+  }
+  saveDailyInline(date);
+}
+
+function setInlineSavedLabel(date, text) {
+  const el = document.getElementById(`dj-inline-saved-i-${date}`);
+  if (el) el.textContent = text || '';
+}
+
+window.saveDailyInline = function(date) {
+  const entry = getDailyJournalFor(date);
+  // Collapse + entry-not-found should both be no-ops.
+  if (!entry) return;
+  const thoughtsEl = document.getElementById(inlineDailyId('thoughts', date));
+  const reflectionEl = document.getElementById(inlineDailyId('reflection', date));
+  const thoughts = thoughtsEl ? thoughtsEl.value : (entry.thoughts || '');
+  const reflection = reflectionEl ? reflectionEl.value : (entry.reflection || '');
+  const inline = [...extractTags(thoughts), ...extractTags(reflection)];
+  // Preserve any pill-selected tags that already exist on the entry; merge inline.
+  const tags = [...new Set([...(entry.tags || []), ...inline].map(normalizeTag).filter(Boolean))];
+  addToTagHistory(tags);
+  entry.thoughts = thoughts;
+  entry.reflection = reflection;
+  entry.tags = tags;
+  entry.lastEditedAt = nowISTIso();
+  entry._synced = false;
+  if (isDailyEntryEmpty(entry)) {
+    // Don't persist an empty entry. The card stays in the feed via local state
+    // but the cloud doc would be a no-content shell.
+    setInlineSavedLabel(date, 'Empty');
+    return;
+  }
+  saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+  syncDailyJournalDoc(entry);
+  setInlineSavedLabel(date, 'Auto-saved');
+};
+
+// ── Inline task CRUD ──
+function renderDailyTasksInline(date) {
+  const wrap = document.getElementById(inlineDailyId('tasks', date));
+  if (!wrap) return;
+  const entry = getDailyJournalFor(date);
+  if (!entry) return;
+  const tasks = entry.tasks || [];
+  wrap.innerHTML = tasks.map(t => `
+    <div class="dj-task-row" data-task-id="${esc(t.id)}">
+      <input type="checkbox" class="dj-task-check" ${t.completed ? 'checked' : ''}
+        onclick="event.stopPropagation()"
+        onchange="toggleDailyTaskInline('${esc(date)}','${esc(t.id)}')">
+      <span class="dj-task-text ${t.completed ? 'completed' : ''}"
+        onclick="event.stopPropagation();editDailyTaskInline('${esc(date)}','${esc(t.id)}')">${esc(t.text || '')}</span>
+      <button type="button" class="dj-task-delete"
+        onclick="event.stopPropagation();deleteDailyTaskInline('${esc(date)}','${esc(t.id)}')" aria-label="Delete">×</button>
+    </div>
+  `).join('');
+}
+
+function resetInlineAddTaskRow(date) {
+  const row = document.getElementById(`f-daily-add-task-row-i-${date}`);
+  if (!row) return;
+  row.innerHTML = `<button type="button" class="dj-add-task-btn" onclick="event.stopPropagation();openAddDailyTaskInline('${esc(date)}')">+ add task</button>`;
+}
+
+window.openAddDailyTaskInline = function(date) {
+  const row = document.getElementById(`f-daily-add-task-row-i-${date}`);
+  if (!row) return;
+  row.innerHTML = `
+    <input type="text" class="dj-task-input" id="f-daily-new-task-i-${date}" placeholder="New task…"
+      onclick="event.stopPropagation()"
+      onkeydown="event.stopPropagation();if(event.key==='Enter'){confirmAddDailyTaskInline('${esc(date)}')}else if(event.key==='Escape'){resetInlineAddTaskRowFn('${esc(date)}')}"
+      onblur="confirmAddDailyTaskInline('${esc(date)}')"
+      style="width:100%;padding:0.5rem;border:1px solid var(--accent);border-radius:6px;background:var(--surface2);color:var(--text);outline:none">
+  `;
+  setTimeout(() => {
+    const inp = document.getElementById(`f-daily-new-task-i-${date}`);
+    if (inp) inp.focus();
+  }, 0);
+};
+
+window.resetInlineAddTaskRowFn = function(date) { resetInlineAddTaskRow(date); };
+
+window.confirmAddDailyTaskInline = function(date) {
+  if (_dailyInlineConfirmingAddTask[date]) return;
+  _dailyInlineConfirmingAddTask[date] = true;
+  try {
+    const inp = document.getElementById(`f-daily-new-task-i-${date}`);
+    if (!inp) { resetInlineAddTaskRow(date); return; }
+    const text = inp.value.trim();
+    resetInlineAddTaskRow(date);
+    if (!text) return;
+    const entry = getDailyJournalFor(date);
+    if (!entry) return;
+    entry.tasks = entry.tasks || [];
+    entry.tasks.push({ id: uid(), text, completed: false, completedAt: null });
+    saveDailyInline(date);
+    renderDailyTasksInline(date);
+  } finally {
+    _dailyInlineConfirmingAddTask[date] = false;
+  }
+};
+
+window.toggleDailyTaskInline = function(date, taskId) {
+  const entry = getDailyJournalFor(date);
+  if (!entry) return;
+  const t = (entry.tasks || []).find(x => x.id === taskId);
+  if (!t) return;
+  t.completed = !t.completed;
+  t.completedAt = t.completed ? nowISTIso() : null;
+  saveDailyInline(date);
+  renderDailyTasksInline(date);
+};
+
+window.editDailyTaskInline = function(date, taskId) {
+  const entry = getDailyJournalFor(date);
+  if (!entry) return;
+  const t = (entry.tasks || []).find(x => x.id === taskId);
+  if (!t) return;
+  const wrap = document.getElementById(inlineDailyId('tasks', date));
+  if (!wrap) return;
+  const row = wrap.querySelector(`.dj-task-row[data-task-id="${CSS.escape(taskId)}"]`);
+  if (!row) return;
+  const span = row.querySelector('.dj-task-text');
+  if (!span) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'dj-task-input';
+  input.value = t.text || '';
+  input.addEventListener('click', e => e.stopPropagation());
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { input.value = t.text || ''; input.blur(); }
+  });
+  input.addEventListener('blur', () => {
+    const next = input.value.trim();
+    if (next && next !== t.text) {
+      t.text = next;
+      saveDailyInline(date);
+    }
+    renderDailyTasksInline(date);
+  });
+  span.replaceWith(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+};
+
+window.deleteDailyTaskInline = function(date, taskId) {
+  const entry = getDailyJournalFor(date);
+  if (!entry) return;
+  entry.tasks = (entry.tasks || []).filter(x => x.id !== taskId);
+  saveDailyInline(date);
+  renderDailyTasksInline(date);
+};
+
 window.saveCapture = function() {
   // Daily Journal: auto-save model — commit any pending edits and close.
   if (selCapType === 'daily') {
@@ -6466,9 +6764,62 @@ window.saveEodNote = function(val) {
     if (text) setDoc(doc(db, 'users', user.uid, 'eod', d), { text }).catch(() => {});
     else      deleteDoc(doc(db, 'users', user.uid, 'eod', d)).catch(() => {});
   }
+  // A2: append the new EOD text to today's Daily Journal reflection.
+  // Only fires on the first EOD submission of the day (gated by
+  // `eodAppendedAt` on the entry) so subsequent edits to the EOD don't keep
+  // duplicating into Reflection. Additive only — never overwrites.
+  if (text) appendEodToDailyJournal(d, text);
   toast(text ? 'EOD saved ✓' : 'EOD cleared');
   renderMain(true); // keep scroll position (panel is at bottom of Today page)
 };
+
+function appendEodToDailyJournal(date, eodText) {
+  const eod = (eodText || '').trim();
+  if (!eod) return;
+  let entry = getDailyJournalFor(date);
+  let isNew = false;
+  if (!entry) {
+    isNew = true;
+    entry = {
+      id: date,
+      date,
+      timestamp: nowISTIso(),
+      lastEditedAt: nowISTIso(),
+      tasks: [],
+      thoughts: '',
+      reflection: '',
+      tags: [],
+      _synced: false,
+    };
+  }
+  // Skip if we already auto-appended today — keeps EOD edits non-destructive.
+  if (entry.eodAppendedAt) {
+    if (isNew) return; // shouldn't happen, but defensive
+    return;
+  }
+  const existing = (entry.reflection || '').trim();
+  entry.reflection = existing ? (existing + '\n\n' + eod) : eod;
+  entry.eodAppendedAt = nowISTIso();
+  entry.lastEditedAt = nowISTIso();
+  entry._synced = false;
+  if (isNew) dailyJournals.push(entry);
+  else {
+    const idx = dailyJournals.findIndex(d => d.date === date);
+    if (idx !== -1) dailyJournals[idx] = entry;
+  }
+  saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+  syncDailyJournalDoc(entry);
+  // If the Daily Journal editor for this date is currently open, keep the
+  // in-flight draft + the textarea in sync with the appended content.
+  if (editingDailyDate === date) {
+    if (dailyDraftEntry) {
+      dailyDraftEntry.reflection = entry.reflection;
+      dailyDraftEntry.eodAppendedAt = entry.eodAppendedAt;
+    }
+    const reflEl = document.getElementById('f-daily-reflection');
+    if (reflEl) reflEl.value = entry.reflection;
+  }
+}
 
 // ── Navigation ────────────────────────────────────────────────
 window.setTab = function(tab) {
