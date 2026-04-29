@@ -333,6 +333,54 @@ html, body {
 .today-date { font-size: 1.1rem; font-weight: 600; }
 .today-greeting { font-size: 0.85rem; color: var(--text2); margin-top: 2px; }
 
+/* Today-tab banners (B3) — single line, tappable, subtle.
+   .today-banner-intention shows last week's saved intention all next week.
+   .today-banner-suggest is the Sat/Sun "weekly review ready" prompt. */
+.today-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  margin-bottom: 0.65rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+.today-banner-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today-banner-text strong { color: var(--text); font-weight: 600; }
+.today-banner-icon { flex-shrink: 0; }
+.today-banner-chevron { color: var(--text3); font-size: 1rem; flex-shrink: 0; }
+.today-banner-close {
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.today-banner-close:hover { color: var(--text); }
+.today-banner-intention {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.today-banner-intention:hover { border-color: var(--border2); }
+.today-banner-suggest {
+  background: var(--accent-soft-faint);
+  border: 1px solid var(--accent-soft-strong);
+  color: var(--text);
+}
+.today-banner-suggest:hover { background: var(--accent-soft); }
+
 .action-row {
   display: flex;
   gap: 0.6rem;
@@ -2781,6 +2829,9 @@ let todayBksExpanded = false;
 let todayCapsExpanded = false;
 const TODAY_PREVIEW = 3;
 let dfts = loadLocal('dayos_dfts_v1', {}); // { 'YYYY-MM-DD': 'focus task text' }
+// Today-tab banner dismissals (B3). One date-keyed flag per banner kind.
+//   shape: { 'YYYY-MM-DD': { reviewBanner: true } }
+let dismissals = loadLocal('dayos_dismissals_v1', {});
 let user = null;
 let syncStatus = 'idle';
 
@@ -3160,7 +3211,39 @@ function renderToday() {
   const moreBks  = bks.length  - TODAY_PREVIEW;
   const moreCaps = caps.length - TODAY_PREVIEW;
 
+  // ── Today-tab banners (B3) ──
+  // 1) Saved-intention from LAST week's review applies to "this week".
+  //    Tap → open last week's review.
+  const currentWeekStart = getWeekStart(d);
+  const prevWeekStart    = addDays(currentWeekStart, -7);
+  const prevReview       = weeklyReviews[prevWeekStart];
+  const activeIntention  = prevReview && (prevReview.nextWeekIntention || prevReview.intention);
+  const intentionBanner  = activeIntention
+    ? `<div class="today-banner today-banner-intention" onclick="openWeeklyReviewAt(-1)">
+         <span class="today-banner-text"><strong>This week:</strong> ${esc(activeIntention)}</span>
+         <span class="today-banner-chevron">›</span>
+       </div>`
+    : '';
+
+  // 2) Auto-suggest banner: Sat/Sun, current week's review NOT saved, not
+  //    dismissed today. Tap → open current week's review. × → dismiss
+  //    for today only.
+  const todayDow      = new Date(d + 'T00:00:00').getDay(); // 0=Sun, 6=Sat
+  const isWeekend     = todayDow === 0 || todayDow === 6;
+  const reviewSaved   = !!weeklyReviews[currentWeekStart];
+  const showSuggest   = isWeekend && !reviewSaved && !isReviewBannerDismissedToday();
+  const suggestBanner = showSuggest
+    ? `<div class="today-banner today-banner-suggest" onclick="openWeeklyReviewAt(0)">
+         <span class="today-banner-icon">📋</span>
+         <span class="today-banner-text">Your weekly review is ready · tap to start</span>
+         <span class="today-banner-chevron">›</span>
+         <button class="today-banner-close" onclick="event.stopPropagation();dismissReviewBanner()" aria-label="Dismiss">×</button>
+       </div>`
+    : '';
+
   return `<div class="view">
+    ${intentionBanner}
+    ${suggestBanner}
     <div class="section today-header">
       <div class="today-date">${fmtDayHeader()}</div>
       <div class="today-greeting">${greeting()}</div>
@@ -5168,6 +5251,32 @@ async function syncProjectsDoc() {
   if (!user) return;
   try { await setDoc(doc(db, 'users', user.uid, 'meta', 'projects'), { list: projects }); }
   catch (err) { console.error('[DayOS] Projects sync error:', err); }
+}
+
+// ── Today-tab banner dismissals cloud sync (B3) ─────────────
+// Per-day flags so dismissals follow the user across devices.
+async function syncDismissalDoc(date) {
+  if (!user || !date) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'dismissals', date), dismissals[date] || {}); }
+  catch (err) { console.error('[DayOS] Dismissal sync error:', err); }
+}
+async function loadDismissalsFromCloud(uid) {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'dismissals'));
+    const remote = {};
+    snap.docs.forEach(d => { remote[d.id] = d.data() || {}; });
+    // Local overrides for any not-yet-synced flags wins; remote fills the rest.
+    dismissals = { ...remote, ...dismissals };
+    saveLocal('dayos_dismissals_v1', dismissals);
+  } catch (err) {
+    console.error('[DayOS] Dismissals load error:', err);
+  }
+}
+
+// True when the auto-suggest banner has already been dismissed today.
+function isReviewBannerDismissedToday() {
+  const d = todayStr();
+  return !!(dismissals[d] && dismissals[d].reviewBanner);
 }
 
 // ── Adherence config cloud sync (B1) ─────────────────────────
@@ -7594,6 +7703,25 @@ window.shiftWeeklyReview = function(dir) {
   weeklyReviewOffset = next;
   renderMain();
 };
+// Open the weekly review at a specific offset and switch to the Trends tab.
+// Used by the Today-tab banners — auto-suggest opens the current week,
+// the saved-intention banner opens last week's review.
+window.openWeeklyReviewAt = function(offset) {
+  weeklyReviewOffset = (typeof offset === 'number') ? offset : 0;
+  showWeeklyReview = true;
+  activeTab = 'dashboard';
+  try { localStorage.setItem('dayos_active_tab', 'dashboard'); } catch {}
+  render();
+};
+// Dismiss the auto-suggest banner for today only. Persists locally + cloud
+// so it stays dismissed across reloads / devices.
+window.dismissReviewBanner = function() {
+  const d = todayStr();
+  dismissals[d] = { ...(dismissals[d] || {}), reviewBanner: true };
+  saveLocal('dayos_dismissals_v1', dismissals);
+  syncDismissalDoc(d);
+  renderMain(true);
+};
 // Save a complete Weekly Review snapshot. Captures the six tile totals,
 // per-metric star averages, the surfaced pattern strings, and the user's
 // intention for next week. Idempotent on re-save.
@@ -8038,6 +8166,7 @@ async function initialSync(uid) {
   loadProjectsFromCloud(uid);
   loadTagHistoryFromCloud(uid);
   loadAdherenceConfigFromCloud(uid);
+  loadDismissalsFromCloud(uid);
   const sessLoad  = loadSessionsFromCloud(uid);
   const learnLoad = loadLearningFromCloud(uid);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
