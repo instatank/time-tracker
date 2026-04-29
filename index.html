@@ -1892,33 +1892,155 @@ html, body {
   outline: none;
 }
 .wr-intention-area:focus { border-color: var(--border2); }
+.wr-intention-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.wr-intention-input:focus { border-color: var(--accent); }
+.wr-intention-help {
+  font-size: 0.66rem;
+  color: var(--text3);
+  margin-top: 0.3rem;
+}
+/* Reserve bottom space so the sticky Save button doesn't cover content. */
+.wr-view { padding-bottom: 5rem; }
+.wr-subline {
+  font-size: 0.78rem;
+  color: var(--text2);
+  margin: -0.5rem 0 1rem;
+}
+.wr-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.wr-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.wr-tile-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text3);
+  text-transform: uppercase;
+}
+.wr-tile-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+.wr-tile-sub {
+  font-size: 0.7rem;
+  color: var(--text3);
+  margin-top: -0.05rem;
+}
+.wr-tile-delta {
+  font-size: 0.66rem;
+  margin-top: 0.15rem;
+  font-weight: 500;
+}
+.wr-delta-up   { color: var(--success); }
+.wr-delta-down { color: var(--danger); }
+.wr-delta-flat { color: var(--text3); }
+
+/* Star metric trend rows + tiny Chart.js sparkline canvas */
+.wr-stars {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.wr-star-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+.wr-star-meta { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.wr-star-label {
+  font-size: 0.82rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wr-star-avg {
+  font-size: 0.78rem;
+  color: var(--text2);
+  font-weight: 600;
+  margin-left: auto;
+}
+.wr-spark {
+  display: block;
+  width: 80px;
+  height: 20px;
+}
+.wr-patterns { display: flex; flex-direction: column; gap: 0.4rem; }
+
 .wr-save-btn {
-  margin-top: 0.6rem;
-  padding: 0.5rem 1.2rem;
+  /* Sticky to the bottom of the viewport so it stays in reach as the user
+     scrolls through the review. The .wr-view bottom padding above keeps
+     content from sitting under it. */
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  transform: translateX(-50%);
+  width: calc(100% - 2rem);
+  max-width: 568px;
+  padding: 0.85rem 1.2rem;
   background: var(--accent);
   color: var(--on-accent);
   border: none;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--shadow-accent);
+  z-index: 50;
+  transition: opacity 0.15s, transform 0.08s;
 }
-.wr-save-btn:active { opacity: 0.8; }
+.wr-save-btn:active { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
+.wr-save-btn.disabled, .wr-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .wr-open-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.4rem 0.9rem;
-  background: var(--surface2);
-  border: 1px solid var(--border2);
+  padding: 0.5rem 1rem;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-strong);
   border-radius: 8px;
-  color: var(--text2);
-  font-size: 0.82rem;
-  font-weight: 500;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
   margin-bottom: 1rem;
+  transition: background 0.15s, border-color 0.15s;
 }
-.wr-open-btn:hover { color: var(--text); border-color: var(--accent); }
+.wr-open-btn:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 .view-toggle {
   display: flex;
@@ -5682,137 +5804,511 @@ function getWeekStart(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
+// ── Weekly stats consolidator (B2) ───────────────────────────
+// Returns the six core metrics plus their deltas vs the previous week.
+// Also returns the per-day arrays so the pattern engine can reuse them
+// without rescanning the data. Keep this side-effect free so the Weekly
+// Review screen and any future Trends additions can both call it.
+function weeklyStats(weekStart) {
+  const weekEnd = addDays(weekStart, 6);
+  const days = _enumerateDates(weekStart, weekEnd);
+  const prevStart = addDays(weekStart, -7);
+  const prevEnd   = addDays(weekStart, -1);
+
+  // Core: blocks per day, total minutes per category
+  const dayDeepHrs = days.map(d =>
+    blocks.filter(b => b.date === d && b.category === 'deep_work')
+      .reduce((s, b) => s + (b.duration_min || 0), 0) / 60);
+  const dayLeakHrs = days.map(d =>
+    blocks.filter(b => b.date === d && b.category === 'leaks')
+      .reduce((s, b) => s + (b.duration_min || 0), 0) / 60);
+
+  // Total logged hours (excluding sleep) for the unlogged-hours pattern.
+  const weekBlocks = blocks.filter(b => b.date >= weekStart && b.date <= weekEnd);
+  const breakdown = catBreakdown(weekBlocks);
+  const totalLoggedHrs = Object.entries(breakdown)
+    .filter(([k]) => k !== SLEEP_CAT.id)
+    .reduce((sum, [, v]) => sum + v, 0);
+
+  // 1) Deep work hours
+  const deepWorkHrs = dayDeepHrs.reduce((a, b) => a + b, 0);
+  const prevDeepWorkHrs = blocks
+    .filter(b => b.date >= prevStart && b.date <= prevEnd && b.category === 'deep_work')
+    .reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
+
+  // 2) DFT completion — count days where DFT was set, count of those that were completed
+  let dftSet = 0, dftDone = 0;
+  let prevDftSet = 0, prevDftDone = 0;
+  days.forEach(d => {
+    const v = dfts[d];
+    if (v) {
+      const status = (typeof v === 'string') ? 'pending' : (v.status || 'pending');
+      const text   = (typeof v === 'string') ? v : (v.text || '');
+      if (text) { dftSet++; if (status === 'done') dftDone++; }
+    }
+  });
+  _enumerateDates(prevStart, prevEnd).forEach(d => {
+    const v = dfts[d];
+    if (v) {
+      const status = (typeof v === 'string') ? 'pending' : (v.status || 'pending');
+      const text   = (typeof v === 'string') ? v : (v.text || '');
+      if (text) { prevDftSet++; if (status === 'done') prevDftDone++; }
+    }
+  });
+  const dftRate     = dftSet     > 0 ? dftDone     / dftSet     : null;
+  const prevDftRate = prevDftSet > 0 ? prevDftDone / prevDftSet : null;
+
+  // 3) Task completion (Daily Journal entries)
+  const weekDailies = (dailyJournals || []).filter(d => d.date >= weekStart && d.date <= weekEnd);
+  const prevDailies = (dailyJournals || []).filter(d => d.date >= prevStart && d.date <= prevEnd);
+  const sumTasks = (entries) => entries.reduce((acc, e) => {
+    (e.tasks || []).forEach(t => { acc.total++; if (t.completed) acc.done++; });
+    return acc;
+  }, { total: 0, done: 0 });
+  const tk = sumTasks(weekDailies);
+  const pk = sumTasks(prevDailies);
+  const taskCompletionRate     = tk.total > 0 ? tk.done / tk.total : null;
+  const prevTaskCompletionRate = pk.total > 0 ? pk.done / pk.total : null;
+
+  // 4) Adherence
+  const adherence = calculateAdherence(weekStart, weekEnd);
+  const prevAdherence = calculateAdherence(prevStart, prevEnd);
+
+  // 5) Win count — across all sources tagged #win, scoped to this week
+  const winsInRange = (start, end) => {
+    let n = 0;
+    captures.forEach(c => {
+      if (capDateIST(c) < start || capDateIST(c) > end) return;
+      if ((c.tags || []).includes('#win')) n++;
+    });
+    Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
+      if (!s || s.date < start || s.date > end) return;
+      if ((s.tags || []).includes('#win')) n++;
+    }));
+    (learning || []).forEach(e => {
+      if (!e || e.date < start || e.date > end) return;
+      if ((e.tags || []).includes('#win')) n++;
+    });
+    (dailyJournals || []).forEach(d => {
+      if (!d || d.date < start || d.date > end) return;
+      if ((d.tags || []).includes('#win')) n++;
+    });
+    return n;
+  };
+  const winCount     = winsInRange(weekStart, weekEnd);
+  const prevWinCount = winsInRange(prevStart, prevEnd);
+
+  // 6) Avg day rating
+  const dayRatingAvg     = avgRating(weekStart, weekEnd);
+  const prevDayRatingAvg = avgRating(prevStart, prevEnd);
+
+  return {
+    weekStart, weekEnd, days,
+    deepWorkHrs, prevDeepWorkHrs,
+    dftSet, dftDone, dftRate, prevDftSet, prevDftDone, prevDftRate,
+    taskTotal: tk.total, taskDone: tk.done, taskCompletionRate, prevTaskCompletionRate,
+    adherence, prevAdherence,
+    winCount, prevWinCount,
+    dayRatingAvg, prevDayRatingAvg,
+    // Reusable per-day arrays for the pattern engine
+    dayDeepHrs, dayLeakHrs,
+    totalLoggedHrs, breakdown,
+  };
+}
+
+// ── Star metrics for the week (dynamic) ─────────────────────
+// Discover the set of star-metric keys present in lifeRatings within the
+// week and return labels + per-day values. Skip days without data so
+// sparklines can show gaps. Falls back to the well-known canonical labels
+// for any key we recognise; otherwise prettifies the raw key.
+const STAR_METRIC_LABELS = {
+  habit_stacking:      'Habit Stacking',
+  exercise_nutrition:  'Exercise & Nutrition',
+  mindset:             'Mindset',
+  relationship:        'Relationship',
+  pseudo_productivity: 'Pseudo-Productivity',
+};
+function _prettifyMetricKey(k) {
+  if (STAR_METRIC_LABELS[k]) return STAR_METRIC_LABELS[k];
+  return k.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+}
+function getStarMetricsForWeek(weekStart) {
+  const weekEnd = addDays(weekStart, 6);
+  const days = _enumerateDates(weekStart, weekEnd);
+  // Discover keys that have any data in the week.
+  const keys = new Set();
+  days.forEach(d => {
+    const r = lifeRatings[d];
+    if (!r || typeof r !== 'object') return;
+    Object.keys(r).forEach(k => { if (typeof r[k] === 'number' && r[k] > 0) keys.add(k); });
+  });
+  return [...keys].sort().map(key => {
+    const values = days.map(d => {
+      const v = (lifeRatings[d] || {})[key];
+      return (typeof v === 'number' && v > 0) ? v : null;
+    });
+    const present = values.filter(v => v != null);
+    const avg = present.length ? present.reduce((a, b) => a + b, 0) / present.length : 0;
+    // Previous week average for delta
+    const prevDays = _enumerateDates(addDays(weekStart, -7), addDays(weekStart, -1));
+    const prevPresent = prevDays
+      .map(d => (lifeRatings[d] || {})[key])
+      .filter(v => typeof v === 'number' && v > 0);
+    const prevAvg = prevPresent.length ? prevPresent.reduce((a, b) => a + b, 0) / prevPresent.length : 0;
+    return { key, label: _prettifyMetricKey(key), values, avg, prevAvg };
+  });
+}
+
+// ── Pattern engine ─────────────────────────────────────────
+// Returns up to 2 plain-English observations sorted by data significance.
+// Each candidate has a `score` (heuristic — bigger = more notable) and a
+// `text` field. `weekData` is the result of weeklyStats(weekStart).
+function surfacePatterns(weekData) {
+  const candidates = [];
+  const ws = weekData;
+  const { weekStart, weekEnd, days, dayDeepHrs, dayLeakHrs, breakdown, totalLoggedHrs } = ws;
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // How many days have ANY data — used to gate the engine
+  const daysWithData = days.filter(d =>
+    blocks.some(b => b.date === d) || ratings[d] || (lifeRatings[d] && Object.keys(lifeRatings[d]).length)
+  ).length;
+  if (daysWithData < 3) return { observations: [], notEnoughData: true };
+
+  // 1) Adherence correlation: deep-work hrs on full-adherence days vs others
+  const fullAdherenceMap = (() => {
+    const enabledRules = ((adherenceConfig && adherenceConfig.rules) || []).filter(r => r && r.enabled !== false);
+    if (!enabledRules.length) return null;
+    const m = {};
+    days.forEach(d => {
+      m[d] = enabledRules.every(r => evaluateAdherenceRuleForDay(r, d));
+    });
+    return m;
+  })();
+  if (fullAdherenceMap) {
+    const passing = [], failing = [];
+    days.forEach((d, i) => (fullAdherenceMap[d] ? passing : failing).push(dayDeepHrs[i]));
+    if (passing.length && failing.length) {
+      const avgP = passing.reduce((a, b) => a + b, 0) / passing.length;
+      const avgF = failing.reduce((a, b) => a + b, 0) / failing.length;
+      const diff = avgP - avgF;
+      if (Math.abs(diff) >= 0.5) {
+        candidates.push({
+          score: Math.abs(diff) * 10,
+          text: `Your deep work averaged ${avgP.toFixed(1)}h on days with full systems adherence vs ${avgF.toFixed(1)}h on others.`,
+        });
+      }
+    }
+  }
+
+  // 2) Day concentration of leaks
+  const totalLeak = dayLeakHrs.reduce((a, b) => a + b, 0);
+  if (totalLeak > 0) {
+    let maxIdx = 0, maxVal = 0;
+    dayLeakHrs.forEach((v, i) => { if (v > maxVal) { maxVal = v; maxIdx = i; } });
+    if (maxVal / totalLeak > 0.4 && maxVal >= 1) {
+      const dn = dayNames[new Date(days[maxIdx] + 'T00:00:00').getDay()];
+      candidates.push({
+        score: (maxVal / totalLeak) * 10,
+        text: `Most of your leaks (${maxVal.toFixed(1)}h) came from ${dn}.`,
+      });
+    }
+  }
+
+  // 3) Task completion trend vs previous week
+  if (ws.taskCompletionRate != null && ws.prevTaskCompletionRate != null) {
+    const cur  = Math.round(ws.taskCompletionRate * 100);
+    const prev = Math.round(ws.prevTaskCompletionRate * 100);
+    const delta = cur - prev;
+    if (delta <= -15) {
+      candidates.push({
+        score: Math.abs(delta),
+        text: `Task completion dropped from ${prev}% to ${cur}% this week — closing things out is slipping.`,
+      });
+    } else if (delta >= 15) {
+      candidates.push({
+        score: delta,
+        text: `Task completion improved from ${prev}% to ${cur}% — you're closing things out more reliably.`,
+      });
+    }
+  }
+
+  // 4) Category ratio anomalies vs running 4-week baseline (or prev week)
+  if (totalLoggedHrs > 0) {
+    const baselineBlocks = (catId) => {
+      // Try last 4 weeks ending at prev-week end
+      const fourStart = addDays(weekStart, -28);
+      const fourEnd   = addDays(weekStart, -1);
+      const slice = blocks.filter(b => b.date >= fourStart && b.date <= fourEnd && b.category === catId);
+      const sliceTotal = blocks.filter(b => b.date >= fourStart && b.date <= fourEnd && b.category !== SLEEP_CAT.id);
+      if (sliceTotal.length === 0) return null;
+      const catHrs   = slice.reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
+      const totalHrs = sliceTotal.reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
+      return totalHrs > 0 ? catHrs / totalHrs : null;
+    };
+    const checks = [
+      { id: 'routine',   label: 'Routine',   dir: 'high', threshold: 1.3 },
+      { id: 'learning',  label: 'Learning',  dir: 'low',  threshold: 0.7 },
+      { id: 'leisure',   label: 'Leisure',   dir: 'high', threshold: 1.3 },
+      { id: 'leaks',     label: 'Leaks',     dir: 'high', threshold: 1.3 },
+      { id: 'practice',  label: 'Practice',  dir: 'low',  threshold: 0.7 },
+      { id: 'deep_work', label: 'Deep Work', dir: 'low',  threshold: 0.7 },
+    ];
+    let mostExtreme = null;
+    checks.forEach(c => {
+      const ratio = (breakdown[c.id] || 0) / totalLoggedHrs;
+      const baseline = baselineBlocks(c.id);
+      if (baseline == null || baseline === 0) return;
+      const factor = ratio / baseline;
+      const triggered = (c.dir === 'high' && factor >= c.threshold) ||
+                        (c.dir === 'low'  && factor <= c.threshold);
+      if (!triggered) return;
+      const deviation = Math.abs(Math.log2(factor || 0.0001));
+      if (!mostExtreme || deviation > mostExtreme.deviation) {
+        mostExtreme = {
+          label: c.label,
+          curPct: Math.round(ratio * 100),
+          basePct: Math.round(baseline * 100),
+          dir: c.dir,
+          deviation,
+        };
+      }
+    });
+    if (mostExtreme) {
+      const dirText = mostExtreme.dir === 'high' ? 'unusually high' : 'unusually low';
+      candidates.push({
+        score: mostExtreme.deviation * 8,
+        text: `${mostExtreme.label} was ${mostExtreme.curPct}% of your week — ${dirText} vs your typical ${mostExtreme.basePct}%.`,
+      });
+    }
+  }
+
+  // 5) Unlogged hours
+  if (totalLoggedHrs < 67 && totalLoggedHrs > 0) {
+    const unlogged = Math.max(0, 112 - totalLoggedHrs);
+    candidates.push({
+      score: (67 - totalLoggedHrs) * 0.3,
+      text: `You logged ${totalLoggedHrs.toFixed(0)} hours this week — ${unlogged.toFixed(0)} hours unaccounted for. Worth checking where time is going.`,
+    });
+  }
+
+  // 6) Star-metric movement
+  const starMetrics = getStarMetricsForWeek(weekStart);
+  starMetrics.forEach(m => {
+    if (m.prevAvg <= 0) return;
+    const diff = m.avg - m.prevAvg;
+    if (Math.abs(diff) < 0.5) return;
+    candidates.push({
+      score: Math.abs(diff) * 6,
+      text: `${m.label} ${diff > 0 ? 'improved' : 'dropped'} from ${m.prevAvg.toFixed(1)} to ${m.avg.toFixed(1)} this week.`,
+    });
+  });
+
+  // 7) DFT execution gap — set 5+, completed < 50%
+  if (ws.dftSet >= 5 && ws.dftRate != null && ws.dftRate < 0.5) {
+    candidates.push({
+      score: (5 - ws.dftDone) * 2 + 5,
+      text: `You set DFTs but completed less than half — what's blocking follow-through?`,
+    });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return { observations: candidates.slice(0, 2).map(c => c.text), notEnoughData: false };
+}
+
+// ── Sparkline mounter ─────────────────────────────────────
+// Lazy-load Chart.js (already used elsewhere) and mount one tiny line chart
+// per discovered star metric. Destroys old instances first so re-renders
+// don't leak.
+const _sparkChartInstances = {};
+async function buildStarSparklines(metrics) {
+  if (!metrics || !metrics.length) return;
+  try { await loadChartJs(); } catch { return; }
+  Object.keys(_sparkChartInstances).forEach(k => {
+    try { _sparkChartInstances[k].destroy(); } catch {}
+    delete _sparkChartInstances[k];
+  });
+  const accent  = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#3b82f6').trim();
+  metrics.forEach(m => {
+    const canvas = document.getElementById('wr-spark-' + m.key);
+    if (!canvas) return;
+    _sparkChartInstances[m.key] = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: m.values.map(() => ''),
+        datasets: [{
+          data: m.values.map(v => (v == null ? null : v)),
+          borderColor: accent,
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.25,
+          spanGaps: true,
+        }],
+      },
+      options: {
+        responsive: false,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: { x: { display: false }, y: { display: false, min: 0, max: 5 } },
+      },
+    });
+  });
+}
+
+// Format a delta tile-line. `kind` controls colour: 'inverse' for metrics
+// where lower = better (none in this set today, but kept for future use).
+function fmtDelta(curr, prev, suffix, opts = {}) {
+  if (prev == null || isNaN(prev) || prev === 0 && curr === 0) {
+    return `<div class="wr-tile-delta wr-delta-flat">no prior data</div>`;
+  }
+  const diff = curr - prev;
+  if (Math.abs(diff) < 0.05) return `<div class="wr-tile-delta wr-delta-flat">— no change</div>`;
+  const arrow = diff > 0 ? '↑' : '↓';
+  const cls   = diff > 0 ? 'wr-delta-up' : 'wr-delta-down';
+  const text  = (opts.format ? opts.format(Math.abs(diff)) : Math.abs(diff).toFixed(1)) + (suffix || '');
+  return `<div class="wr-tile-delta ${cls}">${arrow} ${text} vs last week</div>`;
+}
+function fmtDeltaPct(currPct, prevPct) {
+  if (prevPct == null) return `<div class="wr-tile-delta wr-delta-flat">no prior data</div>`;
+  const diff = currPct - prevPct;
+  if (Math.abs(diff) < 1) return `<div class="wr-tile-delta wr-delta-flat">— no change</div>`;
+  const arrow = diff > 0 ? '↑' : '↓';
+  const cls   = diff > 0 ? 'wr-delta-up' : 'wr-delta-down';
+  return `<div class="wr-tile-delta ${cls}">${arrow} ${Math.abs(diff)}pp vs last week</div>`;
+}
+
 function renderWeeklyReview() {
   const td = todayStr();
   const currentWeekStart = getWeekStart(td);
   const weekStart = addDays(currentWeekStart, weeklyReviewOffset * 7);
-  const weekEnd = addDays(weekStart, 6);
-  const prevWeekStart = addDays(weekStart, -7);
+  const weekEnd   = addDays(weekStart, 6);
+  const isCurrentWeek = weekStart === currentWeekStart;
+  const isPastWeek    = weekStart < currentWeekStart;
 
   const fmtRange = (s, e) => {
     const sd = new Date(s + 'T00:00:00');
     const ed = new Date(e + 'T00:00:00');
-    return sd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' – ' +
-           ed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const sameYear = sd.getFullYear() === ed.getFullYear();
+    const left  = sd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const right = ed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return left + ' – ' + (sameYear ? right : right);
   };
 
-  // Gather week data
-  const rangeBlocks = blocks.filter(b => b.date >= weekStart && b.date <= weekEnd);
-  const breakdown = catBreakdown(rangeBlocks);
-  const totalHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
-  const skippedHrsWR = Math.max(0, 7 * 16 - totalHrs); // 16 = 24h - 8h sleep
-  const deepWorkHrs = breakdown['deep_work'] || 0;
-  const leakHrs = breakdown['leaks'] || 0;
-  const leakPct = totalHrs > 0 ? (leakHrs / totalHrs * 100) : 0;
-  const maxHrs = Math.max(...Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).map(([,v]) => v), skippedHrsWR, 0.1);
+  const ws = weeklyStats(weekStart);
+  const starMetrics = getStarMetricsForWeek(weekStart);
+  const patterns = surfacePatterns(ws);
 
-  // Journal streak for the week
-  let jDays = 0;
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(weekStart, i);
-    if (captures.some(c => c.timestamp.startsWith(d) && c.type === 'journal')) jDays++;
+  // Header sub-line: "Days remaining: X" (current week) or "Week complete" (past)
+  let subLine;
+  if (isPastWeek) {
+    subLine = 'Week complete';
+  } else {
+    const todayD = new Date(td + 'T00:00:00');
+    const endD   = new Date(weekEnd + 'T00:00:00');
+    const remaining = Math.max(0, Math.round((endD - todayD) / 86400000));
+    subLine = remaining === 0 ? 'Last day of the week' : `Days remaining: ${remaining}`;
   }
 
-  // Best day
-  let bestDay = null;
-  let bestScore = -1;
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  let daysLogged = 0;
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(weekStart, i);
-    const dayBlocks = blocks.filter(b => b.date === d);
-    if (dayBlocks.length === 0 && !ratings[d]) continue;
-    daysLogged++;
-    const dw = dayBlocks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-    const r = ratings[d] || 0;
-    const score = dw * 2 + r;
-    if (score > bestScore) {
-      bestScore = score;
-      const dn = dayNames[new Date(d + 'T00:00:00').getDay()];
-      const parts = [];
-      if (dw > 0) parts.push(dw.toFixed(1) + 'h deep work');
-      if (r > 0) parts.push('rated ' + r + '★');
-      bestDay = { name: dn, detail: parts.join(', ') };
-    }
-  }
+  // ── Tile 1: Deep Work ──
+  const tileDeep = `
+    <div class="wr-tile">
+      <div class="wr-tile-label">DEEP WORK</div>
+      <div class="wr-tile-value">${ws.deepWorkHrs.toFixed(1)}h</div>
+      ${fmtDelta(ws.deepWorkHrs, ws.prevDeepWorkHrs, 'h')}
+    </div>`;
 
-  // Bars for breakdown (sleep excluded from display)
-  const bars = [
-    ...CATS.map(c => {
-      const hrs = breakdown[c.id] || 0;
-      const pct = maxHrs > 0 ? (hrs / maxHrs) * 100 : 0;
-      return `
-        <div class="bar-row">
-          <span class="bar-lbl">${c.icon} ${c.label}</span>
-          <div class="bar-track">
-            <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
+  // ── Tile 2: DFT Completion ──
+  const tileDft = `
+    <div class="wr-tile">
+      <div class="wr-tile-label">DFT COMPLETION</div>
+      <div class="wr-tile-value">${ws.dftSet ? `${ws.dftDone} of ${ws.dftSet}` : '—'}</div>
+      ${fmtDeltaPct(ws.dftRate != null ? Math.round(ws.dftRate * 100) : null,
+                    ws.prevDftRate != null ? Math.round(ws.prevDftRate * 100) : null)}
+    </div>`;
+
+  // ── Tile 3: Task Completion (Daily Journal) ──
+  const tileTasks = `
+    <div class="wr-tile">
+      <div class="wr-tile-label">TASKS</div>
+      <div class="wr-tile-value">${ws.taskTotal ? `${ws.taskDone} of ${ws.taskTotal}` : '—'}</div>
+      ${ws.taskTotal ? `<div class="wr-tile-sub">(${Math.round((ws.taskCompletionRate||0)*100)}%)</div>` : ''}
+      ${fmtDeltaPct(ws.taskCompletionRate != null ? Math.round(ws.taskCompletionRate * 100) : null,
+                    ws.prevTaskCompletionRate != null ? Math.round(ws.prevTaskCompletionRate * 100) : null)}
+    </div>`;
+
+  // ── Tile 4: Adherence ──
+  const tileAdherence = `
+    <div class="wr-tile">
+      <div class="wr-tile-label">ADHERENCE</div>
+      <div class="wr-tile-value">${ws.adherence.totalChecks ? ws.adherence.percentage + '%' : '—'}</div>
+      ${ws.adherence.totalChecks ? `<div class="wr-tile-sub">${ws.adherence.passedChecks} of ${ws.adherence.totalChecks} checks passed</div>` : ''}
+      ${fmtDeltaPct(ws.adherence.totalChecks ? ws.adherence.percentage : null,
+                    ws.prevAdherence.totalChecks ? ws.prevAdherence.percentage : null)}
+    </div>`;
+
+  // ── Tile 5: Win Count ──
+  const tileWins = `
+    <div class="wr-tile">
+      <div class="wr-tile-label">WINS</div>
+      <div class="wr-tile-value">${ws.winCount} wins</div>
+      ${fmtDelta(ws.winCount, ws.prevWinCount, '', { format: n => Math.round(n).toString() })}
+    </div>`;
+
+  // ── Tile 6: Avg Day Rating ──
+  const tileRating = `
+    <div class="wr-tile">
+      <div class="wr-tile-label">AVG RATING</div>
+      <div class="wr-tile-value">${ws.dayRatingAvg > 0 ? ws.dayRatingAvg.toFixed(1) + ' ★' : '—'}</div>
+      ${fmtDelta(ws.dayRatingAvg, ws.prevDayRatingAvg, ' ★')}
+    </div>`;
+
+  // ── Star Metric Trends ──
+  const starSection = starMetrics.length ? `
+    <div class="wr-section-title">Star Metric Trends</div>
+    <div class="wr-stars">
+      ${starMetrics.map(m => `
+        <div class="wr-star-row">
+          <div class="wr-star-meta">
+            <span class="wr-star-label">${esc(m.label)}</span>
+            <span class="wr-star-avg">${m.avg > 0 ? m.avg.toFixed(1) : '—'}</span>
           </div>
-          <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
-        </div>`;
-    }),
-    `<div class="bar-row">
-        <span class="bar-lbl">${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}</span>
-        <div class="bar-track">
-          <div class="bar-fill" style="width:${maxHrs > 0 ? (skippedHrsWR / maxHrs) * 100 : 0}%;background:${SKIPPED_CAT.color}"></div>
-        </div>
-        <span class="bar-val">${skippedHrsWR > 0 ? skippedHrsWR.toFixed(1) + 'h' : '—'}</span>
-      </div>`,
-  ].join('');
+          <canvas id="wr-spark-${esc(m.key)}" class="wr-spark" width="80" height="20"></canvas>
+        </div>`).join('')}
+    </div>` : '';
 
-  // Patterns (auto-generated observations)
-  const observations = [];
-  if (daysLogged >= 3) {
-    // Check practice correlation with deep work
-    const daysWithPractice = [];
-    const daysWithoutPractice = [];
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(weekStart, i);
-      const dayBlocks = blocks.filter(b => b.date === d);
-      if (dayBlocks.length === 0) continue;
-      const hasPractice = dayBlocks.some(b => b.category === 'practice');
-      const dw = dayBlocks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-      if (hasPractice) daysWithPractice.push(dw);
-      else daysWithoutPractice.push(dw);
-    }
-    if (daysWithPractice.length > 0 && daysWithoutPractice.length > 0) {
-      const avgWith = daysWithPractice.reduce((a, b) => a + b, 0) / daysWithPractice.length;
-      const avgWithout = daysWithoutPractice.reduce((a, b) => a + b, 0) / daysWithoutPractice.length;
-      if (Math.abs(avgWith - avgWithout) > 0.3) {
-        observations.push(`Your deep work averaged ${avgWith.toFixed(1)}h on days with Practice vs ${avgWithout.toFixed(1)}h without.`);
-      }
-    }
+  // ── Patterns ──
+  const patternsSection = `
+    <div class="wr-section-title">Patterns</div>
+    <div class="wr-patterns">
+      ${patterns.notEnoughData
+        ? `<div class="wr-observation">Not enough data yet.</div>`
+        : (patterns.observations.length
+            ? patterns.observations.map(o => `<div class="wr-observation">${esc(o)}</div>`).join('')
+            : `<div class="wr-observation">No standout patterns this week.</div>`)}
+    </div>`;
 
-    // Check which day had most leaks
-    let maxLeakDay = null;
-    let maxLeakHrs = 0;
-    let totalLeakHrs = 0;
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(weekStart, i);
-      const lk = blocks.filter(b => b.date === d && b.category === 'leaks').reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-      totalLeakHrs += lk;
-      if (lk > maxLeakHrs) { maxLeakHrs = lk; maxLeakDay = dayNames[new Date(d + 'T00:00:00').getDay()]; }
-    }
-    if (maxLeakHrs > 0 && totalLeakHrs > 0 && maxLeakHrs / totalLeakHrs > 0.4) {
-      observations.push(`Most of your leaks came from ${maxLeakDay}.`);
-    }
+  // ── Plan Next Week ──
+  const prevWeekReview = weeklyReviews[addDays(weekStart, -7)];
+  const prevIntention  = prevWeekReview && prevWeekReview.nextWeekIntention || prevWeekReview && prevWeekReview.intention;
+  const savedReview    = weeklyReviews[weekStart];
+  const currentIntention = (savedReview && savedReview.nextWeekIntention) || (savedReview && savedReview.intention) || '';
+  const planSection = `
+    <div class="wr-section-title">Plan Next Week</div>
+    ${prevIntention ? `<div class="wr-prev-intention"><span>Last week you wrote:</span>${esc(prevIntention)}</div>` : ''}
+    <input type="text" class="wr-intention-input" id="wr-intention"
+      maxlength="120"
+      placeholder="One intention for next week..."
+      oninput="onWrIntentionChange()"
+      value="${esc(currentIntention)}">
+    <div class="wr-intention-help">Headline focus · max 120 characters</div>`;
 
-    // Check disproportionate category
-    if (totalHrs > 0) {
-      CATS.forEach(c => {
-        const pct = (breakdown[c.id] || 0) / totalHrs * 100;
-        if (pct >= 40 && c.id !== 'deep_work') {
-          observations.push(`${c.label} made up ${pct.toFixed(0)}% of your week.`);
-        }
-      });
-    }
+  // ── Sparklines mount after DOM is in place ──
+  if (starMetrics.length) {
+    setTimeout(() => buildStarSparklines(starMetrics), 0);
   }
-  const obsSlice = observations.slice(0, 2);
 
-  // Previous week intention
-  const prevIntention = weeklyReviews[prevWeekStart]?.intention;
-  const currentIntention = weeklyReviews[weekStart]?.intention || '';
-
-  return `<div class="view">
+  return `<div class="view wr-view">
     <div class="wr-nav-row">
       <button class="wr-back" onclick="closeWeeklyReview()">← Back</button>
       <div class="wr-week-nav">
@@ -5821,27 +6317,35 @@ function renderWeeklyReview() {
         <button class="wr-week-btn" onclick="shiftWeeklyReview(1)" ${weeklyReviewOffset >= 0 ? 'disabled' : ''}>›</button>
       </div>
     </div>
+    <div class="wr-subline">${subLine}</div>
 
     <div class="wr-section-title">The Week at a Glance</div>
-    <div class="wr-stat"><span class="wr-stat-label">Waking hours</span><span class="wr-stat-val">${totalHrs.toFixed(1)}h</span></div>
-    <div class="bar-chart" style="margin-top:0.6rem">${bars}</div>
+    <div class="wr-tiles">
+      ${tileDeep}${tileDft}${tileTasks}${tileAdherence}${tileWins}${tileRating}
+    </div>
 
-    ${bestDay ? `<div class="wr-best-day"><strong>Best day:</strong> ${bestDay.name}${bestDay.detail ? ' · ' + bestDay.detail : ''}</div>` : ''}
+    ${starSection}
 
-    <div class="wr-stat"><span class="wr-stat-label">Leak rate</span><span class="wr-stat-val">${leakPct.toFixed(0)}%</span></div>
-    <div class="wr-stat"><span class="wr-stat-label">Journal streak</span><span class="wr-stat-val">${jDays} / 7 days</span></div>
+    ${patternsSection}
 
-    <div class="wr-section-title">Patterns</div>
-    ${daysLogged < 3 ? '<div class="empty" style="padding:1rem 0">Not enough data yet.</div>' :
-      obsSlice.length ? obsSlice.map(o => `<div class="wr-observation">${esc(o)}</div>`).join('') :
-      '<div class="empty" style="padding:1rem 0">No standout patterns this week.</div>'}
+    ${planSection}
 
-    <div class="wr-section-title">Intention for Next Week</div>
-    ${prevIntention ? `<div class="wr-prev-intention"><span>Last week you wrote:</span>${esc(prevIntention)}</div>` : ''}
-    <textarea class="wr-intention-area" id="wr-intention" placeholder="One intention for next week...">${esc(currentIntention)}</textarea>
-    <button class="wr-save-btn" onclick="saveWeeklyIntention()">Save</button>
+    <button class="wr-save-btn ${currentIntention ? '' : 'disabled'}" id="wr-save-btn"
+      onclick="saveWeeklyReview()" ${currentIntention ? '' : 'disabled'}>
+      ${savedReview ? 'Update Review' : 'Save Review'}
+    </button>
   </div>`;
 }
+
+// Live-toggle the Save button enabled state as the user types the intention.
+window.onWrIntentionChange = function() {
+  const inp = document.getElementById('wr-intention');
+  const btn = document.getElementById('wr-save-btn');
+  if (!inp || !btn) return;
+  const has = inp.value.trim().length > 0;
+  btn.disabled = !has;
+  btn.classList.toggle('disabled', !has);
+};
 
 // ── Time selects: populate hours 00-23, keep hidden #f-time synced "HH:MM" ──
 (function initTimeSelects() {
@@ -7090,17 +7594,55 @@ window.shiftWeeklyReview = function(dir) {
   weeklyReviewOffset = next;
   renderMain();
 };
-window.saveWeeklyIntention = function() {
-  const intention = document.getElementById('wr-intention')?.value?.trim() || '';
+// Save a complete Weekly Review snapshot. Captures the six tile totals,
+// per-metric star averages, the surfaced pattern strings, and the user's
+// intention for next week. Idempotent on re-save.
+window.saveWeeklyReview = function() {
+  const intention = (document.getElementById('wr-intention')?.value || '').trim().slice(0, 120);
+  if (!intention) { toast('Add an intention before saving'); return; }
   const weekStart = addDays(getWeekStart(todayStr()), weeklyReviewOffset * 7);
-  if (!weeklyReviews[weekStart]) weeklyReviews[weekStart] = {};
-  weeklyReviews[weekStart].intention = intention;
+  const weekEnd   = addDays(weekStart, 6);
+  const ws        = weeklyStats(weekStart);
+  const starMetrics = getStarMetricsForWeek(weekStart);
+  const patterns    = surfacePatterns(ws);
+
+  const starAverages = {};
+  starMetrics.forEach(m => { starAverages[m.key] = +m.avg.toFixed(2); });
+
+  const review = {
+    weekStart,
+    weekEnd,
+    totals: {
+      deepWorkHrs:        +ws.deepWorkHrs.toFixed(2),
+      dftRate:            ws.dftRate,           // 0..1 or null
+      taskCompletionRate: ws.taskCompletionRate, // 0..1 or null
+      adherencePct:       ws.adherence.percentage,
+      winCount:           ws.winCount,
+      dayRatingAvg:       +ws.dayRatingAvg.toFixed(2),
+    },
+    starAverages,
+    patterns: patterns.observations || [],
+    nextWeekIntention: intention,
+    // Keep the legacy `intention` field too so older code paths reading it
+    // (e.g. the saved-banner on Today tab) keep working without a migration.
+    intention,
+    savedAt: nowISTIso(),
+  };
+
+  weeklyReviews[weekStart] = review;
   saveLocal('dayos_weekly_reviews_v1', weeklyReviews);
   if (user) {
-    setDoc(doc(db, 'users', user.uid, 'weeklyReviews', weekStart), { intention }).catch(() => {});
+    setDoc(doc(db, 'users', user.uid, 'weeklyReviews', weekStart), review).catch(err => {
+      console.error('[DayOS] Weekly review save error:', err);
+    });
   }
-  toast('Intention saved');
+  toast('Weekly review saved ✓');
+  // Return to the Trends tab.
+  closeWeeklyReview();
 };
+
+// Backwards-compatibility alias — older HTML still wired to saveWeeklyIntention.
+window.saveWeeklyIntention = window.saveWeeklyReview;
 window.setHistDate = function(d) { histDate = d; renderMain(); };
 window.calPrevMonth = function() { histCalMonth.setMonth(histCalMonth.getMonth() - 1); renderMain(); };
 window.calNextMonth = function() { histCalMonth.setMonth(histCalMonth.getMonth() + 1); renderMain(); };
