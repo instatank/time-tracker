@@ -6005,6 +6005,20 @@ function renderDashboard() {
     renderCappedBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color),
   ].join('');
 
+  // ── Time by Project (D4) ──
+  // Aggregate hours per project across the period via getProjectForBlock,
+  // sort desc, color from MR_PROJECT_PALETTE, same 12hr/day cap.
+  const projectHrs = {};
+  rangeBlocks.forEach(b => {
+    const p = getProjectForBlock(b);
+    if (!p) return;
+    projectHrs[p] = (projectHrs[p] || 0) + (b.duration_min || 0) / 60;
+  });
+  const projectKeys = Object.keys(projectHrs).sort((a, b) => projectHrs[b] - projectHrs[a]);
+  const projectBars = projectKeys
+    .map((p, i) => renderCappedBar(esc(p), projectHrs[p], MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length]))
+    .join('');
+
   const leakClass = leakPct > 15 ? 'bad' : leakPct > 8 ? 'warn' : 'good';
 
   // Deep Work trend callout
@@ -6021,6 +6035,21 @@ function renderDashboard() {
       trendCallout = `<div class="trend-callout ${cls}">${arrow} Deep Work ${diff > 0 ? 'up' : 'down'} ${Math.abs(diff).toFixed(1)}h vs previous period</div>`;
     }
   }
+
+  // Time by Project section — only renders in Totals view (Over Time has its
+  // own line-chart variant in D6).
+  const projectSection = dashView === 'totals'
+    ? `<div class="section">
+        <div class="sec-hdr">
+          <span class="sec-title">Time by Project</span>
+          <span class="sec-meta">${projectKeys.length} project${projectKeys.length === 1 ? '' : 's'}</span>
+          ${projectKeys.length ? `<button class="sec-zoom-btn" onclick="openChartZoom('project')" aria-label="Zoom" title="Zoom">↗</button>` : ''}
+        </div>
+        ${projectKeys.length
+          ? `<div class="bar-chart">${projectBars}</div>`
+          : `<div class="empty" style="padding:0.5rem 0;font-size:0.78rem;color:var(--text3)">No project hours logged for this period.</div>`}
+      </div>`
+    : '';
 
   const chartSection = dashView === 'overtime' ?
     `<div class="section">
@@ -6041,6 +6070,7 @@ function renderDashboard() {
     ${topControls}
 
     ${chartSection}
+    ${projectSection}
 
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Metrics</span></div>
@@ -8409,6 +8439,30 @@ function paintChartZoom() {
       ${CATS.map(c => renderBar(`${c.icon} ${c.label}`, breakdown[c.id] || 0, c.color)).join('')}
       ${renderBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color)}
     </div>`;
+  } else if (chartZoomKey === 'project') {
+    const projectHrs = {};
+    rangeBlocks.forEach(b => {
+      const p = getProjectForBlock(b);
+      if (!p) return;
+      projectHrs[p] = (projectHrs[p] || 0) + (b.duration_min || 0) / 60;
+    });
+    const keys = Object.keys(projectHrs).sort((a, b) => projectHrs[b] - projectHrs[a]);
+    const projMax = Math.max(...keys.map(k => projectHrs[k]), 0.1);
+    const renderProjBar = (label, hrs, color) => {
+      const pct = projMax > 0 ? hrs / projMax * 100 : 0;
+      return `
+        <div class="bar-row" style="margin-bottom:0.6rem">
+          <span class="bar-lbl">${esc(label)}</span>
+          <div class="bar-track" style="height:14px">
+            <div class="bar-fill" style="width:${pct}%;background:${color};height:100%"></div>
+          </div>
+          <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
+        </div>`;
+    };
+    titleEl.textContent = 'Time by Project — ' + (dashRange === 'month' ? 'Last 30 days' : 'Last 7 days');
+    bodyEl.innerHTML = keys.length
+      ? `<div class="bar-chart">${keys.map((p, i) => renderProjBar(p, projectHrs[p], MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length])).join('')}</div>`
+      : `<div class="empty" style="padding:1rem 0;color:var(--text3)">No project hours logged.</div>`;
   }
 }
 
