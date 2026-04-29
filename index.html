@@ -2640,6 +2640,21 @@ let weeklyReviewOffset = 0; // 0 = current week, -1 = last week, etc.
 let dashView = 'totals'; // 'totals' or 'overtime'
 let dashSubTab = 'charts'; // 'charts' or 'calendar'
 let weeklyReviews = loadLocal('dayos_weekly_reviews_v1', {});
+
+// ── Adherence config (B1) ──────────────────────────────────
+// Configurable rules engine for systems-adherence checks. Each rule has:
+//   { id, label, type: 'auto'|'explicit', source, condition, enabled }
+// 'auto' rules read from existing data sources (timeBlocks today; can grow).
+// 'explicit' rules read from `dailyChecks[date][ruleId]` — a future per-day
+// user-checkin doc (no checks today, so explicit rules evaluate to false until
+// data arrives, by design).
+const DEFAULT_ADHERENCE_RULES = [
+  { id: 'deepwork', label: 'Deep Work ≥ 2hr',  type: 'auto', source: 'timeBlocks', condition: { category: 'Deep Work', minMinutes: 120 }, enabled: true },
+  { id: 'practice', label: 'Practice logged',  type: 'auto', source: 'timeBlocks', condition: { category: 'Practice',  minMinutes: 1   }, enabled: true },
+  { id: 'learning', label: 'Learning ≥ 1hr',   type: 'auto', source: 'timeBlocks', condition: { category: 'Learning',  minMinutes: 60  }, enabled: true },
+];
+let adherenceConfig = loadLocal('dayos_adherence_config_v1', { rules: DEFAULT_ADHERENCE_RULES.slice() });
+let dailyChecks      = loadLocal('dayos_daily_checks_v1', {}); // { 'YYYY-MM-DD': { ruleId: bool } } — explicit rule data (future)
 let todayBksExpanded = false;
 let todayCapsExpanded = false;
 const TODAY_PREVIEW = 3;
@@ -5033,6 +5048,98 @@ async function syncProjectsDoc() {
   catch (err) { console.error('[DayOS] Projects sync error:', err); }
 }
 
+// ── Adherence config cloud sync (B1) ─────────────────────────
+// Single doc at users/{uid}/meta/adherence with shape { rules: [...] }.
+// (The user-scoped path matches our existing `meta/*` convention.) On first
+// sign-in, seed the doc with DEFAULT_ADHERENCE_RULES so the screen has data.
+async function syncAdherenceConfig() {
+  if (!user) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'meta', 'adherence'), adherenceConfig); }
+  catch (err) { console.error('[DayOS] Adherence config sync error:', err); }
+}
+async function loadAdherenceConfigFromCloud(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'meta', 'adherence'));
+    if (snap.exists()) {
+      const remote = snap.data();
+      if (remote && Array.isArray(remote.rules)) {
+        adherenceConfig = { rules: remote.rules };
+        saveLocal('dayos_adherence_config_v1', adherenceConfig);
+        return;
+      }
+    }
+    // Doc missing or malformed — seed defaults to cloud.
+    syncAdherenceConfig();
+  } catch (err) {
+    console.error('[DayOS] Adherence config load error:', err);
+  }
+}
+
+// ── Adherence evaluation helper (B1) ────────────────────────
+// Map a rule's `category` label to the canonical block category id.
+function adherenceCategoryId(ruleCategory) {
+  if (!ruleCategory) return ruleCategory;
+  const m = CATS.find(c => c.id === ruleCategory || c.label === ruleCategory);
+  return m ? m.id : ruleCategory;
+}
+
+function _enumerateDates(startDate, endDate) {
+  const out = [];
+  let d = startDate;
+  while (d <= endDate) { out.push(d); d = addDays(d, 1); }
+  return out;
+}
+
+function evaluateAdherenceRuleForDay(rule, date) {
+  if (!rule || rule.enabled === false) return false;
+  if (rule.type === 'auto') {
+    if (rule.source === 'timeBlocks') {
+      const wantId = adherenceCategoryId(rule.condition && rule.condition.category);
+      const minMin = (rule.condition && rule.condition.minMinutes) || 0;
+      const minutes = blocks
+        .filter(b => b.date === date && b.category === wantId)
+        .reduce((s, b) => s + (b.duration_min || 0), 0);
+      return minutes >= minMin;
+    }
+    return false;
+  }
+  if (rule.type === 'explicit') {
+    // Future-proof: read from per-day daily-checks. Currently unused — explicit
+    // rules will simply evaluate to `false` until the user starts capturing
+    // checks, so adding new rules is a pure data change.
+    const day = (dailyChecks && dailyChecks[date]) || {};
+    return !!day[rule.id];
+  }
+  return false;
+}
+
+// Public helper: { totalChecks, passedChecks, percentage, byRule[] }
+function calculateAdherence(weekStart, weekEnd) {
+  const rules = ((adherenceConfig && adherenceConfig.rules) || []).filter(r => r && r.enabled !== false);
+  const days = _enumerateDates(weekStart, weekEnd);
+  const byRule = rules.map(rule => {
+    let passedDays = 0;
+    days.forEach(date => {
+      if (evaluateAdherenceRuleForDay(rule, date)) passedDays++;
+    });
+    return {
+      id: rule.id,
+      label: rule.label,
+      passedDays,
+      totalDays: days.length,
+      percentage: days.length ? Math.round((passedDays / days.length) * 100) : 0,
+    };
+  });
+  const totalChecks = rules.length * days.length;
+  const passedChecks = byRule.reduce((sum, r) => sum + r.passedDays, 0);
+  return {
+    totalChecks,
+    passedChecks,
+    percentage: totalChecks ? Math.round((passedChecks / totalChecks) * 100) : 0,
+    byRule,
+  };
+}
+
 async function loadProjectsFromCloud(uid) {
   try {
     const snap = await getDoc(doc(db, 'users', uid, 'meta', 'projects'));
@@ -7388,6 +7495,7 @@ async function initialSync(uid) {
   // which can resurrect items that were deleted on this device.
   loadProjectsFromCloud(uid);
   loadTagHistoryFromCloud(uid);
+  loadAdherenceConfigFromCloud(uid);
   const sessLoad  = loadSessionsFromCloud(uid);
   const learnLoad = loadLearningFromCloud(uid);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
