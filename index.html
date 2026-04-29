@@ -3896,10 +3896,13 @@ function renderJournal() {
   if (journalSearch.trim()) {
     const q = journalSearch.trim().toLowerCase();
     filtered = filtered.filter(c => {
-      const body = (c.body || '').toLowerCase();
-      const tag = (c.project_tag || '').toLowerCase();
-      const type = (typeLabel[c.type] || c.type || '').toLowerCase();
-      return body.includes(q) || tag.includes(q) || type.includes(q);
+      const hay = [
+        c.body || '',
+        c.project_tag || '',
+        (typeLabel[c.type] || c.type || ''),
+        (c.tags || []).join(' '),     // include hashtag pills
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
     });
   }
 
@@ -3927,7 +3930,7 @@ function renderJournal() {
       (d.tags || []).some(t => projectSlug(t) === slug)
     );
   }
-  // Search across the three sections + task texts
+  // Search across the three sections + task texts + tags
   if (journalSearch.trim()) {
     const q = journalSearch.trim().toLowerCase();
     filteredDaily = filteredDaily.filter(d => {
@@ -3935,6 +3938,7 @@ function renderJournal() {
         d.thoughts || '',
         d.reflection || '',
         ...(d.tasks || []).map(t => t.text || ''),
+        (d.tags || []).join(' '),     // include hashtag pills
         'daily journal',
       ].join(' ').toLowerCase();
       return hay.includes(q);
@@ -3945,8 +3949,23 @@ function renderJournal() {
   // most cases anyway).
   filteredDaily = filteredDaily.filter(d => !isDailyEntryEmpty(d));
 
-  // For tag filters, also pull in activity blocks that contain the tag
+  // For tag filters, pull in activity blocks that contain the tag.
+  // For free-text search, also surface blocks whose label / note / tags /
+  // projectTag match — so searching "dayos" finds time blocks tagged
+  // #dayos as well as captures and daily-journal entries.
   let allItems; // unified list: { item, kind: 'cap'|'block'|'daily', sortKey }
+  let searchBlocks = [];
+  if (journalSearch.trim()) {
+    const q = journalSearch.trim().toLowerCase();
+    searchBlocks = blocks.filter(b => {
+      const hay = [
+        b.label || '', b.note || '',
+        b.projectTag || '',
+        (b.tags || []).join(' '),
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
   if (isTagFilter) {
     const taggedBlocks = blocks.filter(b =>
       extractTags((b.label || '') + ' ' + (b.note || '')).includes(journalFilter)
@@ -3960,6 +3979,7 @@ function renderJournal() {
     allItems = [
       ...filtered.map(c => ({ item: c, kind: 'cap', sortKey: c.timestamp })),
       ...filteredDaily.map(d => ({ item: d, kind: 'daily', sortKey: d.lastEditedAt || d.timestamp || d.date })),
+      ...searchBlocks.map(b => ({ item: b, kind: 'block', sortKey: b.date + 'T' + (b.start_time || '00:00') })),
     ].sort((a, z) => z.sortKey.localeCompare(a.sortKey));
   }
 
