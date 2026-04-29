@@ -1843,6 +1843,12 @@ html, body {
   grid-template-columns: 1fr 1fr;
   gap: 0.6rem;
 }
+/* 6-card variant — 3 across on tablet/desktop, gracefully drops to 2
+   on phone widths so the cards don't get squashed. */
+.metrics-grid-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 480px) {
+  .metrics-grid-3 { grid-template-columns: 1fr 1fr; }
+}
 .metric-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -5877,6 +5883,29 @@ function renderDashboard() {
   const jStreak = journalStreak();
   const avgR = avgRating(startDate, td);
 
+  // ── New metric cards (D2) ──
+  // DFT Completion: days where DFT was set AND completed / days where DFT was set
+  let dftSet = 0, dftDone = 0;
+  for (let i = 0; i < n; i++) {
+    const d = addDays(startDate, i);
+    const v = dfts[d];
+    if (!v) continue;
+    const status = (typeof v === 'string') ? 'pending' : (v.status || 'pending');
+    const text   = (typeof v === 'string') ? v : (v.text || '');
+    if (text) { dftSet++; if (status === 'done') dftDone++; }
+  }
+  const dftPct = dftSet ? Math.round((dftDone / dftSet) * 100) : null;
+
+  // Task Completion: completed tasks / total tasks across Daily Journal entries
+  const periodDailies = (dailyJournals || []).filter(dj => dj.date >= startDate && dj.date <= td);
+  let taskTotal = 0, taskDone = 0;
+  periodDailies.forEach(j => (j.tasks || []).forEach(t => { taskTotal++; if (t.completed) taskDone++; }));
+  const taskPct = taskTotal ? Math.round((taskDone / taskTotal) * 100) : null;
+
+  // Adherence: configurable rules engine (B1) — period-scoped
+  const adherenceRes = calculateAdherence(startDate, td);
+  const adhPct = adherenceRes.totalChecks ? adherenceRes.percentage : null;
+
   const bars = [
     ...CATS.map(c => {
       const hrs = breakdown[c.id] || 0;
@@ -5934,18 +5963,26 @@ function renderDashboard() {
 
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Metrics</span></div>
-      <div class="metrics-grid">
+      <div class="metrics-grid metrics-grid-3">
         <div class="metric-card">
           <div class="metric-val">${deepWorkHrs.toFixed(1)}h</div>
           <div class="metric-lbl">Deep Work</div>
         </div>
         <div class="metric-card">
-          <div class="metric-val ${leakClass}">${leakPct.toFixed(0)}%</div>
-          <div class="metric-lbl">Leak Rate</div>
+          <div class="metric-val">${dftPct != null ? dftPct + '%' : '—'}</div>
+          <div class="metric-lbl">DFT Completion</div>
         </div>
         <div class="metric-card">
-          <div class="metric-val">${jStreak}</div>
-          <div class="metric-lbl">Journal Streak</div>
+          <div class="metric-val">${taskPct != null ? taskPct + '%' : '—'}</div>
+          <div class="metric-lbl">Task Completion</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val">${adhPct != null ? adhPct + '%' : '—'}</div>
+          <div class="metric-lbl">Adherence</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val ${leakClass}">${leakPct.toFixed(0)}%</div>
+          <div class="metric-lbl">Leak Rate</div>
         </div>
         <div class="metric-card">
           <div class="metric-val">${avgR ? avgR.toFixed(1) : '—'}</div>
