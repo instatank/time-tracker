@@ -2062,6 +2062,88 @@ html, body {
 }
 .mr-prev-card span { color: var(--text3); margin-right: 0.25rem; }
 .mr-prev-card strong { color: var(--text); font-weight: 600; }
+
+/* Project portfolio rows */
+.mr-proj-row {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.mr-proj-row:last-of-type { border-bottom: none; }
+.mr-proj-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+  font-size: 0.88rem;
+}
+.mr-proj-name { font-weight: 600; color: var(--text); }
+.mr-proj-hrs  { color: var(--text2); font-size: 0.78rem; }
+
+/* Learning section */
+.mr-learn-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text2);
+  margin-bottom: 0.4rem;
+}
+.mr-learn-count { font-weight: 600; color: var(--text); }
+.mr-learn-types { color: var(--text3); font-size: 0.74rem; }
+.mr-type-pill {
+  display: inline-block;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-right: 4px;
+  font-size: 0.7rem;
+  color: var(--text2);
+}
+.mr-top-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.55rem;
+}
+.mr-takeaways {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  background: var(--surface2);
+}
+.mr-takeaway {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.mr-takeaway:last-child { border-bottom: none; }
+.mr-takeaway-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text3);
+  margin-bottom: 0.2rem;
+}
+.mr-takeaway-source { color: var(--text2); font-weight: 500; }
+.mr-takeaway-text {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mr-takeaway-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
 .wr-subline {
   font-size: 0.78rem;
   color: var(--text2);
@@ -8086,6 +8168,38 @@ window.selectCoherence = function(value) {
   });
 };
 
+// Per-project action picker (Keep / Promote / Demote). Tapping the active
+// action deselects (-> null). Re-paints the project's row in place to avoid
+// blowing away focus on the new-project text input.
+window.toggleProjectAction = function(projectName, action) {
+  if (!monthlyDraft) return;
+  monthlyDraft.projectActions = monthlyDraft.projectActions || {};
+  const current = monthlyDraft.projectActions[projectName] || null;
+  monthlyDraft.projectActions[projectName] = (current === action) ? null : action;
+  const next = monthlyDraft.projectActions[projectName];
+  document.querySelectorAll(`.mr-proj-row[data-project="${CSS.escape(projectName)}"] .mr-pill`).forEach(b => {
+    b.classList.toggle('active', b.dataset.action === next);
+  });
+};
+
+// Learning-focus tag picker — multi-select, capped at 2.
+window.toggleLearningTag = function(tag) {
+  if (!monthlyDraft) return;
+  monthlyDraft.learnTags = monthlyDraft.learnTags || [];
+  const i = monthlyDraft.learnTags.indexOf(tag);
+  if (i >= 0) {
+    monthlyDraft.learnTags.splice(i, 1);
+  } else if (monthlyDraft.learnTags.length < 2) {
+    monthlyDraft.learnTags.push(tag);
+  } else {
+    toast('Pick at most two focus tags');
+    return;
+  }
+  document.querySelectorAll('#mr-learn-tag-row .mr-pill').forEach(b => {
+    b.classList.toggle('active', monthlyDraft.learnTags.includes(b.dataset.tag));
+  });
+};
+
 function renderMonthlyReview() {
   const ym = monthlyReviewYM || previousMonthYM(currentYM());
   if (!monthlyDraft || monthlyDraft.ym !== ym) initMonthlyDraft(ym);
@@ -8169,6 +8283,110 @@ function renderMonthlyReview() {
         value="${esc((saved && saved.oneExperiment) || '')}">
     </div>`;
 
+  // ── Section 4: Project Portfolio Audit ──
+  // Iterate the canonical project list. Sort by monthly hours descending so
+  // the busiest projects are at the top. Hours come from monthlyStats; the
+  // Keep / Promote ↑ / Demote ↓ picker is intent-only — no automatic tier
+  // changes are applied.
+  const projectRows = (projects || [])
+    .map(p => ({ name: p, hrs: stats.projectMonthlyHrs[p] || 0 }))
+    .sort((a, b) => b.hrs - a.hrs)
+    .map(({ name, hrs }) => {
+      const sel = (monthlyDraft.projectActions || {})[name] || null;
+      const escName = esc(name).replace(/'/g, "\\'");
+      const mkPill = (action, label) =>
+        `<button type="button" class="mr-pill ${sel === action ? 'active' : ''}"
+          data-action="${action}"
+          ${isReadOnly ? 'disabled' : ''}
+          onclick="toggleProjectAction('${escName}','${action}')">${label}</button>`;
+      return `
+        <div class="mr-proj-row" data-project="${esc(name)}">
+          <div class="mr-proj-head">
+            <span class="mr-proj-name">${esc(name)}</span>
+            <span class="mr-proj-hrs">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
+          </div>
+          <div class="mr-pill-row">
+            ${mkPill('keep', 'Keep')}
+            ${mkPill('promote', 'Promote ↑')}
+            ${mkPill('demote', 'Demote ↓')}
+          </div>
+        </div>`;
+    }).join('');
+  const sectionProjects = `
+    <div class="mr-section">
+      <div class="mr-section-title">Project Portfolio Audit</div>
+      ${projectRows || '<div class="mr-help">No projects yet. Create one from the Projects tab.</div>'}
+      <label class="mr-field-label" style="margin-top:0.85rem">Any new projects to add this month?</label>
+      <input type="text" class="mr-input" id="mr-new-project"
+        ${isReadOnly ? 'readonly' : ''}
+        maxlength="80"
+        placeholder="Optional — name a new project">
+    </div>`;
+
+  // ── Section 5: Learning Harvest & Focus ──
+  const ml = stats.monthLearning || [];
+  const totalEntries = ml.length;
+  const typePills = Object.entries(stats.byType || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, n]) => `<span class="mr-type-pill">${esc(t.toLowerCase())} · ${n}</span>`)
+    .join('');
+  const topTagPills = (stats.topTags || []).map(t =>
+    `<span class="tag-pill ${tagClassFor(t.tag)}" style="font-size:0.78rem;padding:2px 8px">${esc(t.tag)} · ${t.count}</span>`
+  ).join('');
+  // Build the takeaways list — sorted by date desc; tags inline.
+  const takeawayRows = ml
+    .slice()
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .map(e => {
+      const inlineTags = (e.tags || []).map(t =>
+        `<span class="tag-pill ${tagClassFor(t)}" style="font-size:0.62rem;padding:1px 6px">${esc(t)}</span>`
+      ).join('');
+      return `<div class="mr-takeaway">
+        <div class="mr-takeaway-meta">
+          <span class="mr-takeaway-source">${esc(e.sourceName || '(untitled)')}</span>
+          ${e.sourceType ? `<span class="mr-type-pill" style="font-size:0.6rem">${esc(e.sourceType.toLowerCase())}</span>` : ''}
+        </div>
+        <div class="mr-takeaway-text">${esc(e.takeaway || '')}</div>
+        ${inlineTags ? `<div class="mr-takeaway-tags">${inlineTags}</div>` : ''}
+      </div>`;
+    }).join('');
+  // Tag picker for "Learning focus next month" — pulls from the month's
+  // own tag set so the picks are grounded in the user's current data.
+  const focusTags = Object.keys(stats.tagCounts || {})
+    .sort((a, b) => (stats.tagCounts[b] || 0) - (stats.tagCounts[a] || 0))
+    .slice(0, 8);
+  const focusTagPills = focusTags.map(t =>
+    `<button type="button" class="mr-pill ${monthlyDraft.learnTags.includes(t) ? 'active' : ''}"
+      data-tag="${esc(t)}"
+      ${isReadOnly ? 'disabled' : ''}
+      onclick="toggleLearningTag('${esc(t).replace(/'/g, "\\'")}')">${esc(t)}</button>`
+  ).join('');
+  const sectionLearning = `
+    <div class="mr-section">
+      <div class="mr-section-title">Learning Harvest &amp; Focus</div>
+      <div class="mr-learn-head">
+        <span class="mr-learn-count">${totalEntries} ${totalEntries === 1 ? 'entry' : 'entries'}</span>
+        ${typePills ? `<span class="mr-learn-types">${typePills}</span>` : ''}
+      </div>
+      ${topTagPills ? `<div class="mr-top-tags">${topTagPills}</div>` : ''}
+      ${takeawayRows
+        ? `<div class="mr-takeaways">${takeawayRows}</div>`
+        : '<div class="mr-help">No learning entries this month.</div>'}
+      <label class="mr-field-label" style="margin-top:0.85rem">What did I learn this month that's worth applying?</label>
+      <input type="text" class="mr-input" id="mr-worth-applying"
+        maxlength="200" ${isReadOnly ? 'readonly' : ''}
+        placeholder="The single most useful thing to carry forward..."
+        value="${esc((saved && saved.learningHarvest && saved.learningHarvest.worthApplying) || '')}">
+      <label class="mr-field-label" style="margin-top:0.85rem">Learning focus for next month</label>
+      <div class="mr-help">Pick up to 2 tags from this month's set, or type a focus area below.</div>
+      <div class="mr-pill-row" id="mr-learn-tag-row">${focusTagPills}</div>
+      <input type="text" class="mr-input" id="mr-learn-freetext"
+        maxlength="150" ${isReadOnly ? 'readonly' : ''}
+        style="margin-top:0.5rem"
+        placeholder="What do I want to deepen or explore next month..."
+        value="${esc((saved && saved.learningFocusNext && saved.learningFocusNext.freeText) || '')}">
+    </div>`;
+
   // ── Header + nav ──
   const navHeader = `
     <div class="wr-nav-row">
@@ -8197,14 +8415,8 @@ function renderMonthlyReview() {
       <div class="mr-section-title">Trend Charts</div>
       <div class="mr-help">Charts coming next — wiring up data plumbing first.</div>
     </div>
-    <div class="mr-section">
-      <div class="mr-section-title">Project Portfolio Audit</div>
-      <div class="mr-help">Project actions list coming next.</div>
-    </div>
-    <div class="mr-section">
-      <div class="mr-section-title">Learning Harvest &amp; Focus</div>
-      <div class="mr-help">Learning summary coming next.</div>
-    </div>
+    ${sectionProjects}
+    ${sectionLearning}
     ${sectionWeekly}
     ${sectionPlan}
     ${saveRow}
