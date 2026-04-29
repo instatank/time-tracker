@@ -6162,7 +6162,7 @@ async function buildTrendsOverTimeCharts(startDate, endDate, mode, rangeBlocks) 
 
   // Build buckets and labels.
   const days = _enumerateDates(startDate, endDate);
-  let buckets, labels, yMax;
+  let buckets, labels, yMaxCat, yMaxProj;
   if (mode === 'month') {
     const bucketSize = Math.ceil(days.length / 4);
     buckets = []; labels = [];
@@ -6173,11 +6173,17 @@ async function buildTrendsOverTimeCharts(startDate, endDate, mode, rangeBlocks) 
       buckets.push({ start: days[a], end: days[b - 1] });
       labels.push('W' + (i + 1));
     }
-    yMax = 84; // 7 × 12 hr/day per bucket
+    // Categories: 8 hr/day average × 7 days = 56h hard cap per weekly bucket.
+    // Projects: keep the original 12 hr/day suggested cap so a single dominant
+    // project still gets a roomy axis.
+    yMaxCat = 56;
+    yMaxProj = 84;
   } else {
     buckets = days.map(d => ({ start: d, end: d }));
     labels = days.map(d => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }));
-    yMax = 12;
+    // Per spec: 0–8h hard cap on Categories chart in Week mode.
+    yMaxCat = 8;
+    yMaxProj = 12;
   }
 
   // Aggregate per-category and per-project hours into buckets.
@@ -6213,24 +6219,34 @@ async function buildTrendsOverTimeCharts(startDate, endDate, mode, rangeBlocks) 
     },
     scales: {
       x: { ticks: { color: tickColor, font: { size: 11 } }, grid: { color: gridColor } },
-      y: { beginAtZero: true, suggestedMax: yMax, ticks: { color: tickColor, font: { size: 11 }, callback: v => v + 'h' }, grid: { color: gridColor } },
+      y: { beginAtZero: true, ticks: { color: tickColor, font: { size: 11 }, callback: v => v + 'h' }, grid: { color: gridColor } },
     },
   };
+  const optsWith = (yLimit, hardCap = false) => ({
+    ...baseOptions,
+    scales: {
+      x: baseOptions.scales.x,
+      y: { ...baseOptions.scales.y, ...(hardCap ? { max: yLimit } : { suggestedMax: yLimit }) },
+    },
+  });
 
-  // Categories chart — one line per CAT, color from CAT.color.
+  // Categories chart — one line per CAT, color resolved from --c-<id> CSS var.
   const catCanvas = document.getElementById('trends-cat-chart');
   if (catCanvas) {
-    const datasets = CATS.map(c => ({
-      label: c.label,
-      data: catData[c.id],
-      borderColor: c.color,
-      backgroundColor: c.color,
-      borderWidth: 2,
-      pointRadius: 2,
-      tension: 0.25,
-    }));
+    const datasets = CATS.map(c => {
+      const color = catColor(c);
+      return {
+        label: c.label,
+        data: catData[c.id],
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.25,
+      };
+    });
     _trendsOverTimeInstances.cat = new Chart(catCanvas.getContext('2d'), {
-      type: 'line', data: { labels, datasets }, options: baseOptions,
+      type: 'line', data: { labels, datasets }, options: optsWith(yMaxCat, /*hardCap*/ true),
     });
   }
   // Projects chart — one line per active project, palette-cycled colour.
@@ -6250,7 +6266,7 @@ async function buildTrendsOverTimeCharts(startDate, endDate, mode, rangeBlocks) 
       };
     });
     _trendsOverTimeInstances.proj = new Chart(projCanvas.getContext('2d'), {
-      type: 'line', data: { labels, datasets }, options: baseOptions,
+      type: 'line', data: { labels, datasets }, options: optsWith(yMaxProj),
     });
   } else if (projCanvas) {
     // Render an empty-state message inside the canvas's parent.
@@ -6276,6 +6292,14 @@ function loadChartJs() {
 // Resolve a CSS variable like --c-deep_work to its computed hex/rgb string.
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+// Resolve a category to a real colour string. CATS[*].color uses
+// `var(--c-<id>)` so light/dark theming works for inline CSS, but Chart.js
+// needs an actual hex/rgb string in its JS dataset config.
+function catColor(c) {
+  if (!c) return '#666';
+  const v = cssVar('--c-' + c.id);
+  return v || (c.color || '#666');
 }
 
 // Derive an rgba() fill from a resolved category token (#rgb or #rrggbb).
@@ -7028,21 +7052,26 @@ async function buildMonthlyCharts(stats) {
   // Chart 1: Categories — one line per CAT id present in CATS, color from CAT.
   const catCanvas = document.getElementById('mr-chart-categories');
   if (catCanvas) {
-    const datasets = CATS.map(c => ({
-      label: c.label,
-      data: stats.categoryByWeek[c.id] || labels.map(() => 0),
-      borderColor: c.color,
-      backgroundColor: c.color,
-      borderWidth: 2,
-      pointRadius: 2,
-      tension: 0.25,
-    }));
+    const datasets = CATS.map(c => {
+      const color = catColor(c);
+      return {
+        label: c.label,
+        data: stats.categoryByWeek[c.id] || labels.map(() => 0),
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.25,
+      };
+    });
     _monthlyChartInstances.categories = new Chart(catCanvas.getContext('2d'), {
       type: 'line',
       data: { labels, datasets },
       options: {
         ...baseOptions,
-        scales: { ...baseOptions.scales, y: { ...baseOptions.scales.y, ticks: { ...baseOptions.scales.y.ticks, callback: v => v + 'h' } } },
+        // Hard-cap categories at 56h/bucket (8 hr/day average × 7 days) so
+        // single-day spikes don't visually compress the rest of the lines.
+        scales: { ...baseOptions.scales, y: { ...baseOptions.scales.y, max: 56, ticks: { ...baseOptions.scales.y.ticks, callback: v => v + 'h' } } },
       },
     });
   }
@@ -8673,11 +8702,13 @@ function paintChartZoom() {
         buckets.push({ start: days[a], end: days[bend - 1] });
         labels.push('W' + (i + 1));
       }
-      yMax = 84;
+      // Categories: hard-cap 56h/bucket (8 hr/day × 7 days). Projects keep
+      // the original 84h suggestion so a busy single-project week breathes.
+      yMax = isCat ? 56 : 84;
     } else {
       buckets = days.map(d => ({ start: d, end: d }));
       labels = days.map(d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }));
-      yMax = 12;
+      yMax = isCat ? 8 : 12;
     }
     const catData = {}; CATS.forEach(c => { catData[c.id] = buckets.map(() => 0); });
     const projData = {};
@@ -8703,11 +8734,14 @@ function paintChartZoom() {
       const legendColor = (styles.getPropertyValue('--chart-legend') || '#999').trim();
       let datasets;
       if (isCat) {
-        datasets = CATS.map(c => ({
-          label: c.label, data: catData[c.id],
-          borderColor: c.color, backgroundColor: c.color,
-          borderWidth: 2, pointRadius: 3, tension: 0.25,
-        }));
+        datasets = CATS.map(c => {
+          const color = catColor(c);
+          return {
+            label: c.label, data: catData[c.id],
+            borderColor: color, backgroundColor: color,
+            borderWidth: 2, pointRadius: 3, tension: 0.25,
+          };
+        });
       } else {
         const keys = Object.keys(projData);
         if (!keys.length) {
@@ -8730,7 +8764,12 @@ function paintChartZoom() {
           },
           scales: {
             x: { ticks: { color: tickColor, font: { size: 12 } }, grid: { color: gridColor } },
-            y: { beginAtZero: true, suggestedMax: yMax, ticks: { color: tickColor, font: { size: 12 }, callback: v => v + 'h' }, grid: { color: gridColor } },
+            y: {
+              beginAtZero: true,
+              ...(isCat ? { max: yMax } : { suggestedMax: yMax }),
+              ticks: { color: tickColor, font: { size: 12 }, callback: v => v + 'h' },
+              grid: { color: gridColor },
+            },
           },
         },
       });
