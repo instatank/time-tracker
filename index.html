@@ -6036,6 +6036,26 @@ function renderDashboard() {
     }
   }
 
+  // ── Star Metric Snapshot (D5) ──
+  // Reuses the Weekly Review's sparkline mounter via canvas IDs prefixed
+  // 'tr-spark-' so the two screens never collide.
+  const trendsStars = getTrendsStarMetrics(startDate, td, dashRange);
+  const starSnapshot = trendsStars.length
+    ? `<div class="section">
+        <div class="sec-hdr"><span class="sec-title">Star Metrics</span></div>
+        <div class="wr-stars">
+          ${trendsStars.map(m => `
+            <div class="wr-star-row">
+              <div class="wr-star-meta">
+                <span class="wr-star-label">${esc(m.label)}</span>
+                <span class="wr-star-avg">${m.avg > 0 ? m.avg.toFixed(1) : '—'}</span>
+              </div>
+              <canvas id="tr-spark-${esc(m.key)}" class="wr-spark" width="80" height="20"></canvas>
+            </div>`).join('')}
+        </div>
+      </div>`
+    : '';
+
   // Time by Project section — only renders in Totals view (Over Time has its
   // own line-chart variant in D6).
   const projectSection = dashView === 'totals'
@@ -6101,11 +6121,16 @@ function renderDashboard() {
         </div>
       </div>
     </div>
+    ${starSnapshot}
   </div>`;
 
   // After rendering, build chart if overtime
   if (dashView === 'overtime') {
     setTimeout(() => buildTrendChart(td, n), 0);
+  }
+  // Mount star metric sparklines if any
+  if (trendsStars.length) {
+    setTimeout(() => buildStarSparklines(trendsStars, 'tr-spark-'), 0);
   }
 
   return html;
@@ -6451,6 +6476,44 @@ function getStarMetricsForWeek(weekStart) {
   });
 }
 
+// Trends-tab star metrics — mode 'week' returns one value per day (7 pts);
+// mode 'month' splits the range into 4 buckets and returns each bucket's
+// average. Reuses the same shape as getStarMetricsForWeek so buildStarSparklines
+// can render either without changes.
+function getTrendsStarMetrics(startDate, endDate, mode) {
+  const days = _enumerateDates(startDate, endDate);
+  const keys = new Set();
+  days.forEach(d => {
+    const r = lifeRatings[d];
+    if (!r || typeof r !== 'object') return;
+    Object.keys(r).forEach(k => { if (typeof r[k] === 'number' && r[k] > 0) keys.add(k); });
+  });
+  return [...keys].sort().map(key => {
+    let values;
+    if (mode === 'month') {
+      const bucketSize = Math.ceil(days.length / 4);
+      values = [];
+      for (let i = 0; i < 4; i++) {
+        const a = i * bucketSize;
+        const b = Math.min(days.length, (i + 1) * bucketSize);
+        if (a >= days.length) { values.push(null); continue; }
+        const present = days.slice(a, b)
+          .map(d => (lifeRatings[d] || {})[key])
+          .filter(v => typeof v === 'number' && v > 0);
+        values.push(present.length ? present.reduce((s, v) => s + v, 0) / present.length : null);
+      }
+    } else {
+      values = days.map(d => {
+        const v = (lifeRatings[d] || {})[key];
+        return (typeof v === 'number' && v > 0) ? v : null;
+      });
+    }
+    const present = values.filter(v => v != null);
+    const avg = present.length ? present.reduce((s, v) => s + v, 0) / present.length : 0;
+    return { key, label: _prettifyMetricKey(key), values, avg };
+  });
+}
+
 // ── Month helpers (C1) ─────────────────────────────────────
 // All month math runs in UTC to avoid the same TZ trap that bit getWeekStart.
 function ymStrFor(dateStr) { return (dateStr || '').slice(0, 7); }
@@ -6768,7 +6831,7 @@ function surfacePatterns(weekData) {
 // per discovered star metric. Destroys old instances first so re-renders
 // don't leak.
 const _sparkChartInstances = {};
-async function buildStarSparklines(metrics) {
+async function buildStarSparklines(metrics, idPrefix = 'wr-spark-') {
   if (!metrics || !metrics.length) return;
   try { await loadChartJs(); } catch { return; }
   Object.keys(_sparkChartInstances).forEach(k => {
@@ -6777,7 +6840,7 @@ async function buildStarSparklines(metrics) {
   });
   const accent  = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#3b82f6').trim();
   metrics.forEach(m => {
-    const canvas = document.getElementById('wr-spark-' + m.key);
+    const canvas = document.getElementById(idPrefix + m.key);
     if (!canvas) return;
     _sparkChartInstances[m.key] = new Chart(canvas.getContext('2d'), {
       type: 'line',
