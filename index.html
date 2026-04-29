@@ -5905,11 +5905,17 @@ async function buildTrendChart(td, n) {
 }
 
 // ── Weekly Review ─────────────────────────────────────────────
+// Returns the Monday-of-week containing the given 'YYYY-MM-DD' date.
+// IMPORTANT: Operates entirely in UTC arithmetic (parse / setUTCDate /
+// toISOString) so the result isn't shifted by the browser's local
+// timezone. Mixing local-Date construction with toISOString() previously
+// shifted the result back by a day for any user in a non-UTC TZ (IST).
 function getWeekStart(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  const day = d.getDay(); // 0=Sun
-  const diff = day === 0 ? 6 : day - 1; // Mon = start
-  d.setDate(d.getDate() - diff);
+  const [y, m, day] = dateStr.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1, day));
+  const dow = d.getUTCDay(); // 0=Sun
+  const diff = dow === 0 ? 6 : dow - 1; // Mon = start of week
+  d.setUTCDate(d.getUTCDate() - diff);
   return d.toISOString().slice(0, 10);
 }
 
@@ -6408,9 +6414,10 @@ function renderWeeklyReview() {
     <input type="text" class="wr-intention-input" id="wr-intention"
       maxlength="120"
       placeholder="One intention for next week..."
+      ${isPastWeek ? 'readonly' : ''}
       oninput="onWrIntentionChange()"
       value="${esc(currentIntention)}">
-    <div class="wr-intention-help">Headline focus · max 120 characters</div>`;
+    <div class="wr-intention-help">${isPastWeek ? 'Past week — read-only' : 'Headline focus · max 120 characters'}</div>`;
 
   // ── Sparklines mount after DOM is in place ──
   if (starMetrics.length) {
@@ -6439,10 +6446,12 @@ function renderWeeklyReview() {
 
     ${planSection}
 
-    <button class="wr-save-btn ${currentIntention ? '' : 'disabled'}" id="wr-save-btn"
-      onclick="saveWeeklyReview()" ${currentIntention ? '' : 'disabled'}>
-      ${savedReview ? 'Update Review' : 'Save Review'}
-    </button>
+    ${isPastWeek
+      ? '<div style="text-align:center;font-size:0.78rem;color:var(--text3);padding:1rem 0">Past weeks are read-only.</div>'
+      : `<button class="wr-save-btn ${currentIntention ? '' : 'disabled'}" id="wr-save-btn"
+          onclick="saveWeeklyReview()" ${currentIntention ? '' : 'disabled'}>
+          ${savedReview ? 'Update Review' : 'Save Review'}
+        </button>`}
   </div>`;
 }
 
