@@ -1200,30 +1200,41 @@ html, body {
   margin-left: 0.35rem;
   font-weight: 600;
 }
+/* One-line win row: [icon] [source] [body — flex / ellipsis] [time] */
 .win-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--tag-win-text);
   border-radius: var(--r);
-  padding: 0.45rem 0.7rem;
-  margin-bottom: 0.35rem;
-}
-.win-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.7rem;
-  color: var(--text2);
-  margin-bottom: 0.15rem;
-}
-.win-source { text-transform: capitalize; color: var(--text); font-weight: 500; }
-.win-time   { margin-left: auto; color: var(--text3); }
-.win-body   {
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.3rem;
+  cursor: pointer;
   font-size: 0.82rem;
+  line-height: 1.3;
+}
+.win-icon   { flex-shrink: 0; }
+.win-source {
+  flex-shrink: 0;
+  text-transform: capitalize;
+  color: var(--text2);
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+.win-body   {
+  flex: 1;
+  min-width: 0;
   color: var(--text);
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.win-time   {
+  flex-shrink: 0;
+  color: var(--text3);
+  font-size: 0.7rem;
 }
 
 /* ── Session cards ───────────────────────────────────────────── */
@@ -3516,13 +3527,11 @@ function renderWinsPanel(d) {
     const handler = w.source === 'session'
       ? `onclick="openWinSession('${w.id}','${esc(w.project || '').replace(/'/g, "\\'")}')"`
       : `onclick="openRelatedRef('${w.sourceType}','${w.id}')"`;
-    return `<div class="win-item" ${handler} style="cursor:pointer">
-      <div class="win-meta">
-        <span>${icon}</span>
-        <span class="win-source">${label}</span>
-        <span class="win-time">${fmtTime(w.timestamp)}</span>
-      </div>
-      <div class="win-body">${body}</div>
+    return `<div class="win-item" ${handler}>
+      <span class="win-icon">${icon}</span>
+      <span class="win-source">${label}</span>
+      <span class="win-body">${body}</span>
+      <span class="win-time">${fmtTime(w.timestamp)}</span>
     </div>`;
   }).join('');
   return `
