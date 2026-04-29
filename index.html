@@ -2805,16 +2805,19 @@ select option { background: var(--surface2); }
       <label class="field-label">Note</label>
       <textarea id="f-note" placeholder="Short context…" style="min-height:44px"></textarea>
     </div>
-    <div class="field">
-      <div class="energy-row">
-        <span class="field-label">Energy</span>
-        <div class="pill-row">
-          <button class="pill" data-energy="Low">Low</button>
-          <button class="pill" data-energy="Medium">Medium</button>
-          <button class="pill" data-energy="High">High</button>
-        </div>
-      </div>
-    </div>
+    <!-- Energy field intentionally removed from the UI. Backend keeps
+         block.energy_level intact and the render-side energy badge still
+         shows for any older blocks that have a value. To restore: paste
+         this back inside a `<div class="field">`:
+           <div class="energy-row">
+             <span class="field-label">Energy</span>
+             <div class="pill-row">
+               <button class="pill" data-energy="Low">Low</button>
+               <button class="pill" data-energy="Medium">Medium</button>
+               <button class="pill" data-energy="High">High</button>
+             </div>
+           </div>
+    -->
     <div class="field">
       <label class="field-label">Project tag <span style="color:var(--text3);font-weight:400">(optional)</span></label>
       <div class="proj-scroller" id="f-block-project-row" style="margin:0;padding:0.2rem 0 0"></div>
