@@ -3540,13 +3540,21 @@ function renderToday() {
   const d = todayStr();
   const bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
   const caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+  // Merge today's Daily Journal entry into the captures feed so it shows up
+  // alongside Quick Notes / Project captures (was missing — Daily Journal
+  // lives in a separate collection from `captures`).
+  const todayDaily = (dailyJournals || []).filter(j => j && j.date === d && !isDailyEntryEmpty(j));
+  const allCapItems = [
+    ...todayDaily.map(j => ({ kind: 'daily', item: j, sortKey: j.lastEditedAt || j.timestamp || (j.date + 'T23:59:59') })),
+    ...caps.map(c => ({ kind: 'cap', item: c, sortKey: c.timestamp })),
+  ].sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
   const sc = dayScore(d);
   const r = ratings[d] || 0;
 
   const visBks  = todayBksExpanded  ? bks  : bks.slice(0, TODAY_PREVIEW);
-  const visCaps = todayCapsExpanded ? caps : caps.slice(0, TODAY_PREVIEW);
+  const visCapItems = todayCapsExpanded ? allCapItems : allCapItems.slice(0, TODAY_PREVIEW);
   const moreBks  = bks.length  - TODAY_PREVIEW;
-  const moreCaps = caps.length - TODAY_PREVIEW;
+  const moreCaps = allCapItems.length - TODAY_PREVIEW;
 
   // ── Today-tab banners (B3 + C2) ──
   // Order top → bottom (per spec: monthly above weekly):
@@ -3648,10 +3656,10 @@ function renderToday() {
         : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
     </div>
 
-    ${caps.length ? `
+    ${allCapItems.length ? `
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Captures</span></div>
-      ${visCaps.map(renderCapPreview).join('')}
+      ${visCapItems.map(e => e.kind === 'daily' ? renderDailyJournalCard(e.item) : renderCapPreview(e.item)).join('')}
       ${moreCaps > 0 ? moreBtn(todayCapsExpanded, moreCaps, 'toggleTodayCaps') : ''}
     </div>` : ''}
 
