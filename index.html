@@ -5837,46 +5837,44 @@ function renderDayLifeRatings(date) {
 function renderCalendar() {
   const y = histCalMonth.getFullYear();
   const m = histCalMonth.getMonth();
-  const firstDay = new Date(y, m, 1).getDay(); // 0=Sun
-  const daysInMonth = new Date(y, m+1, 0).getDate();
+  // Use UTC arithmetic (matches getWeekStart, addDays, monthRange) so the
+  // first-day-of-week and days-in-month are independent of browser TZ.
+  // Day cells are rendered straight from y/m/d so date strings stay
+  // in plain calendar form without any TZ shift.
+  const firstDay    = new Date(Date.UTC(y, m, 1)).getUTCDay();      // 0=Sun
+  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
   const td = todayStr();
-  const monthLabel = histCalMonth.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+  const monthLabel = new Date(Date.UTC(y, m, 1))
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-  // Collect dates with data (blocks, captures, ratings, life-ratings, or EOD)
-  const datesWithBlocks = new Set(blocks.map(b => b.date));
-  const datesWithCaps   = new Set(captures.map(c => capDateIST(c)));
-  const datesWithExtras = new Set([
-    ...Object.keys(ratings).filter(d => ratings[d] > 0),
-    ...Object.keys(lifeRatings).filter(d => {
-      const v = lifeRatings[d] || {};
-      return Object.values(v).some(x => x > 0);
-    }),
-    ...Object.keys(eodNotes).filter(d => eodNotes[d]),
-  ]);
+  // Collect every date that has ANY user-generated data — blocks, captures,
+  // ratings, life-ratings, EOD notes, AND Daily Journal entries (D7 adds
+  // Daily Journal which the legacy code missed).
+  const datesWithData = new Set();
+  blocks.forEach(b => { if (b.date) datesWithData.add(b.date); });
+  captures.forEach(c => { const d = capDateIST(c); if (d) datesWithData.add(d); });
+  Object.keys(ratings).forEach(d => { if (ratings[d] > 0) datesWithData.add(d); });
+  Object.keys(lifeRatings).forEach(d => {
+    const v = lifeRatings[d] || {};
+    if (Object.values(v).some(x => x > 0)) datesWithData.add(d);
+  });
+  Object.keys(eodNotes).forEach(d => { if (eodNotes[d]) datesWithData.add(d); });
+  (dailyJournals || []).forEach(j => { if (j && j.date) datesWithData.add(j.date); });
 
   const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
   let cells = '';
-  // Day name headers
   cells += dayNames.map(d => `<div class="cal-day-label">${d}</div>`).join('');
-  // Empty cells before first day
   for (let i = 0; i < firstDay; i++) cells += `<div class="cal-day empty"></div>`;
-  // Day cells
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday = dateStr === td;
     const isSelected = dateStr === histDate;
-    const hasBk = datesWithBlocks.has(dateStr);
-    const hasCp = datesWithCaps.has(dateStr);
-    const hasEx = datesWithExtras.has(dateStr);
-    const hasData = hasBk || hasCp || hasEx;
-    const dotsBk = hasBk ? `<span class="cal-dot" style="background:var(--accent)"></span>` : '';
-    const dotsCp = hasCp ? `<span class="cal-dot" style="background:var(--success)"></span>` : '';
-    const dotsEx = (hasEx && !hasBk && !hasCp) ? `<span class="cal-dot" style="background:var(--warn)"></span>` : '';
+    const hasData = datesWithData.has(dateStr);
     cells += `
       <div class="cal-day ${isToday?'today-cell':''} ${isSelected?'selected':''} ${hasData?'has-data':''}"
            onclick="setHistDate('${dateStr}')">
         ${d}
-        <div class="cal-dots">${dotsBk}${dotsCp}${dotsEx}</div>
+        <div class="cal-dots">${hasData ? '<span class="cal-dot" style="background:var(--accent)"></span>' : ''}</div>
       </div>`;
   }
 
