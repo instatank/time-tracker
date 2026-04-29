@@ -1231,6 +1231,20 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Expanded state — body wraps and shows full text; row is no longer
+   single-line so flex layout switches to align-items: flex-start. */
+.win-item.expanded {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.win-item.expanded .win-body {
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  flex-basis: 100%;
+  margin-top: 0.2rem;
+}
 .win-time   {
   flex-shrink: 0;
   color: var(--text3);
@@ -3124,6 +3138,7 @@ let learnSearchOpen     = false;                       // Learning sub-tab: sear
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
 let expandedCaptures    = new Set();                   // capture IDs expanded in journal feed
 let expandedDailyDates  = new Set();                   // daily-journal dates expanded inline
+let expandedWins        = new Set();                   // Today-tab wins expanded inline (key = srcType:id)
 let selLearningType     = '';                          // current form source type
 let learningFormNotesOpen = false;                     // whether the "Full notes" textarea is expanded in the form
 let editingLearningId   = null;
@@ -3514,6 +3529,19 @@ function getTodayWins(d) {
       sourceType: 'learning',
     });
   });
+  // Daily Journal entries tagged #win surface here too — same treatment as
+  // the other sources. id = date so single-doc-per-day is preserved.
+  (dailyJournals || []).forEach(j => {
+    if (!j || j.date !== d) return;
+    if (!(j.tags || []).includes('#win')) return;
+    wins.push({
+      source: 'daily',
+      id: j.date,
+      body: (j.thoughts || '').trim() || (j.reflection || '').trim() || '(daily journal)',
+      timestamp: j.lastEditedAt || j.timestamp || (j.date + 'T23:59:00'),
+      sourceType: 'daily',
+    });
+  });
   return wins.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
 }
 
@@ -3521,13 +3549,21 @@ function renderWinsPanel(d) {
   const wins = getTodayWins(d);
   if (!wins.length) return '';
   const items = wins.map(w => {
-    const icon = w.source === 'learning' ? '📚' : w.source === 'session' ? '🗂️' : '📓';
-    const label = w.source === 'session' ? esc(w.project || 'Session') : w.source;
-    const body = w.body.length > 140 ? esc(w.body.slice(0, 140)) + '…' : esc(w.body);
-    const handler = w.source === 'session'
-      ? `onclick="openWinSession('${w.id}','${esc(w.project || '').replace(/'/g, "\\'")}')"`
-      : `onclick="openRelatedRef('${w.sourceType}','${w.id}')"`;
-    return `<div class="win-item" ${handler}>
+    const icon = w.source === 'learning' ? '📚'
+                : w.source === 'session' ? '🗂️'
+                : w.source === 'daily'   ? '📓'
+                : '📓';
+    const label = w.source === 'session' ? esc(w.project || 'Session')
+                : w.source === 'daily'   ? 'Daily'
+                : w.source;
+    const key = `${w.sourceType}:${w.id}`;
+    const expanded = expandedWins.has(key);
+    const body = expanded
+      ? esc(w.body)                                                              // full text on expand
+      : (w.body.length > 140 ? esc(w.body.slice(0, 140)) + '…' : esc(w.body));   // single-line preview
+    const projectArg = esc(w.project || '').replace(/'/g, "\\'");
+    return `<div class="win-item ${expanded ? 'expanded' : ''}"
+      onclick="winCardTap('${esc(key)}','${esc(w.sourceType)}','${esc(w.id)}','${projectArg}')">
       <span class="win-icon">${icon}</span>
       <span class="win-source">${label}</span>
       <span class="win-body">${body}</span>
@@ -3554,6 +3590,28 @@ window.openWinSession = function(sessionId, projectName) {
     const el = document.querySelector(`[data-session-id="${sessionId}"]`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, 60);
+};
+
+// Tap-or-double-tap on a Today-tab win row.
+//   single tap → expand the row inline so the full body is readable
+//   double tap → open the source entry directly in edit mode
+// Mirrors the pattern used by capture / session / learning cards.
+window.winCardTap = function(key, srcType, id, project) {
+  tapOrDoubleTap('win-' + key,
+    () => toggleWinExpand(key),
+    () => openWinSource(srcType, id, project)
+  );
+};
+window.toggleWinExpand = function(key) {
+  if (expandedWins.has(key)) expandedWins.delete(key);
+  else                        expandedWins.add(key);
+  renderMain(true);
+};
+window.openWinSource = function(srcType, id, project) {
+  if (srcType === 'journal')      openCaptureEdit(id);
+  else if (srcType === 'learning') openEditLearning(id);
+  else if (srcType === 'session')  openEditSession(id, project);
+  else if (srcType === 'daily')    openDailyJournalEditor(id);  // id = date for daily
 };
 
 function renderToday() {
