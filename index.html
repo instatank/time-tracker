@@ -3715,27 +3715,6 @@ function renderToday() {
       <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
     </div>
 
-    ${renderDftPanel(d)}
-
-    ${renderWinsPanel(d)}
-
-    <div class="section">
-      <div class="sec-hdr">
-        <span class="sec-title">Today's Log</span>
-        <span class="sec-meta">${sc.totalHrs > 0 ? sc.totalHrs.toFixed(1) + 'h logged' : ''}</span>
-      </div>
-      ${bks.length
-        ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
-        : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
-    </div>
-
-    ${allCapItems.length ? `
-    <div class="section">
-      <div class="sec-hdr"><span class="sec-title">Captures</span></div>
-      ${visCapItems.map(e => e.kind === 'daily' ? renderDailyJournalCard(e.item) : renderCapPreview(e.item)).join('')}
-      ${moreCaps > 0 ? moreBtn(todayCapsExpanded, moreCaps, 'toggleTodayCaps') : ''}
-    </div>` : ''}
-
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Day Score</span></div>
       <div class="score-grid">
@@ -3757,6 +3736,27 @@ function renderToday() {
         </div>
       </div>
     </div>
+
+    ${renderDftPanel(d)}
+
+    ${renderWinsPanel(d)}
+
+    <div class="section">
+      <div class="sec-hdr">
+        <span class="sec-title">Today's Log</span>
+        <span class="sec-meta">${sc.totalHrs > 0 ? sc.totalHrs.toFixed(1) + 'h logged' : ''}</span>
+      </div>
+      ${bks.length
+        ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
+        : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
+    </div>
+
+    ${allCapItems.length ? `
+    <div class="section">
+      <div class="sec-hdr"><span class="sec-title">Captures</span></div>
+      ${visCapItems.map(e => e.kind === 'daily' ? renderDailyJournalCard(e.item) : renderCapPreview(e.item)).join('')}
+      ${moreCaps > 0 ? moreBtn(todayCapsExpanded, moreCaps, 'toggleTodayCaps') : ''}
+    </div>` : ''}
 
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Rate Your Day</span></div>
