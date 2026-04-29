@@ -2336,6 +2336,72 @@ html, body {
 .dash-row3 .view-toggle,
 .dash-row3 .range-toggle { margin-bottom: 0; }
 
+/* Zoom modal — full-screen on small viewports, centered on larger ones.
+   Reused by Time by Category, Time by Project, and Over-Time charts. */
+.zoom-modal {
+  position: fixed; inset: 0;
+  display: none;
+  align-items: center; justify-content: center;
+  z-index: 200;
+}
+.zoom-modal.open { display: flex; }
+.zoom-modal-backdrop {
+  position: absolute; inset: 0;
+  background: var(--overlay);
+}
+.zoom-modal-content {
+  position: relative;
+  width: 92vw; max-width: 760px;
+  max-height: 88vh;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+@media (max-width: 480px) {
+  .zoom-modal-content { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}
+.zoom-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.zoom-modal-title { font-weight: 600; font-size: 0.95rem; }
+.zoom-modal-close {
+  background: none; border: none;
+  color: var(--text2);
+  font-size: 1.4rem;
+  cursor: pointer; padding: 0 0.3rem;
+  line-height: 1;
+}
+.zoom-modal-close:hover { color: var(--text); }
+.zoom-modal-body {
+  padding: 1rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Section-header zoom affordance */
+.sec-zoom-btn {
+  background: none; border: none;
+  color: var(--text3);
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  margin-left: 0.25rem;
+  line-height: 1;
+}
+.sec-zoom-btn:hover { color: var(--accent); }
+
+/* Capped-bar overflow indicator — subtle inset shadow at the right edge so
+   the user can tell the bar is at max even before reading the label. */
+.bar-fill-over { box-shadow: inset -3px 0 0 0 rgba(255,255,255,0.45); }
+
 .view-toggle {
   display: flex;
   background: var(--surface);
@@ -2894,6 +2960,18 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 
 <div id="backdrop" class="backdrop" onclick="closeSheets()"></div>
 <div id="toasts"></div>
+<!-- Trends-tab zoom modal (D3) — reused by Time by Category, Time by Project,
+     and the Over-Time line charts. Stays in the DOM, toggled via .open. -->
+<div id="zoom-modal" class="zoom-modal">
+  <div class="zoom-modal-backdrop" onclick="closeChartZoom()"></div>
+  <div class="zoom-modal-content">
+    <div class="zoom-modal-header">
+      <span class="zoom-modal-title" id="zoom-modal-title"></span>
+      <button class="zoom-modal-close" onclick="closeChartZoom()" aria-label="Close">×</button>
+    </div>
+    <div class="zoom-modal-body" id="zoom-modal-body"></div>
+  </div>
+</div>
 
 <script type="module">
 import { initializeApp }                    from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
@@ -5906,26 +5984,25 @@ function renderDashboard() {
   const adherenceRes = calculateAdherence(startDate, td);
   const adhPct = adherenceRes.totalChecks ? adherenceRes.percentage : null;
 
-  const bars = [
-    ...CATS.map(c => {
-      const hrs = breakdown[c.id] || 0;
-      const pct = maxHrs > 0 ? (hrs / maxHrs) * 100 : 0;
-      return `
-        <div class="bar-row">
-          <span class="bar-lbl">${c.icon} ${c.label}</span>
-          <div class="bar-track">
-            <div class="bar-fill" style="width:${pct}%;background:${c.color}"></div>
-          </div>
-          <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
-        </div>`;
-    }),
-    `<div class="bar-row">
-        <span class="bar-lbl">${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}</span>
+  // Visual cap (D3): 12 hours/day average — single-day spikes don't squash
+  // the rest of the bars. Bars exceeding the cap render at 100% with a small
+  // ▲ overflow indicator on the value label.
+  const capHrs = n * 12;
+  const renderCappedBar = (label, hrs, color) => {
+    const overflow = hrs > capHrs;
+    const pct = capHrs > 0 ? Math.min(hrs, capHrs) / capHrs * 100 : 0;
+    return `
+      <div class="bar-row">
+        <span class="bar-lbl">${label}</span>
         <div class="bar-track">
-          <div class="bar-fill" style="width:${maxHrs > 0 ? (skippedHrs / maxHrs) * 100 : 0}%;background:${SKIPPED_CAT.color}"></div>
+          <div class="bar-fill ${overflow ? 'bar-fill-over' : ''}" style="width:${pct}%;background:${color}"></div>
         </div>
-        <span class="bar-val">${skippedHrs > 0 ? skippedHrs.toFixed(1) + 'h' : '—'}</span>
-      </div>`,
+        <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' + (overflow ? ' ▲' : '') : '—'}</span>
+      </div>`;
+  };
+  const bars = [
+    ...CATS.map(c => renderCappedBar(`${c.icon} ${c.label}`, breakdown[c.id] || 0, c.color)),
+    renderCappedBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color),
   ].join('');
 
   const leakClass = leakPct > 15 ? 'bad' : leakPct > 8 ? 'warn' : 'good';
@@ -5952,7 +6029,11 @@ function renderDashboard() {
       ${trendCallout}
     </div>` :
     `<div class="section">
-      <div class="sec-hdr"><span class="sec-title">Time by Category</span><span class="sec-meta">${totalHrs.toFixed(1)}h waking</span></div>
+      <div class="sec-hdr">
+        <span class="sec-title">Time by Category</span>
+        <span class="sec-meta">${totalHrs.toFixed(1)}h waking</span>
+        <button class="sec-zoom-btn" onclick="openChartZoom('category')" aria-label="Zoom" title="Zoom">↗</button>
+      </div>
       <div class="bar-chart">${bars}</div>
     </div>`;
 
@@ -8275,6 +8356,60 @@ function initMonthlyDraft(ym) {
     learnTags: ((saved.learningFocusNext && saved.learningFocusNext.tags) || []).slice(),
     coherence: saved.weeklyIntentionsCoherence || null,
   };
+}
+
+// ── Trends-tab chart zoom modal (D3) ──
+// Re-renders the section's content into the zoom modal at a larger scale.
+// State is intentionally minimal — `chartZoomKey` identifies WHICH chart is
+// open so the modal body can be rebuilt on data refresh.
+let chartZoomKey = null;
+window.openChartZoom = function(key) {
+  chartZoomKey = key;
+  paintChartZoom();
+  const m = document.getElementById('zoom-modal');
+  if (m) m.classList.add('open');
+};
+window.closeChartZoom = function() {
+  chartZoomKey = null;
+  const m = document.getElementById('zoom-modal');
+  if (m) m.classList.remove('open');
+  // Tear down any chart instances mounted inside the modal body.
+  if (window._zoomChartInstance) {
+    try { window._zoomChartInstance.destroy(); } catch {}
+    window._zoomChartInstance = null;
+  }
+};
+function paintChartZoom() {
+  const titleEl = document.getElementById('zoom-modal-title');
+  const bodyEl  = document.getElementById('zoom-modal-body');
+  if (!titleEl || !bodyEl || !chartZoomKey) return;
+  const td = todayStr();
+  const n = dashRange === 'month' ? 30 : 7;
+  const startDate = addDays(td, -(n - 1));
+  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td);
+  const breakdown = catBreakdown(rangeBlocks);
+  const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
+  const skippedHrs = Math.max(0, n * 16 - wakingHrs);
+  // In zoom view we relax the cap to actual max so the user sees true scale.
+  const maxHrs = Math.max(...Object.values(breakdown).filter(v => v >= 0), skippedHrs, 0.1);
+  const renderBar = (label, hrs, color) => {
+    const pct = maxHrs > 0 ? Math.min(hrs, maxHrs) / maxHrs * 100 : 0;
+    return `
+      <div class="bar-row" style="margin-bottom:0.6rem">
+        <span class="bar-lbl">${label}</span>
+        <div class="bar-track" style="height:14px">
+          <div class="bar-fill" style="width:${pct}%;background:${color};height:100%"></div>
+        </div>
+        <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
+      </div>`;
+  };
+  if (chartZoomKey === 'category') {
+    titleEl.textContent = 'Time by Category — ' + (dashRange === 'month' ? 'Last 30 days' : 'Last 7 days');
+    bodyEl.innerHTML = `<div class="bar-chart">
+      ${CATS.map(c => renderBar(`${c.icon} ${c.label}`, breakdown[c.id] || 0, c.color)).join('')}
+      ${renderBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color)}
+    </div>`;
+  }
 }
 
 window.openMonthlyReview = function() {
