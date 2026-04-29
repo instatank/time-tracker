@@ -380,6 +380,22 @@ html, body {
   color: var(--text);
 }
 .today-banner-suggest:hover { background: var(--accent-soft); }
+/* Monthly banners use slightly distinct accents so they don't blur into
+   the weekly stack when both are present. */
+.today-banner-monthly-build {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.today-banner-monthly-build:hover { border-color: var(--border2); }
+.today-banner-monthly-build .today-banner-text strong { color: var(--text); }
+.today-banner-monthly-learn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.today-banner-monthly-learn:hover { border-color: var(--border2); }
+.today-banner-monthly-learn .today-banner-text strong { color: var(--text); }
 
 .action-row {
   display: flex;
@@ -3436,9 +3452,52 @@ function renderToday() {
   const moreBks  = bks.length  - TODAY_PREVIEW;
   const moreCaps = caps.length - TODAY_PREVIEW;
 
-  // ── Today-tab banners (B3) ──
-  // 1) Saved-intention from LAST week's review applies to "this week".
-  //    Tap → open last week's review.
+  // ── Today-tab banners (B3 + C2) ──
+  // Order top → bottom (per spec: monthly above weekly):
+  //   1. Saved Build focus from previous month's review
+  //   2. Saved Learning focus from previous month's review
+  //   3. Monthly auto-suggest (first 7 days of month, prev review unsaved)
+  //   4. Saved weekly intention from previous week's review
+  //   5. Weekly auto-suggest (Sat/Sun, current week's review unsaved)
+
+  // ── Monthly banners (C2) ──
+  const thisYM         = currentYM();
+  const prevYM         = previousMonthYM(thisYM);
+  const prevMonthReview = monthlyReviews[prevYM];
+  const buildFocus     = prevMonthReview && prevMonthReview.oneFocus;
+  const learnFocus     = prevMonthReview && prevMonthReview.learningFocusNext;
+  const learnText      = learnFocus
+    ? [...(learnFocus.tags || []), learnFocus.freeText].filter(Boolean).join(', ')
+    : '';
+  const monthlyBuildBanner = buildFocus
+    ? `<div class="today-banner today-banner-monthly-build" onclick="openMonthlyReviewAt('${esc(prevYM)}')">
+         <span class="today-banner-text"><strong>This month:</strong> ${esc(buildFocus)}</span>
+         <span class="today-banner-chevron">›</span>
+       </div>`
+    : '';
+  const monthlyLearnBanner = learnText
+    ? `<div class="today-banner today-banner-monthly-learn" onclick="openMonthlyReviewAt('${esc(prevYM)}')">
+         <span class="today-banner-text"><strong>Learning:</strong> ${esc(learnText)}</span>
+         <span class="today-banner-chevron">›</span>
+       </div>`
+    : '';
+
+  // Monthly auto-suggest: first 7 days of month, prev month review NOT saved,
+  // not dismissed today. Tap → open prev month's review. × → dismiss today.
+  const dayOfMonth        = parseInt(d.slice(8, 10), 10);
+  const inFirstWeek       = dayOfMonth >= 1 && dayOfMonth <= 7;
+  const monthlyAlreadySaved = !!prevMonthReview;
+  const showMonthlySuggest = inFirstWeek && !monthlyAlreadySaved && !isMonthlyReviewBannerDismissedToday();
+  const monthlySuggestBanner = showMonthlySuggest
+    ? `<div class="today-banner today-banner-suggest today-banner-monthly-suggest" onclick="openMonthlyReviewAt('${esc(prevYM)}')">
+         <span class="today-banner-icon">📅</span>
+         <span class="today-banner-text">Your monthly review is ready · tap to start</span>
+         <span class="today-banner-chevron">›</span>
+         <button class="today-banner-close" onclick="event.stopPropagation();dismissMonthlyReviewBanner()" aria-label="Dismiss">×</button>
+       </div>`
+    : '';
+
+  // ── Weekly banners (B3) ──
   const currentWeekStart = getWeekStart(d);
   const prevWeekStart    = addDays(currentWeekStart, -7);
   const prevReview       = weeklyReviews[prevWeekStart];
@@ -3450,9 +3509,6 @@ function renderToday() {
        </div>`
     : '';
 
-  // 2) Auto-suggest banner: Sat/Sun, current week's review NOT saved, not
-  //    dismissed today. Tap → open current week's review. × → dismiss
-  //    for today only.
   const todayDow      = new Date(d + 'T00:00:00').getDay(); // 0=Sun, 6=Sat
   const isWeekend     = todayDow === 0 || todayDow === 6;
   const reviewSaved   = !!weeklyReviews[currentWeekStart];
@@ -3467,6 +3523,9 @@ function renderToday() {
     : '';
 
   return `<div class="view">
+    ${monthlyBuildBanner}
+    ${monthlyLearnBanner}
+    ${monthlySuggestBanner}
     ${intentionBanner}
     ${suggestBanner}
     <div class="section today-header">
@@ -5502,6 +5561,13 @@ async function loadDismissalsFromCloud(uid) {
 function isReviewBannerDismissedToday() {
   const d = todayStr();
   return !!(dismissals[d] && dismissals[d].reviewBanner);
+}
+// Same gate but for the monthly auto-suggest banner — separate flag so
+// dismissing one doesn't hide the other (rare but possible: 1st of month
+// falls on Sat/Sun and BOTH banners are eligible).
+function isMonthlyReviewBannerDismissedToday() {
+  const d = todayStr();
+  return !!(dismissals[d] && dismissals[d].monthlyReviewBanner);
 }
 
 // ── Adherence config cloud sync (B1) ─────────────────────────
@@ -8670,6 +8736,13 @@ window.saveMonthlyReview = function() {
 window.dismissReviewBanner = function() {
   const d = todayStr();
   dismissals[d] = { ...(dismissals[d] || {}), reviewBanner: true };
+  saveLocal('dayos_dismissals_v1', dismissals);
+  syncDismissalDoc(d);
+  renderMain(true);
+};
+window.dismissMonthlyReviewBanner = function() {
+  const d = todayStr();
+  dismissals[d] = { ...(dismissals[d] || {}), monthlyReviewBanner: true };
   saveLocal('dayos_dismissals_v1', dismissals);
   syncDismissalDoc(d);
   renderMain(true);
