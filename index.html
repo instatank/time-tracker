@@ -732,37 +732,91 @@ html, body {
   margin-left: auto;
 }
 
-/* Inline editor lives directly inside the .capture-item when a Daily Journal
-   card is expanded. Compact section spacing + a subtle separator from the
-   meta row above. */
-.dj-inline-editor {
+/* Entertainment Cap binary toggle — green tick / red ✗ buttons mirroring
+   the DFT done/skip styling. Active state fills the chosen button. */
+.dj-ec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+.dj-ec-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.dj-ec-buttons { display: flex; gap: 0.7rem; }
+.dj-ec-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  background: none;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  line-height: 1;
+}
+.dj-ec-yes { border-color: var(--tick-color); color: var(--tick-color); }
+.dj-ec-yes:hover { background: var(--tick-soft); }
+.dj-ec-yes.active { background: var(--tick-color); color: #fff; }
+.dj-ec-no  { border-color: var(--danger); color: var(--danger); }
+.dj-ec-no:hover  { background: var(--danger-soft); }
+.dj-ec-no.active { background: var(--danger); color: #fff; }
+/* Dim the unselected one when the other is active so the choice reads cleanly. */
+.dj-ec-buttons.has-choice .dj-ec-btn:not(.active) { opacity: 0.5; }
+
+/* Read-only expanded preview for Daily Journal cards. Lives inside the
+   .capture-item below the meta row. Tapping anywhere on it bubbles to the
+   card's onclick which collapses the card (matching session/learning
+   expand pattern). */
+.dj-expanded-preview {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);
 }
-.dj-inline-editor .dj-section { margin-bottom: 0.7rem; }
-.dj-inline-editor textarea {
-  width: 100%;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem;
+.dj-expanded-preview .dj-section { margin-bottom: 0.65rem; }
+.dj-expanded-preview .dj-section:last-of-type { margin-bottom: 0.4rem; }
+.dj-section-text {
+  font-size: 0.88rem;
   color: var(--text);
-  font-size: 0.9rem;
-  font-family: inherit;
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s, min-height 0.2s ease;
-  min-height: 2.6rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
-.dj-inline-editor textarea:focus { border-color: var(--border2); min-height: 6rem; }
-.dj-inline-saved {
-  font-size: 0.68rem;
-  color: var(--tick-color);
-  font-weight: 500;
-  text-align: right;
-  margin-top: 0.25rem;
-  min-height: 0.8rem;
+.dj-section-empty {
+  font-size: 0.78rem;
+  color: var(--text3);
+  font-style: italic;
+}
+.dj-tasks-readonly { display: flex; flex-direction: column; gap: 0.2rem; }
+.dj-task-row-readonly {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.25rem 0.4rem;
+}
+.dj-task-checkbox-display {
+  font-size: 0.95rem;
+  color: var(--text3);
+  width: 18px;
+  text-align: center;
+  line-height: 1;
+}
+.dj-task-checkbox-display.completed { color: var(--tick-color); }
+.dj-expand-hint {
+  font-size: 0.66rem;
+  color: var(--text3);
+  text-align: center;
+  margin-top: 0.5rem;
+  font-style: italic;
 }
 
 .eod-panel {
@@ -2298,6 +2352,16 @@ select option { background: var(--surface2); }
         <textarea id="f-daily-reflection" placeholder="End of day reflection…"
           oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"></textarea>
       </div>
+      <!-- Entertainment Cap binary toggle — auto-saved like the rest. -->
+      <div class="dj-ec-row">
+        <span class="dj-ec-label">Entertainment Cap?</span>
+        <div class="dj-ec-buttons">
+          <button type="button" class="dj-ec-btn dj-ec-yes" id="f-daily-ec-yes"
+            onclick="setDailyEntertainmentCap('yes')" title="Yes — capped" aria-label="Yes">✓</button>
+          <button type="button" class="dj-ec-btn dj-ec-no" id="f-daily-ec-no"
+            onclick="setDailyEntertainmentCap('no')" title="No — not capped" aria-label="No">✗</button>
+        </div>
+      </div>
     </div>
     <div class="field">
       <label class="field-label">Tags</label>
@@ -3541,7 +3605,7 @@ function renderDailyJournalCard(d) {
   // Tap the .capture-item to toggle. Inputs use stopPropagation so typing
   // doesn't accidentally collapse the card.
   const body = expanded
-    ? renderDailyInlineEditor(d)
+    ? renderDailyExpandedPreview(d)
     : `<div class="cap-body" style="margin-top:0.25rem">${esc(preview)}</div>
        ${renderTagPills(d.tags)}`;
   return `
@@ -3562,47 +3626,41 @@ function renderDailyJournalCard(d) {
     </div>`;
 }
 
-// Inline editor body for an expanded Daily Journal card. Uses date-suffixed
-// element IDs so multiple cards can be expanded at once without collisions.
-// All input handlers stopPropagation so typing doesn't bubble to the
-// .capture-item onclick (which would collapse the card).
-function renderDailyInlineEditor(d) {
-  const sfx = '-i-' + esc(d.date);
+// Read-only expanded preview for a Daily Journal card. Mirrors the
+// session/learning expand pattern: single-tap toggles, double-tap opens the
+// modal for editing. Checkboxes here are display-only — to interact with
+// tasks the user opens the modal.
+function renderDailyExpandedPreview(d) {
   const tasks = d.tasks || [];
-  const taskRows = tasks.map(t => `
-    <div class="dj-task-row" data-task-id="${esc(t.id)}">
-      <input type="checkbox" class="dj-task-check" ${t.completed ? 'checked' : ''}
-        onclick="event.stopPropagation()"
-        onchange="toggleDailyTaskInline('${esc(d.date)}','${esc(t.id)}')">
-      <span class="dj-task-text ${t.completed ? 'completed' : ''}"
-        onclick="event.stopPropagation();editDailyTaskInline('${esc(d.date)}','${esc(t.id)}')">${esc(t.text || '')}</span>
-      <button type="button" class="dj-task-delete"
-        onclick="event.stopPropagation();deleteDailyTaskInline('${esc(d.date)}','${esc(t.id)}')" aria-label="Delete">×</button>
-    </div>
-  `).join('');
+  const taskRows = tasks.length
+    ? `<div class="dj-tasks-readonly">${tasks.map(t => `
+        <div class="dj-task-row-readonly">
+          <span class="dj-task-checkbox-display ${t.completed ? 'completed' : ''}">${t.completed ? '✓' : '○'}</span>
+          <span class="dj-task-text ${t.completed ? 'completed' : ''}">${esc(t.text || '')}</span>
+        </div>`).join('')}</div>`
+    : `<div class="dj-section-empty">(no tasks)</div>`;
+  const thoughtsBlock = (d.thoughts || '').trim()
+    ? `<div class="dj-section-text">${esc(d.thoughts)}</div>`
+    : `<div class="dj-section-empty">(no thoughts)</div>`;
+  const reflectionBlock = (d.reflection || '').trim()
+    ? `<div class="dj-section-text">${esc(d.reflection)}</div>`
+    : `<div class="dj-section-empty">(no reflection)</div>`;
   return `
-    <div class="dj-inline-editor" onclick="event.stopPropagation()">
+    <div class="dj-expanded-preview">
       <div class="dj-section">
         <label class="dj-section-label">THOUGHTS</label>
-        <textarea id="f-daily-thoughts${sfx}" placeholder="Anything on your mind…"
-          oninput="onDailyInlineFieldChange('${esc(d.date)}')"
-          onblur="saveDailyInline('${esc(d.date)}')">${esc(d.thoughts || '')}</textarea>
+        ${thoughtsBlock}
       </div>
       <div class="dj-section">
         <label class="dj-section-label">TASKS</label>
-        <div class="dj-tasks" id="f-daily-tasks${sfx}">${taskRows}</div>
-        <div id="f-daily-add-task-row${sfx}">
-          <button type="button" class="dj-add-task-btn" onclick="event.stopPropagation();openAddDailyTaskInline('${esc(d.date)}')">+ add task</button>
-        </div>
+        ${taskRows}
       </div>
       <div class="dj-section">
         <label class="dj-section-label">REFLECTION</label>
-        <textarea id="f-daily-reflection${sfx}" placeholder="End of day reflection…"
-          oninput="onDailyInlineFieldChange('${esc(d.date)}')"
-          onblur="saveDailyInline('${esc(d.date)}')">${esc(d.reflection || '')}</textarea>
+        ${reflectionBlock}
       </div>
       ${renderTagPills(d.tags)}
-      <div class="dj-inline-saved" id="dj-inline-saved${sfx}"></div>
+      <div class="dj-expand-hint">Tap to collapse · double-tap to edit</div>
     </div>`;
 }
 
@@ -3984,8 +4042,32 @@ window.capCardTap = function(id) {
 window.toggleCapExpand = function(id) {
   if (expandedCaptures.has(id)) expandedCaptures.delete(id);
   else                          expandedCaptures.add(id);
+  syncCardExpandOutsideListener();
   renderMain(true);
 };
+
+// Click-outside-to-collapse for expanded capture / daily-journal cards.
+// Listener stays attached only while at least one card is expanded.
+function _cardExpandOutsideHandler(e) {
+  // Allow the event loop to finish handling its own bubble first; if the
+  // click was on/inside an expanded card, that card's onclick already
+  // toggled the state and we shouldn't re-collapse.
+  const insideExpanded = e.target.closest('.capture-item.expanded');
+  if (insideExpanded) return;
+  // Don't collapse when clicking the swipe-action buttons either.
+  if (e.target.closest('.card-swipe-actions')) return;
+  if (expandedCaptures.size === 0 && expandedDailyDates.size === 0) return;
+  expandedCaptures.clear();
+  expandedDailyDates.clear();
+  document.removeEventListener('click', _cardExpandOutsideHandler, true);
+  renderMain(true);
+}
+function syncCardExpandOutsideListener() {
+  const hasAny = expandedCaptures.size > 0 || expandedDailyDates.size > 0;
+  // Re-attach idempotently — removeEventListener is a no-op if not attached.
+  document.removeEventListener('click', _cardExpandOutsideHandler, true);
+  if (hasAny) document.addEventListener('click', _cardExpandOutsideHandler, true);
+}
 
 window.deleteSession = function(sessionId, projectName) {
   console.log('[DEL-SESS] click on id=', sessionId, 'project=', projectName);
@@ -5983,15 +6065,39 @@ function initDailyJournalEditor(date) {
   if (r) r.value = dailyDraftEntry.reflection || '';
   captureFormTags = new Set((dailyDraftEntry.tags || []).map(normalizeTag).filter(Boolean));
   renderDailyTasks();
+  renderDailyEntertainmentCap();
   setDailyAutoSavedLabel(dailyDraftEntry.lastEditedAt && existing ? 'Auto-saved' : '');
   if (dailyAutoSaveTimer) { clearTimeout(dailyAutoSaveTimer); dailyAutoSaveTimer = null; }
 }
+
+// Reflect the current draft's entertainmentCap onto the two buttons.
+function renderDailyEntertainmentCap() {
+  const wrap = document.querySelector('.dj-ec-buttons');
+  const yes = document.getElementById('f-daily-ec-yes');
+  const no  = document.getElementById('f-daily-ec-no');
+  if (!wrap || !yes || !no || !dailyDraftEntry) return;
+  const v = dailyDraftEntry.entertainmentCap;
+  yes.classList.toggle('active', v === 'yes');
+  no.classList.toggle('active', v === 'no');
+  wrap.classList.toggle('has-choice', v === 'yes' || v === 'no');
+}
+
+// Tap a button to set the value. Tapping the SAME button again clears it
+// (so the user can undo a stray tap).
+window.setDailyEntertainmentCap = function(val) {
+  if (!dailyDraftEntry) return;
+  dailyDraftEntry.entertainmentCap = (dailyDraftEntry.entertainmentCap === val) ? null : val;
+  renderDailyEntertainmentCap();
+  // Persist immediately — this is a tap-to-set field, no debounce needed.
+  saveDailyJournalSilent();
+};
 
 function isDailyEntryEmpty(e) {
   return !e || (
     !(e.thoughts || '').trim() &&
     !(e.reflection || '').trim() &&
-    (!Array.isArray(e.tasks) || e.tasks.length === 0)
+    (!Array.isArray(e.tasks) || e.tasks.length === 0) &&
+    !e.entertainmentCap
   );
 }
 
@@ -6235,12 +6341,14 @@ window.dailyCardTap = function(date) {
 
 window.toggleDailyExpand = function(date) {
   if (expandedDailyDates.has(date)) {
-    // Collapsing — flush any pending auto-save first.
+    // Collapsing — flush any pending auto-save (kept as a safety net even
+    // though the expanded view is now read-only and shouldn't have edits).
     flushInlineDailySave(date);
     expandedDailyDates.delete(date);
   } else {
     expandedDailyDates.add(date);
   }
+  syncCardExpandOutsideListener();
   renderMain(true);
 };
 
