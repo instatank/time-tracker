@@ -2144,6 +2144,27 @@ html, body {
   gap: 0.25rem;
   margin-top: 0.25rem;
 }
+
+/* Monthly trend chart cards — compact (~180px tall) so three stack
+   without excessive scrolling. */
+.mr-chart-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  margin-top: 0.6rem;
+}
+.mr-chart-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 0.3rem;
+}
+.mr-chart-wrap {
+  position: relative;
+  height: 180px;
+}
+.mr-chart-wrap canvas { width: 100% !important; height: 100% !important; }
 .wr-subline {
   font-size: 0.78rem;
   color: var(--text2);
@@ -6623,6 +6644,121 @@ async function buildStarSparklines(metrics) {
   });
 }
 
+// ── Monthly trend charts (C1.4) ───────────────────────────
+// Three line charts side-stacked vertically. Each is rebuilt on every render
+// so old instances must be destroyed first to avoid leaking canvases.
+const _monthlyChartInstances = {};
+const MR_PROJECT_PALETTE = ['#3b82f6', '#10b981', '#a855f7', '#f59e0b', '#ec4899', '#06b6d4', '#ef4444', '#6366f1'];
+async function buildMonthlyCharts(stats) {
+  if (!stats || !stats.buckets || !stats.buckets.length) return;
+  try { await loadChartJs(); } catch { return; }
+  // Tear down any prior instances before mounting fresh ones.
+  Object.keys(_monthlyChartInstances).forEach(k => {
+    try { _monthlyChartInstances[k].destroy(); } catch {}
+    delete _monthlyChartInstances[k];
+  });
+  const labels = stats.buckets.map(b => b.label);
+  const styles = getComputedStyle(document.documentElement);
+  const tickColor   = (styles.getPropertyValue('--chart-tick')   || '#666').trim();
+  const gridColor   = (styles.getPropertyValue('--chart-grid')   || '#2d2d2d').trim();
+  const legendColor = (styles.getPropertyValue('--chart-legend') || '#999').trim();
+
+  const baseOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: { color: legendColor, font: { size: 11 }, boxWidth: 10, padding: 8 },
+      },
+      tooltip: { intersect: false, mode: 'index' },
+    },
+    scales: {
+      x: { ticks: { color: tickColor, font: { size: 11 } }, grid: { color: gridColor } },
+      y: { beginAtZero: true, ticks: { color: tickColor, font: { size: 11 } }, grid: { color: gridColor } },
+    },
+  };
+
+  // Chart 1: Categories — one line per CAT id present in CATS, color from CAT.
+  const catCanvas = document.getElementById('mr-chart-categories');
+  if (catCanvas) {
+    const datasets = CATS.map(c => ({
+      label: c.label,
+      data: stats.categoryByWeek[c.id] || labels.map(() => 0),
+      borderColor: c.color,
+      backgroundColor: c.color,
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+    }));
+    _monthlyChartInstances.categories = new Chart(catCanvas.getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        ...baseOptions,
+        scales: { ...baseOptions.scales, y: { ...baseOptions.scales.y, ticks: { ...baseOptions.scales.y.ticks, callback: v => v + 'h' } } },
+      },
+    });
+  }
+
+  // Chart 2: Projects — one line per discovered project; cycle the palette.
+  const projCanvas = document.getElementById('mr-chart-projects');
+  const projectKeys = Object.keys(stats.projectByWeek || {});
+  if (projCanvas && projectKeys.length) {
+    const datasets = projectKeys.map((p, i) => {
+      const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
+      return {
+        label: p,
+        data: stats.projectByWeek[p] || labels.map(() => 0),
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.25,
+      };
+    });
+    _monthlyChartInstances.projects = new Chart(projCanvas.getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        ...baseOptions,
+        scales: { ...baseOptions.scales, y: { ...baseOptions.scales.y, ticks: { ...baseOptions.scales.y.ticks, callback: v => v + 'h' } } },
+      },
+    });
+  }
+
+  // Chart 3: Star metrics — one line per discovered metric, y bounded 0–5.
+  const starCanvas = document.getElementById('mr-chart-stars');
+  const starsByWeek = stats.starsByWeek || [];
+  if (starCanvas && starsByWeek.length) {
+    const datasets = starsByWeek.map((m, i) => {
+      const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
+      return {
+        label: m.label,
+        data: m.values, // null entries render as gaps when spanGaps=false
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.25,
+        spanGaps: true,
+      };
+    });
+    _monthlyChartInstances.stars = new Chart(starCanvas.getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        ...baseOptions,
+        scales: {
+          x: baseOptions.scales.x,
+          y: { ...baseOptions.scales.y, min: 0, max: 5, ticks: { ...baseOptions.scales.y.ticks, stepSize: 1 } },
+        },
+      },
+    });
+  }
+}
+
 // Format a delta tile-line. `kind` controls colour: 'inverse' for metrics
 // where lower = better (none in this set today, but kept for future use).
 function fmtDelta(curr, prev, suffix, opts = {}) {
@@ -8283,6 +8419,39 @@ function renderMonthlyReview() {
         value="${esc((saved && saved.oneExperiment) || '')}">
     </div>`;
 
+  // ── Section 3: Trend Charts ──
+  // Canvases mount empty here; buildMonthlyCharts(...) populates them after
+  // render() flushes the HTML to the DOM (setTimeout below).
+  const projectKeys   = Object.keys(stats.projectByWeek || {});
+  const hasStars      = (stats.starsByWeek || []).length > 0;
+  const fewWeeksNote  = (stats.buckets || []).length < 4
+    ? `<div class="mr-help">Showing ${stats.buckets.length} week${stats.buckets.length === 1 ? '' : 's'} of data.</div>`
+    : '';
+  const sectionCharts = `
+    <div class="mr-section">
+      <div class="mr-section-title">Trend Charts</div>
+      ${fewWeeksNote}
+      <div class="mr-chart-card">
+        <div class="mr-chart-label">Categories — hours per week</div>
+        <div class="mr-chart-wrap"><canvas id="mr-chart-categories"></canvas></div>
+      </div>
+      <div class="mr-chart-card">
+        <div class="mr-chart-label">Projects — hours per week</div>
+        ${projectKeys.length
+          ? `<div class="mr-chart-wrap"><canvas id="mr-chart-projects"></canvas></div>`
+          : `<div class="mr-help">No project hours logged this month.</div>`}
+      </div>
+      ${hasStars ? `
+      <div class="mr-chart-card">
+        <div class="mr-chart-label">Star Metrics — weekly average</div>
+        <div class="mr-chart-wrap"><canvas id="mr-chart-stars"></canvas></div>
+      </div>` : ''}
+    </div>`;
+
+  // Mount charts after the HTML lands in the DOM. setTimeout(0) defers past
+  // the current microtask so document.getElementById finds the canvases.
+  setTimeout(() => buildMonthlyCharts(stats), 0);
+
   // ── Section 4: Project Portfolio Audit ──
   // Iterate the canonical project list. Sort by monthly hours descending so
   // the busiest projects are at the top. Hours come from monthlyStats; the
@@ -8411,10 +8580,7 @@ function renderMonthlyReview() {
   return `<div class="view wr-view mr-view">
     ${navHeader}
     ${sectionDirection}
-    <div class="mr-section">
-      <div class="mr-section-title">Trend Charts</div>
-      <div class="mr-help">Charts coming next — wiring up data plumbing first.</div>
-    </div>
+    ${sectionCharts}
     ${sectionProjects}
     ${sectionLearning}
     ${sectionWeekly}
