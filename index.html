@@ -3110,7 +3110,11 @@ function renderMain(keepScroll) {
     case 'today':     el.innerHTML = renderToday(); break;
     case 'journal':   el.innerHTML = renderJournal(); break;
     case 'projects':  el.innerHTML = renderProjects(); break;
-    case 'dashboard': el.innerHTML = showWeeklyReview ? renderWeeklyReview() : renderDashboard(); break;
+    case 'dashboard':
+      el.innerHTML = showMonthlyReview ? renderMonthlyReview()
+                  : showWeeklyReview  ? renderWeeklyReview()
+                  : renderDashboard();
+      break;
   }
 }
 
@@ -7886,6 +7890,86 @@ window.openWeeklyReviewAt = function(offset) {
   try { localStorage.setItem('dayos_active_tab', 'dashboard'); } catch {}
   render();
 };
+
+// ── Monthly Review handlers (C1.2) ──────────────────────────
+// `monthlyDraft` carries UI-only edits (project actions, learning tag picks,
+// coherence selection) until the user saves. Initialised from any existing
+// saved review so re-opening doesn't lose prior work.
+function initMonthlyDraft(ym) {
+  const saved = monthlyReviews[ym] || {};
+  const projectActions = {};
+  (saved.projectActions || []).forEach(p => {
+    if (p && p.projectName) projectActions[p.projectName] = p.action || null;
+  });
+  monthlyDraft = {
+    ym,
+    projectActions,
+    learnTags: ((saved.learningFocusNext && saved.learningFocusNext.tags) || []).slice(),
+    coherence: saved.weeklyIntentionsCoherence || null,
+  };
+}
+
+window.openMonthlyReview = function() {
+  // Default to the PREVIOUS calendar month — reviews are written looking back.
+  monthlyReviewYM = previousMonthYM(currentYM());
+  showMonthlyReview = true;
+  // Make sure we never have both reviews "open" at the same time.
+  showWeeklyReview = false;
+  initMonthlyDraft(monthlyReviewYM);
+  renderMain();
+};
+window.openMonthlyReviewAt = function(ym) {
+  monthlyReviewYM = ym || previousMonthYM(currentYM());
+  showMonthlyReview = true;
+  showWeeklyReview = false;
+  activeTab = 'dashboard';
+  try { localStorage.setItem('dayos_active_tab', 'dashboard'); } catch {}
+  initMonthlyDraft(monthlyReviewYM);
+  render();
+};
+window.closeMonthlyReview = function() {
+  showMonthlyReview = false;
+  monthlyDraft = null;
+  renderMain();
+};
+window.shiftMonthlyReview = function(dir) {
+  if (!monthlyReviewYM) return;
+  const target = (dir < 0)
+    ? previousMonthYM(monthlyReviewYM)
+    : nextMonthYM(monthlyReviewYM);
+  // Block navigating into the current month or future — review is for past
+  // months only (default opens to previous month).
+  if (target >= currentYM() && dir > 0) return;
+  monthlyReviewYM = target;
+  initMonthlyDraft(monthlyReviewYM);
+  renderMain();
+};
+
+// Cloud sync — one doc per month at users/{uid}/monthlyReviews/{YYYY-MM}.
+async function syncMonthlyReviewDoc(review) {
+  if (!user || !review || !review.month) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'monthlyReviews', review.month), review); }
+  catch (err) { console.error('[DayOS] Monthly review sync error:', err); }
+}
+async function loadMonthlyReviewsFromCloud(uid) {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'monthlyReviews'));
+    const remote = {};
+    snap.docs.forEach(d => { remote[d.id] = d.data() || {}; });
+    monthlyReviews = { ...monthlyReviews, ...remote };
+    saveLocal('dayos_monthly_reviews_v1', monthlyReviews);
+  } catch (err) {
+    console.error('[DayOS] Monthly reviews load error:', err);
+  }
+}
+
+// Stub — full body lands in C1.3+. Returning a minimal placeholder keeps
+// the view routing safe if anyone opens the screen between these commits.
+function renderMonthlyReview() {
+  return `<div class="view"><button class="wr-back" onclick="closeMonthlyReview()">← Back</button>
+    <div style="padding:1.5rem;color:var(--text2)">Monthly Review — ${esc(monthLabel(monthlyReviewYM || currentYM()))}<br>
+    Building this view…</div></div>`;
+}
 // Dismiss the auto-suggest banner for today only. Persists locally + cloud
 // so it stays dismissed across reloads / devices.
 window.dismissReviewBanner = function() {
@@ -8340,6 +8424,7 @@ async function initialSync(uid) {
   loadTagHistoryFromCloud(uid);
   loadAdherenceConfigFromCloud(uid);
   loadDismissalsFromCloud(uid);
+  loadMonthlyReviewsFromCloud(uid);
   const sessLoad  = loadSessionsFromCloud(uid);
   const learnLoad = loadLearningFromCloud(uid);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
