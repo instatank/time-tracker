@@ -2811,6 +2811,15 @@ let dashView = 'totals'; // 'totals' or 'overtime'
 let dashSubTab = 'charts'; // 'charts' or 'calendar'
 let weeklyReviews = loadLocal('dayos_weekly_reviews_v1', {});
 
+// ── Monthly Review state (C1) ──
+//   shape: { 'YYYY-MM': { ...full review snapshot... } }
+//   draftActions tracks UI-only state (Keep/Promote/Demote selections,
+//   selected learning tags, coherence pick) before the user saves.
+let monthlyReviews = loadLocal('dayos_monthly_reviews_v1', {});
+let showMonthlyReview = false;
+let monthlyReviewYM   = null;   // 'YYYY-MM' currently being viewed
+let monthlyDraft      = null;   // { ym, projectActions, learnTags, coherence } during edit
+
 // ── Adherence config (B1) ──────────────────────────────────
 // Configurable rules engine for systems-adherence checks. Each rule has:
 //   { id, label, type: 'auto'|'explicit', source, condition, enabled }
@@ -6072,6 +6081,161 @@ function getStarMetricsForWeek(weekStart) {
     const prevAvg = prevPresent.length ? prevPresent.reduce((a, b) => a + b, 0) / prevPresent.length : 0;
     return { key, label: _prettifyMetricKey(key), values, avg, prevAvg };
   });
+}
+
+// ── Month helpers (C1) ─────────────────────────────────────
+// All month math runs in UTC to avoid the same TZ trap that bit getWeekStart.
+function ymStrFor(dateStr) { return (dateStr || '').slice(0, 7); }
+function currentYM()       { return ymStrFor(todayStr()); }
+function previousMonthYM(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+function nextMonthYM(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+function monthRange(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const pad2 = n => String(n).padStart(2, '0');
+  return {
+    first: `${y}-${pad2(m)}-01`,
+    last:  `${y}-${pad2(m)}-${pad2(daysInMonth)}`,
+    daysInMonth,
+  };
+}
+function monthLabel(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1, 1));
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+// Split a month into up to 4 buckets of consecutive days (~7 each, last one
+// may be longer). Buckets are used as the X-axis on monthly trend charts.
+function monthWeekBuckets(ym) {
+  const r = monthRange(ym);
+  const ymPrefix = ym;
+  const buckets = [];
+  for (let i = 0; i < 4; i++) {
+    const startDay = i * 7 + 1;
+    if (startDay > r.daysInMonth) break;
+    const endDay = (i === 3) ? r.daysInMonth : Math.min(r.daysInMonth, (i + 1) * 7);
+    const pad2 = n => String(n).padStart(2, '0');
+    buckets.push({
+      label: `W${i + 1}`,
+      start: `${ymPrefix}-${pad2(startDay)}`,
+      end:   `${ymPrefix}-${pad2(endDay)}`,
+    });
+  }
+  return buckets;
+}
+// Resolve which project a block belongs to: the dedicated `projectTag` field
+// wins, else scan the block's tags[] for a hashtag matching an active project.
+function getProjectForBlock(b) {
+  if (!b) return null;
+  if (b.projectTag) return b.projectTag;
+  const tags = b.tags || [];
+  for (const t of tags) {
+    const slug = projectSlug(t);
+    const match = projects.find(p => projectSlug(p) === slug);
+    if (match) return match;
+  }
+  return null;
+}
+
+// ── Monthly stats consolidator (C1) ───────────────────────
+// Single source of truth for month-level aggregations used by both the
+// monthly review screen and any future trends consumers.
+function monthlyStats(ym) {
+  const range = monthRange(ym);
+  const buckets = monthWeekBuckets(ym);
+  const monthBlocks = blocks.filter(b => b.date >= range.first && b.date <= range.last);
+  const totalLoggedHrs = monthBlocks
+    .filter(b => b.category !== SLEEP_CAT.id)
+    .reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
+
+  // Per-category, per-week (non-sleep)
+  const categoryByWeek = {};
+  CATS.forEach(c => { categoryByWeek[c.id] = buckets.map(() => 0); });
+  buckets.forEach((bk, i) => {
+    monthBlocks.forEach(b => {
+      if (!categoryByWeek[b.category]) return;
+      if (b.date < bk.start || b.date > bk.end) return;
+      categoryByWeek[b.category][i] += (b.duration_min || 0) / 60;
+    });
+  });
+
+  // Per-project, per-week + monthly totals
+  const projectByWeek = {};
+  const projectMonthlyHrs = {};
+  monthBlocks.forEach(b => {
+    const proj = getProjectForBlock(b);
+    if (!proj) return;
+    if (!projectByWeek[proj]) projectByWeek[proj] = buckets.map(() => 0);
+    if (!projectMonthlyHrs[proj]) projectMonthlyHrs[proj] = 0;
+    projectMonthlyHrs[proj] += (b.duration_min || 0) / 60;
+    const wIdx = buckets.findIndex(bk => b.date >= bk.start && b.date <= bk.end);
+    if (wIdx >= 0) projectByWeek[proj][wIdx] += (b.duration_min || 0) / 60;
+  });
+
+  // Star metrics per week — one row per discovered metric key
+  const starKeys = new Set();
+  _enumerateDates(range.first, range.last).forEach(d => {
+    const r = lifeRatings[d];
+    if (!r || typeof r !== 'object') return;
+    Object.keys(r).forEach(k => { if (typeof r[k] === 'number' && r[k] > 0) starKeys.add(k); });
+  });
+  const starsByWeek = [...starKeys].sort().map(key => {
+    const values = buckets.map(bk => {
+      const present = _enumerateDates(bk.start, bk.end)
+        .map(d => (lifeRatings[d] || {})[key])
+        .filter(v => typeof v === 'number' && v > 0);
+      return present.length ? present.reduce((a, b) => a + b, 0) / present.length : null;
+    });
+    return { key, label: _prettifyMetricKey(key), values };
+  });
+
+  // Learning entries this month
+  const monthLearning = (learning || []).filter(e => e.date >= range.first && e.date <= range.last);
+  const byType = {};
+  monthLearning.forEach(e => {
+    const t = (e.sourceType || 'Other');
+    byType[t] = (byType[t] || 0) + 1;
+  });
+  const tagCounts = {};
+  monthLearning.forEach(e => (e.tags || []).forEach(t => {
+    tagCounts[t] = (tagCounts[t] || 0) + 1;
+  }));
+  const topTags = Object.entries(tagCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([tag, count]) => ({ tag, count }));
+
+  // Weekly intentions for the month — find Mondays whose weekStart falls in the month
+  const weeklyIntentions = [];
+  let cur = getWeekStart(range.first);
+  // If first week's Monday is BEFORE month start (likely), still include it as W1 if that
+  // week's Sun lands inside the month — but for "intentions ladder up" we want intentions
+  // belonging to weeks anchored INSIDE the month. Bump to first Monday >= month start.
+  while (cur < range.first) cur = addDays(cur, 7);
+  while (cur <= range.last) {
+    const review = weeklyReviews[cur];
+    weeklyIntentions.push({
+      weekStart: cur,
+      weekEnd: addDays(cur, 6),
+      intention: (review && (review.nextWeekIntention || review.intention)) || null,
+    });
+    cur = addDays(cur, 7);
+  }
+
+  return {
+    ym, range, buckets,
+    totalLoggedHrs,
+    categoryByWeek, projectByWeek, projectMonthlyHrs,
+    starsByWeek,
+    monthLearning, byType, topTags, tagCounts,
+    weeklyIntentions,
+  };
 }
 
 // ── Pattern engine ─────────────────────────────────────────
