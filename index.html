@@ -2233,17 +2233,17 @@ select option { background: var(--surface2); }
     <!-- Daily Journal three-section editor — shown only when type='daily' -->
     <div class="field" id="f-daily-fields" style="display:none">
       <div class="dj-section">
+        <label class="dj-section-label">THOUGHTS</label>
+        <textarea id="f-daily-thoughts" placeholder="Anything on your mind…"
+          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"
+          style="min-height:80px"></textarea>
+      </div>
+      <div class="dj-section">
         <label class="dj-section-label">TASKS</label>
         <div class="dj-tasks" id="f-daily-tasks"></div>
         <div id="f-daily-add-task-row">
           <button type="button" class="dj-add-task-btn" onclick="openAddDailyTask()">+ add task</button>
         </div>
-      </div>
-      <div class="dj-section">
-        <label class="dj-section-label">THOUGHTS</label>
-        <textarea id="f-daily-thoughts" placeholder="Anything on your mind…"
-          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"
-          style="min-height:80px"></textarea>
       </div>
       <div class="dj-section">
         <label class="dj-section-label">REFLECTION</label>
@@ -3475,14 +3475,18 @@ function renderDailyJournalCard(d) {
   const taskDone = tasks.filter(t => t.completed).length;
   const taskCount = tasks.length;
   const firstLine = (s) => (s || '').trim().split('\n')[0].trim();
+  const taskSummary = taskCount > 0
+    ? `${taskCount} task${taskCount === 1 ? '' : 's'}${taskDone ? ' · ' + taskDone + ' done' : ''}`
+    : '';
+  // Preview priority follows the modal's section order: Thoughts → Tasks → Reflection.
   let preview;
   if (firstLine(d.thoughts))           preview = firstLine(d.thoughts);
+  else if (taskCount > 0)              preview = taskSummary;
   else if (firstLine(d.reflection))    preview = firstLine(d.reflection);
-  else if (taskCount > 0)              preview = `${taskCount} task${taskCount === 1 ? '' : 's'}${taskDone ? ' · ' + taskDone + ' done' : ''}`;
   else                                  preview = '(empty — tap to start)';
-  // Subtle inline meta — task count when there's text content too.
-  const taskMeta = (taskCount > 0 && (firstLine(d.thoughts) || firstLine(d.reflection)))
-    ? `<span class="cap-time" style="margin-left:0.4rem">${taskCount} task${taskCount === 1 ? '' : 's'}${taskDone ? ' · ' + taskDone + ' done' : ''}</span>`
+  // Subtle inline task-count meta when the preview text comes from a different section.
+  const taskMeta = (taskCount > 0 && preview !== taskSummary)
+    ? `<span class="cap-time" style="margin-left:0.4rem">${taskSummary}</span>`
     : '';
   const delKey = 'daily-' + d.date;
   return `
