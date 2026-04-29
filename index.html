@@ -6005,11 +6005,23 @@ window.openAddDailyTask = function() {
   }, 0);
 };
 
+// Re-entry guard. The add-task input has BOTH `onkeydown=Enter` and `onblur`
+// wired to confirmAddDailyTask. When Enter triggers a confirm, removing the
+// input from DOM also fires blur on it — and in some browsers blur dispatches
+// synchronously while the keydown handler is still mid-flight, double-adding
+// the task. The flag below short-circuits the second call.
+let _confirmingAddTask = false;
 window.confirmAddDailyTask = function() {
-  const inp = document.getElementById('f-daily-new-task');
-  if (!inp || !dailyDraftEntry) { resetAddDailyTaskRow(); return; }
-  const text = inp.value.trim();
-  if (text) {
+  if (_confirmingAddTask) return;
+  _confirmingAddTask = true;
+  try {
+    const inp = document.getElementById('f-daily-new-task');
+    if (!inp || !dailyDraftEntry) { resetAddDailyTaskRow(); return; }
+    const text = inp.value.trim();
+    // Tear down the input row FIRST — any blur fired by node removal then sees
+    // a null lookup on the second confirmAddDailyTask call.
+    resetAddDailyTaskRow();
+    if (!text) return;
     dailyDraftEntry.tasks = dailyDraftEntry.tasks || [];
     dailyDraftEntry.tasks.push({
       id: uid(),
@@ -6019,8 +6031,9 @@ window.confirmAddDailyTask = function() {
     });
     saveDailyJournalSilent();
     renderDailyTasks();
+  } finally {
+    _confirmingAddTask = false;
   }
-  resetAddDailyTaskRow();
 };
 
 window.cancelAddDailyTask = function() {
