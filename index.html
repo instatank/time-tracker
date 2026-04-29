@@ -4494,7 +4494,11 @@ window.setProjSearch = function(q) {
 // immediately bubble up and close it.
 function _projSearchOutsideHandler(e) {
   const wrap = document.querySelector('.proj-actions-row .proj-search');
-  if (!wrap || !wrap.contains(e.target)) closeProjSearch();
+  if (wrap && wrap.contains(e.target)) return;
+  // Tapping a result card should expand it, not close the search overlay.
+  // Card-swipe-wrap envelops every list item (sessions, learning, captures).
+  if (e.target.closest && e.target.closest('.card-swipe-wrap')) return;
+  closeProjSearch();
 }
 
 window.openProjSearch = function() {
@@ -5304,7 +5308,9 @@ window.setLearningSearch = function(q) {
 
 function _learnSearchOutsideHandler(e) {
   const wrap = document.querySelector('.proj-actions-row .proj-search');
-  if (!wrap || !wrap.contains(e.target)) closeLearnSearch();
+  if (wrap && wrap.contains(e.target)) return;
+  if (e.target.closest && e.target.closest('.card-swipe-wrap')) return;
+  closeLearnSearch();
 }
 
 window.openLearnSearch = function() {
@@ -8623,7 +8629,12 @@ window.setJSearch = function(q) {
 
 function _journalSearchOutsideHandler(e) {
   const wrap = document.querySelector('.proj-actions-row .proj-search');
-  if (!wrap || !wrap.contains(e.target)) closeJournalSearch();
+  if (wrap && wrap.contains(e.target)) return;
+  // Tapping a journal result should expand the card inline (single-tap) or
+  // open it for edit (double-tap) — NOT close the search and re-render away
+  // the result list.
+  if (e.target.closest && e.target.closest('.card-swipe-wrap')) return;
+  closeJournalSearch();
 }
 
 window.openJournalSearch = function() {
