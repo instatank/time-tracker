@@ -6071,10 +6071,24 @@ function renderDashboard() {
       </div>`
     : '';
 
+  // ── Over Time chart sections (D6) ──
+  // When dashView === 'overtime', the bar charts get replaced with two
+  // stacked line charts. X axis is days for Week, weekly buckets for Month.
+  // Y axis is hours, capped at the same 12hr/day rule.
   const chartSection = dashView === 'overtime' ?
     `<div class="section">
-      <div class="sec-hdr"><span class="sec-title">Over Time</span></div>
-      <div class="trend-chart-wrap"><canvas id="trend-chart"></canvas></div>
+      <div class="sec-hdr">
+        <span class="sec-title">Categories Over Time</span>
+        <button class="sec-zoom-btn" onclick="openChartZoom('overtime-cat')" aria-label="Zoom" title="Zoom">↗</button>
+      </div>
+      <div class="trend-chart-wrap"><canvas id="trends-cat-chart"></canvas></div>
+    </div>
+    <div class="section">
+      <div class="sec-hdr">
+        <span class="sec-title">Projects Over Time</span>
+        <button class="sec-zoom-btn" onclick="openChartZoom('overtime-proj')" aria-label="Zoom" title="Zoom">↗</button>
+      </div>
+      <div class="trend-chart-wrap"><canvas id="trends-proj-chart"></canvas></div>
       ${trendCallout}
     </div>` :
     `<div class="section">
@@ -6124,9 +6138,9 @@ function renderDashboard() {
     ${starSnapshot}
   </div>`;
 
-  // After rendering, build chart if overtime
+  // Mount Over Time charts (D6) — two line charts for Categories + Projects.
   if (dashView === 'overtime') {
-    setTimeout(() => buildTrendChart(td, n), 0);
+    setTimeout(() => buildTrendsOverTimeCharts(startDate, td, dashRange, rangeBlocks), 0);
   }
   // Mount star metric sparklines if any
   if (trendsStars.length) {
@@ -6134,6 +6148,117 @@ function renderDashboard() {
   }
 
   return html;
+}
+
+// ── Trends Over Time chart mounter (D6) ────────────────────
+// Builds two line charts — one per category, one per project. Buckets are
+// per-day in Week mode and ~weekly in Month mode. Caps Y at 12hr/day to keep
+// the line scale readable when there are spikes.
+const _trendsOverTimeInstances = {};
+async function buildTrendsOverTimeCharts(startDate, endDate, mode, rangeBlocks) {
+  try { await loadChartJs(); } catch { return; }
+  Object.keys(_trendsOverTimeInstances).forEach(k => {
+    try { _trendsOverTimeInstances[k].destroy(); } catch {}
+    delete _trendsOverTimeInstances[k];
+  });
+
+  // Build buckets and labels.
+  const days = _enumerateDates(startDate, endDate);
+  let buckets, labels, yMax;
+  if (mode === 'month') {
+    const bucketSize = Math.ceil(days.length / 4);
+    buckets = []; labels = [];
+    for (let i = 0; i < 4; i++) {
+      const a = i * bucketSize;
+      const b = Math.min(days.length, (i + 1) * bucketSize);
+      if (a >= days.length) break;
+      buckets.push({ start: days[a], end: days[b - 1] });
+      labels.push('W' + (i + 1));
+    }
+    yMax = 84; // 7 × 12 hr/day per bucket
+  } else {
+    buckets = days.map(d => ({ start: d, end: d }));
+    labels = days.map(d => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }));
+    yMax = 12;
+  }
+
+  // Aggregate per-category and per-project hours into buckets.
+  const catData = {};
+  CATS.forEach(c => { catData[c.id] = buckets.map(() => 0); });
+  const projData = {};
+  rangeBlocks.forEach(b => {
+    const i = buckets.findIndex(bk => b.date >= bk.start && b.date <= bk.end);
+    if (i < 0) return;
+    const hrs = (b.duration_min || 0) / 60;
+    if (catData[b.category]) catData[b.category][i] += hrs;
+    const p = getProjectForBlock(b);
+    if (p) {
+      if (!projData[p]) projData[p] = buckets.map(() => 0);
+      projData[p][i] += hrs;
+    }
+  });
+  // Drop projects with zero across the entire period (per spec).
+  Object.keys(projData).forEach(k => {
+    if (projData[k].every(v => v === 0)) delete projData[k];
+  });
+
+  const styles = getComputedStyle(document.documentElement);
+  const tickColor   = (styles.getPropertyValue('--chart-tick')   || '#666').trim();
+  const gridColor   = (styles.getPropertyValue('--chart-grid')   || '#2d2d2d').trim();
+  const legendColor = (styles.getPropertyValue('--chart-legend') || '#999').trim();
+  const baseOptions = {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'bottom', labels: { color: legendColor, font: { size: 11 }, boxWidth: 10, padding: 8 } },
+      tooltip: { intersect: false, mode: 'index' },
+    },
+    scales: {
+      x: { ticks: { color: tickColor, font: { size: 11 } }, grid: { color: gridColor } },
+      y: { beginAtZero: true, suggestedMax: yMax, ticks: { color: tickColor, font: { size: 11 }, callback: v => v + 'h' }, grid: { color: gridColor } },
+    },
+  };
+
+  // Categories chart — one line per CAT, color from CAT.color.
+  const catCanvas = document.getElementById('trends-cat-chart');
+  if (catCanvas) {
+    const datasets = CATS.map(c => ({
+      label: c.label,
+      data: catData[c.id],
+      borderColor: c.color,
+      backgroundColor: c.color,
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+    }));
+    _trendsOverTimeInstances.cat = new Chart(catCanvas.getContext('2d'), {
+      type: 'line', data: { labels, datasets }, options: baseOptions,
+    });
+  }
+  // Projects chart — one line per active project, palette-cycled colour.
+  const projCanvas = document.getElementById('trends-proj-chart');
+  const projKeys = Object.keys(projData);
+  if (projCanvas && projKeys.length) {
+    const datasets = projKeys.map((p, i) => {
+      const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
+      return {
+        label: p,
+        data: projData[p],
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.25,
+      };
+    });
+    _trendsOverTimeInstances.proj = new Chart(projCanvas.getContext('2d'), {
+      type: 'line', data: { labels, datasets }, options: baseOptions,
+    });
+  } else if (projCanvas) {
+    // Render an empty-state message inside the canvas's parent.
+    const wrap = projCanvas.parentElement;
+    if (wrap) wrap.innerHTML = '<div class="empty" style="padding:1rem 0;font-size:0.78rem;color:var(--text3)">No project hours logged for this period.</div>';
+  }
 }
 
 let _chartJsPromise = null;
