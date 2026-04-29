@@ -614,6 +614,101 @@ html, body {
 }
 
 /* ── EOD Review ─────────────────────────────────────────────── */
+/* ── Daily Journal editor (capture sheet + inline expand) ──── */
+.dj-section { margin-bottom: 0.85rem; }
+.dj-section:last-child { margin-bottom: 0; }
+.dj-section-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text3);
+  margin-bottom: 0.35rem;
+}
+.dj-tasks { display: flex; flex-direction: column; gap: 0.25rem; }
+.dj-task-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+  background: var(--surface2);
+}
+.dj-task-check {
+  flex-shrink: 0;
+  width: 18px; height: 18px;
+  cursor: pointer;
+}
+.dj-task-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.3;
+  word-break: break-word;
+  cursor: text;
+}
+.dj-task-text.completed {
+  color: var(--text3);
+  text-decoration: line-through;
+}
+.dj-task-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: inherit;
+  padding: 0;
+}
+.dj-task-delete {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  line-height: 1;
+}
+.dj-task-delete:hover { color: var(--danger); }
+.dj-add-task-btn {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.45rem;
+  background: transparent;
+  border: 1px dashed var(--border2);
+  border-radius: 6px;
+  color: var(--text3);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.dj-add-task-btn:hover { color: var(--accent); border-color: var(--accent); }
+#f-daily-fields textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#f-daily-fields textarea:focus { border-color: var(--border2); }
+.dj-saved-indicator {
+  align-self: center;
+  font-size: 0.7rem;
+  color: var(--tick-color);
+  font-weight: 500;
+  margin-left: auto;
+}
+
 .eod-panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2112,13 +2207,14 @@ select option { background: var(--surface2); }
 <!-- Sheet: Capture -->
 <div id="sheet-capture" class="sheet">
   <div class="sheet-handle"></div>
-  <div class="sheet-title">Capture</div>
+  <div class="sheet-title" id="cap-sheet-title">Capture</div>
   <div class="sheet-body">
     <div class="field">
       <label class="field-label">Type</label>
       <div class="pill-row" id="cap-type-row"></div>
     </div>
-    <div class="field">
+    <!-- Body textarea — used by Quick Note + Project capture types -->
+    <div class="field" id="f-cap-body-field">
       <textarea id="f-cap-body" placeholder="What's on your mind…" style="min-height:120px"></textarea>
     </div>
     <div class="field" id="f-project-field" style="display:none;position:relative">
@@ -2126,14 +2222,37 @@ select option { background: var(--surface2); }
       <input type="text" id="f-project-tag" placeholder="project name" autocomplete="off" oninput="filterProjectSuggestions(this.value)" onblur="setTimeout(hideProjectSuggestions,150)">
       <div id="project-dropdown" style="display:none;position:absolute;z-index:999;left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto;box-shadow:var(--shadow-dropdown)"></div>
     </div>
+    <!-- Daily Journal three-section editor — shown only when type='daily' -->
+    <div class="field" id="f-daily-fields" style="display:none">
+      <div class="dj-section">
+        <label class="dj-section-label">TASKS</label>
+        <div class="dj-tasks" id="f-daily-tasks"></div>
+        <div id="f-daily-add-task-row">
+          <button type="button" class="dj-add-task-btn" onclick="openAddDailyTask()">+ add task</button>
+        </div>
+      </div>
+      <div class="dj-section">
+        <label class="dj-section-label">THOUGHTS</label>
+        <textarea id="f-daily-thoughts" placeholder="Anything on your mind…"
+          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"
+          style="min-height:80px"></textarea>
+      </div>
+      <div class="dj-section">
+        <label class="dj-section-label">REFLECTION</label>
+        <textarea id="f-daily-reflection" placeholder="End of day reflection…"
+          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"
+          style="min-height:80px"></textarea>
+      </div>
+    </div>
     <div class="field">
       <label class="field-label">Tags</label>
       <div class="tag-picker" id="capture-tag-picker"></div>
       <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> in your text are captured automatically.</div>
     </div>
-    <div class="btn-row">
+    <div class="btn-row" id="cap-btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
-      <button class="btn-primary" onclick="saveCapture()">Save</button>
+      <button class="btn-primary" id="cap-save-btn" onclick="saveCapture()">Save</button>
+      <span class="dj-saved-indicator" id="cap-daily-saved" style="display:none">Auto-saved</span>
     </div>
   </div>
 </div>
@@ -2277,14 +2396,18 @@ const CATS = [
 const SLEEP_CAT   = { id: 'sleep',   label: 'Sleep',   icon: '😴', color: 'var(--c-sleep)' };
 const SKIPPED_CAT = { id: 'skipped', label: 'Skipped', icon: '⬜', color: 'var(--c-skipped)' };
 const CTYPES = [
-  { id: 'note',    label: 'Quick Note', icon: '💭' },
-  { id: 'journal', label: 'Journal',    icon: '📓' },
-  { id: 'project', label: 'Project',    icon: '📁' },
+  { id: 'note',    label: 'Quick Note',    icon: '💭' },
+  { id: 'daily',   label: 'Daily Journal', icon: '📓' },
+  { id: 'project', label: 'Project',       icon: '📁' },
 ];
-// Legacy: Insight type removed from selector but old entries still render gracefully
-const LEGACY_CTYPES = { insight: { id: 'insight', label: 'Insight', icon: '✨' } };
+// Legacy: capture types removed from the selector but old entries still render gracefully.
+// The historical 'journal' free-form type is preserved so pre-Daily-Journal data keeps its label.
+const LEGACY_CTYPES = {
+  insight: { id: 'insight', label: 'Insight', icon: '✨' },
+  journal: { id: 'journal', label: 'Journal', icon: '📓' },
+};
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -2340,6 +2463,20 @@ let learningTagCustomOpen = false;
 
 // ── Learning (Projects → Learning sub-tab) ────────────────────
 let learning            = loadLocal(SK.LEARNING, []); // LearningEntry[]
+
+// ── Daily Journal ─────────────────────────────────────────────
+// One entry per day, keyed by date 'YYYY-MM-DD'. Stored separately from
+// `captures` because the data shape is structured (tasks/thoughts/reflection)
+// rather than a single body string. Surfaces in the Journal feed alongside
+// captures via union at render time.
+//   shape: { id, date, timestamp, lastEditedAt, tasks:[{id,text,completed,completedAt}],
+//            thoughts, reflection, tags, _synced }
+let dailyJournals       = loadLocal(SK.DAILY_JOURNAL, []);
+let editingDailyDate    = null;                        // 'YYYY-MM-DD' when modal is in daily-journal mode
+let dailyAutoSaveTimer  = null;
+function getDailyJournalFor(date) {
+  return dailyJournals.find(d => d && d.date === date) || null;
+}
 // Tombstones: IDs deleted locally but whose cloud deletion may not yet be confirmed.
 // On every load-from-cloud we (a) exclude these IDs from the merged list and (b) retry
 // the delete if Firestore still has the doc. This makes deletions idempotent and
@@ -2905,7 +3042,7 @@ function renderJournal() {
   const h = new Date().getHours();
   const showMorning = h < 12;
   const showEvening = h >= 18;
-  const typeLabel = { note: 'Quick Note', journal: 'Journal', project: 'Project', insight: 'Insight' };
+  const typeLabel = { note: 'Quick Note', journal: 'Daily Journal', daily: 'Daily Journal', project: 'Project', insight: 'Insight' };
   const tagFilters = { '#win': '#win', '#insight': '#insight', '#dft': '#dft' };
   const isTagFilter = journalFilter.startsWith('#');
 
@@ -2934,6 +3071,11 @@ function renderJournal() {
       c.type === 'project' ||
       (c.tags || []).some(t => knownProjectTags.has(t))
     );
+  } else if (journalFilter === 'journal') {
+    // The "Daily Journal" pill — surface legacy free-form journal-type captures
+    // (and any rogue type='daily' captures) here. The structured Daily Journal
+    // entries themselves are in `dailyJournals` and are merged in below.
+    filtered = captures.filter(c => c.type === 'journal' || c.type === 'daily');
   } else {
     filtered = captures.filter(c => c.type === journalFilter);
   }
@@ -2958,18 +3100,62 @@ function renderJournal() {
 
   filtered.sort((a,b) => b.timestamp.localeCompare(a.timestamp));
 
+  // ── Daily Journal entries ──
+  // Live in their own collection (see dailyJournals[]); apply the same filter
+  // gates so they slot into the journal feed alongside captures.
+  let filteredDaily = [];
+  if (journalFilter === 'all' || journalFilter === 'journal') {
+    filteredDaily = dailyJournals.slice();
+  } else if (isTagFilter) {
+    filteredDaily = dailyJournals.filter(d => (d.tags || []).includes(journalFilter));
+  } else if (journalFilter === 'project') {
+    // Daily journals don't carry a project_tag string, but their tags[] can
+    // reference projects via hashtag. Match the same way we do for captures.
+    filteredDaily = dailyJournals.filter(d =>
+      (d.tags || []).some(t => knownProjectTags.has(t))
+    );
+  }
+  // Project sub-filter (only applies inside the Project view)
+  if (journalFilter === 'project' && journalProjectFilter) {
+    const slug = projectSlug(journalProjectFilter);
+    filteredDaily = filteredDaily.filter(d =>
+      (d.tags || []).some(t => projectSlug(t) === slug)
+    );
+  }
+  // Search across the three sections + task texts
+  if (journalSearch.trim()) {
+    const q = journalSearch.trim().toLowerCase();
+    filteredDaily = filteredDaily.filter(d => {
+      const hay = [
+        d.thoughts || '',
+        d.reflection || '',
+        ...(d.tasks || []).map(t => t.text || ''),
+        'daily journal',
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  // Drop empty entries from the feed (created-but-never-saved drafts shouldn't
+  // happen, but defensive — the empty-skip in saveDailyJournalSilent prevents
+  // most cases anyway).
+  filteredDaily = filteredDaily.filter(d => !isDailyEntryEmpty(d));
+
   // For tag filters, also pull in activity blocks that contain the tag
-  let allItems; // unified list: { item, isBlock, sortKey }
+  let allItems; // unified list: { item, kind: 'cap'|'block'|'daily', sortKey }
   if (isTagFilter) {
     const taggedBlocks = blocks.filter(b =>
       extractTags((b.label || '') + ' ' + (b.note || '')).includes(journalFilter)
     );
     allItems = [
-      ...filtered.map(c => ({ item: c, isBlock: false, sortKey: c.timestamp })),
-      ...taggedBlocks.map(b => ({ item: b, isBlock: true, sortKey: b.date + 'T' + (b.start_time || '00:00') }))
+      ...filtered.map(c => ({ item: c, kind: 'cap', sortKey: c.timestamp })),
+      ...filteredDaily.map(d => ({ item: d, kind: 'daily', sortKey: d.lastEditedAt || d.timestamp || d.date })),
+      ...taggedBlocks.map(b => ({ item: b, kind: 'block', sortKey: b.date + 'T' + (b.start_time || '00:00') }))
     ].sort((a, z) => z.sortKey.localeCompare(a.sortKey));
   } else {
-    allItems = filtered.map(c => ({ item: c, isBlock: false, sortKey: c.timestamp }));
+    allItems = [
+      ...filtered.map(c => ({ item: c, kind: 'cap', sortKey: c.timestamp })),
+      ...filteredDaily.map(d => ({ item: d, kind: 'daily', sortKey: d.lastEditedAt || d.timestamp || d.date })),
+    ].sort((a, z) => z.sortKey.localeCompare(a.sortKey));
   }
 
   const hasSearch = journalSearch.length > 0;
@@ -3027,7 +3213,9 @@ function renderJournal() {
     ${noResults ? `<div class="empty">No results found.</div>` :
       allItems.length
         ? (journalExpanded ? allItems : allItems.slice(0, TODAY_PREVIEW))
-            .map(e => e.isBlock ? renderBlockInJournal(e.item) : renderCapFull(e.item)).join('')
+            .map(e => e.kind === 'block' ? renderBlockInJournal(e.item)
+                    : e.kind === 'daily' ? renderDailyJournalCard(e.item)
+                    : renderCapFull(e.item)).join('')
           + (allItems.length > TODAY_PREVIEW ? moreBtn(journalExpanded, allItems.length - TODAY_PREVIEW, 'toggleJournal') : '')
         : `<div class="empty">${journalFilter === 'all' ? 'No captures yet.' : 'No ' + (typeLabel[journalFilter] || journalFilter) + ' entries yet.'}</div>`}
   </div>`;
@@ -3262,6 +3450,47 @@ function renderCapFull(c) {
         </div>
         <div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>
         ${renderTagPills(c.tags)}
+      </div>
+    </div>`;
+}
+
+// Preview card for a Daily Journal entry shown in the Journal feed.
+// Tap → opens the modal editor for that date (A3 will swap this for inline
+// expand). Preview text follows the spec's priority: first line of Thoughts,
+// then first line of Reflection, then a task summary.
+function renderDailyJournalCard(d) {
+  const ct = ctypeById('daily');
+  const isToday = d.date === todayStr();
+  const dateLabel = isToday
+    ? 'Today'
+    : fmtDate(d.date);
+  const tasks = d.tasks || [];
+  const taskDone = tasks.filter(t => t.completed).length;
+  const taskCount = tasks.length;
+  const firstLine = (s) => (s || '').trim().split('\n')[0].trim();
+  let preview;
+  if (firstLine(d.thoughts))           preview = firstLine(d.thoughts);
+  else if (firstLine(d.reflection))    preview = firstLine(d.reflection);
+  else if (taskCount > 0)              preview = `${taskCount} task${taskCount === 1 ? '' : 's'}${taskDone ? ' · ' + taskDone + ' done' : ''}`;
+  else                                  preview = '(empty — tap to start)';
+  // Subtle inline meta — task count when there's text content too.
+  const taskMeta = (taskCount > 0 && (firstLine(d.thoughts) || firstLine(d.reflection)))
+    ? `<span class="cap-time" style="margin-left:0.4rem">${taskCount} task${taskCount === 1 ? '' : 's'}${taskDone ? ' · ' + taskDone + ' done' : ''}</span>`
+    : '';
+  return `
+    <div class="card-swipe-wrap">
+      <div class="card-swipe-actions">
+        <button class="card-swipe-edit" onclick="openDailyJournalEditor('${esc(d.date)}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
+      </div>
+      <div class="capture-item" data-daily-date="${esc(d.date)}" onclick="openDailyJournalEditor('${esc(d.date)}')">
+        <div class="cap-meta">
+          <span>${ct.icon}</span>
+          <span class="cap-type">${ct.label}</span>
+          ${taskMeta}
+          <span class="cap-time">${dateLabel}</span>
+        </div>
+        <div class="cap-body" style="margin-top:0.25rem">${esc(preview)}</div>
+        ${renderTagPills(d.tags)}
       </div>
     </div>`;
 }
@@ -4502,6 +4731,59 @@ async function loadLearningFromCloud(uid) {
   }
 }
 
+// ── Daily Journal cloud sync ────────────────────────────────
+// One Firestore doc per day at users/{uid}/dailyJournal/{YYYY-MM-DD}. Doc id =
+// date, so any device writing today resolves to the same doc — last write wins
+// per field, but onSnapshot keeps the local view current. Simpler than the
+// captures/learning merge (no tombstones — the user "deleting" a daily
+// journal just means clearing all three sections; the doc stays).
+async function syncDailyJournalDoc(d) {
+  if (!user || !d || !d.date) return;
+  const ref = doc(db, 'users', user.uid, 'dailyJournal', d.date);
+  const res = await cloudWriteWithVerify(ref, d, 'SYNC-DAILY');
+  if (!res.ok) {
+    console.error('[SYNC-DAILY] verification failed:', res.reason);
+    return;
+  }
+  const idx = dailyJournals.findIndex(x => x.date === d.date);
+  if (idx !== -1 && !dailyJournals[idx]._synced) {
+    dailyJournals[idx]._synced = true;
+    saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+  }
+}
+
+let _dailyJournalUnsubscribe = null;
+function subscribeDailyJournal(uid) {
+  if (_dailyJournalUnsubscribe) _dailyJournalUnsubscribe();
+  _dailyJournalUnsubscribe = onSnapshot(
+    collection(db, 'users', uid, 'dailyJournal'),
+    (snap) => {
+      const remoteIds = new Set();
+      const next = [];
+      snap.docs.forEach(doc_ => {
+        const e = doc_.data();
+        if (!e || !e.date) return;
+        e._synced = true;
+        remoteIds.add(e.date);
+        next.push(e);
+      });
+      // Preserve any local-only entries that haven't been synced yet (e.g. created offline)
+      dailyJournals.forEach(e => {
+        if (!e || !e.date) return;
+        if (remoteIds.has(e.date)) return;
+        if (e._synced === false) {
+          next.push(e);
+          syncDailyJournalDoc(e);
+        }
+      });
+      dailyJournals = next;
+      saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+      if (activeTab === 'journal') renderMain(true);
+    },
+    (err) => console.error('[DayOS] Daily journal subscription error:', err)
+  );
+}
+
 window.selectProject = function(name) {
   selectedProject = name;
   projectCreating = false;
@@ -5461,7 +5743,7 @@ function openCapture(type = 'note') {
   document.getElementById('f-cap-body').value = '';
   document.getElementById('f-project-tag').value = '';
   renderCapTypeRow();
-  toggleProjectField();
+  toggleCaptureFieldVisibility();
   const _projSugMap = new Map();
   captures.filter(c => c.type === 'project' && c.project_tag).forEach(c => {
     const k = c.project_tag.toLowerCase();
@@ -5471,9 +5753,23 @@ function openCapture(type = 'note') {
   // Reset tag picker state for a new capture
   captureFormTags = new Set();
   captureTagCustomOpen = false;
+  // For daily journal mode, prefill from today's entry (if any) or start a draft.
+  if (type === 'daily') {
+    initDailyJournalEditor(todayStr());
+  } else {
+    editingDailyDate = null;
+    dailyDraftEntry = null;
+  }
   renderTagPicker('capture');
   openSheet('sheet-capture');
-  setTimeout(() => document.getElementById('f-cap-body').focus(), 300);
+  setTimeout(() => {
+    if (selCapType === 'daily') {
+      const t = document.getElementById('f-daily-thoughts');
+      if (t) t.focus();
+    } else {
+      document.getElementById('f-cap-body').focus();
+    }
+  }, 300);
 }
 
 function openCaptureEdit(captureId) {
@@ -5481,13 +5777,15 @@ function openCaptureEdit(captureId) {
   if (!c) return;
   editingCaptureId = captureId;
   selCapType = c.type;
-  document.getElementById('f-cap-body').value = c.body;
+  document.getElementById('f-cap-body').value = c.body || '';
   document.getElementById('f-project-tag').value = c.project_tag || '';
   renderCapTypeRow();
-  toggleProjectField();
+  toggleCaptureFieldVisibility();
   // Pre-select any tags the capture already has (from either pills or inline hashtags)
   captureFormTags = new Set((c.tags || []).map(normalizeTag).filter(Boolean));
   captureTagCustomOpen = false;
+  editingDailyDate = null;
+  dailyDraftEntry = null;
   renderTagPicker('capture');
   openSheet('sheet-capture');
   setTimeout(() => document.getElementById('f-cap-body').focus(), 300);
@@ -5502,17 +5800,274 @@ function renderCapTypeRow() {
     </button>`).join('');
 }
 
-function toggleProjectField() {
-  document.getElementById('f-project-field').style.display = selCapType === 'project' ? 'block' : 'none';
+// Show the right form fields for the active capture type.
+//   note    → body textarea
+//   project → body textarea + project tag field
+//   daily   → daily-journal three-section editor (no body, no project field)
+function toggleCaptureFieldVisibility() {
+  const isDaily   = selCapType === 'daily';
+  const isProject = selCapType === 'project';
+  document.getElementById('f-cap-body-field').style.display = isDaily ? 'none' : '';
+  document.getElementById('f-project-field').style.display = isProject ? 'block' : 'none';
+  document.getElementById('f-daily-fields').style.display = isDaily ? '' : 'none';
+  // Hide the manual Save button in daily mode (auto-save covers it). Keep it
+  // visible for note/project, where the user explicitly commits with Save.
+  document.getElementById('cap-save-btn').style.display = isDaily ? 'none' : '';
+  document.getElementById('cap-daily-saved').style.display = isDaily ? '' : 'none';
+  // Sheet title for clarity
+  document.getElementById('cap-sheet-title').textContent = isDaily
+    ? 'Daily Journal · ' + (editingDailyDate || todayStr())
+    : 'Capture';
 }
 
 window.selCapTypeFn = function(id) {
-  selCapType = id;
+  // If switching INTO daily mode, prefill the editor for today.
+  // If switching OUT of daily mode, flush any pending save and clear draft state.
+  if (id === 'daily' && selCapType !== 'daily') {
+    selCapType = id;
+    initDailyJournalEditor(todayStr());
+  } else if (id !== 'daily' && selCapType === 'daily') {
+    flushDailyJournalIfOpen();
+    selCapType = id;
+  } else {
+    selCapType = id;
+  }
   renderCapTypeRow();
-  toggleProjectField();
+  toggleCaptureFieldVisibility();
+};
+
+// ── Daily Journal editor ──────────────────────────────────────
+// In-memory draft so the user can open the modal without immediately
+// creating a Firestore doc. The draft is promoted into `dailyJournals` on
+// first non-empty save (`saveDailyJournalSilent`), keeping empty modal-opens
+// from littering the cloud.
+let dailyDraftEntry = null;
+
+function initDailyJournalEditor(date) {
+  editingDailyDate = date;
+  const existing = getDailyJournalFor(date);
+  dailyDraftEntry = existing
+    ? existing                                    // mutate in place — onSnapshot stays in sync
+    : {
+        id: date,
+        date,
+        timestamp: nowISTIso(),
+        lastEditedAt: nowISTIso(),
+        tasks: [],
+        thoughts: '',
+        reflection: '',
+        tags: [],
+        _synced: false,
+      };
+  // Prefill text fields and tag picker from the entry.
+  const t = document.getElementById('f-daily-thoughts');
+  const r = document.getElementById('f-daily-reflection');
+  if (t) t.value = dailyDraftEntry.thoughts || '';
+  if (r) r.value = dailyDraftEntry.reflection || '';
+  captureFormTags = new Set((dailyDraftEntry.tags || []).map(normalizeTag).filter(Boolean));
+  renderDailyTasks();
+  setDailyAutoSavedLabel(dailyDraftEntry.lastEditedAt && existing ? 'Auto-saved' : '');
+  if (dailyAutoSaveTimer) { clearTimeout(dailyAutoSaveTimer); dailyAutoSaveTimer = null; }
+}
+
+function isDailyEntryEmpty(e) {
+  return !e || (
+    !(e.thoughts || '').trim() &&
+    !(e.reflection || '').trim() &&
+    (!Array.isArray(e.tasks) || e.tasks.length === 0)
+  );
+}
+
+function setDailyAutoSavedLabel(text) {
+  const el = document.getElementById('cap-daily-saved');
+  if (el) el.textContent = text || 'Not saved yet';
+}
+
+window.onDailyFieldChange = function() {
+  if (!dailyDraftEntry) return;
+  // Debounce auto-save — fires 30s after the user stops typing.
+  if (dailyAutoSaveTimer) clearTimeout(dailyAutoSaveTimer);
+  dailyAutoSaveTimer = setTimeout(() => {
+    dailyAutoSaveTimer = null;
+    saveDailyJournalSilent();
+  }, 30000);
+  setDailyAutoSavedLabel('Editing…');
+};
+
+window.saveDailyJournalSilent = function() {
+  if (!editingDailyDate || !dailyDraftEntry) return;
+  // Pull current form values into the draft.
+  const thoughtsEl = document.getElementById('f-daily-thoughts');
+  const reflectionEl = document.getElementById('f-daily-reflection');
+  const thoughts = thoughtsEl ? thoughtsEl.value : (dailyDraftEntry.thoughts || '');
+  const reflection = reflectionEl ? reflectionEl.value : (dailyDraftEntry.reflection || '');
+  // Tag merging — pill picker + inline hashtags from thoughts AND reflection
+  // (tasks are deliberately excluded from tag extraction per spec).
+  const inline = [...extractTags(thoughts), ...extractTags(reflection)];
+  const tags = [...new Set([...captureFormTags, ...inline].map(normalizeTag).filter(Boolean))];
+  addToTagHistory(tags);
+  dailyDraftEntry.thoughts = thoughts;
+  dailyDraftEntry.reflection = reflection;
+  dailyDraftEntry.tags = tags;
+  dailyDraftEntry.lastEditedAt = nowISTIso();
+  dailyDraftEntry._synced = false;
+
+  // Skip persisting an empty draft — prevents stub docs from accumulating.
+  if (isDailyEntryEmpty(dailyDraftEntry)) {
+    setDailyAutoSavedLabel('Empty');
+    return;
+  }
+  // Promote draft into the array on first save; otherwise update in place.
+  const idx = dailyJournals.findIndex(d => d.date === dailyDraftEntry.date);
+  if (idx === -1) dailyJournals.push(dailyDraftEntry);
+  else            dailyJournals[idx] = dailyDraftEntry;
+  saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+  syncDailyJournalDoc(dailyDraftEntry);
+  setDailyAutoSavedLabel('Auto-saved');
+  // Re-render the journal feed so the new entry appears (or the preview updates).
+  if (activeTab === 'journal') renderMain(true);
+};
+
+function flushDailyJournalIfOpen() {
+  if (!editingDailyDate) return;
+  if (dailyAutoSaveTimer) { clearTimeout(dailyAutoSaveTimer); dailyAutoSaveTimer = null; }
+  saveDailyJournalSilent();
+  editingDailyDate = null;
+  dailyDraftEntry = null;
+}
+
+// ── Daily Journal tasks ───────────────────────────────────────
+function renderDailyTasks() {
+  const wrap = document.getElementById('f-daily-tasks');
+  if (!wrap || !dailyDraftEntry) return;
+  const tasks = dailyDraftEntry.tasks || [];
+  wrap.innerHTML = tasks.map(t => `
+    <div class="dj-task-row" data-task-id="${esc(t.id)}">
+      <input type="checkbox" class="dj-task-check" ${t.completed ? 'checked' : ''}
+        onchange="toggleDailyTask('${esc(t.id)}')">
+      <span class="dj-task-text ${t.completed ? 'completed' : ''}"
+        onclick="editDailyTask('${esc(t.id)}')">${esc(t.text || '')}</span>
+      <button type="button" class="dj-task-delete" onclick="deleteDailyTask('${esc(t.id)}')" aria-label="Delete">×</button>
+    </div>
+  `).join('');
+}
+
+window.openAddDailyTask = function() {
+  if (!dailyDraftEntry) return;
+  const row = document.getElementById('f-daily-add-task-row');
+  if (!row) return;
+  row.innerHTML = `
+    <input type="text" class="dj-task-input" id="f-daily-new-task" placeholder="New task…"
+      onkeydown="if(event.key==='Enter'){confirmAddDailyTask()}else if(event.key==='Escape'){cancelAddDailyTask()}"
+      onblur="confirmAddDailyTask()"
+      style="width:100%;padding:0.5rem;border:1px solid var(--accent);border-radius:6px;background:var(--surface2);color:var(--text);outline:none">
+  `;
+  setTimeout(() => {
+    const inp = document.getElementById('f-daily-new-task');
+    if (inp) inp.focus();
+  }, 0);
+};
+
+window.confirmAddDailyTask = function() {
+  const inp = document.getElementById('f-daily-new-task');
+  if (!inp || !dailyDraftEntry) { resetAddDailyTaskRow(); return; }
+  const text = inp.value.trim();
+  if (text) {
+    dailyDraftEntry.tasks = dailyDraftEntry.tasks || [];
+    dailyDraftEntry.tasks.push({
+      id: uid(),
+      text,
+      completed: false,
+      completedAt: null,
+    });
+    saveDailyJournalSilent();
+    renderDailyTasks();
+  }
+  resetAddDailyTaskRow();
+};
+
+window.cancelAddDailyTask = function() {
+  resetAddDailyTaskRow();
+};
+
+function resetAddDailyTaskRow() {
+  const row = document.getElementById('f-daily-add-task-row');
+  if (!row) return;
+  row.innerHTML = `<button type="button" class="dj-add-task-btn" onclick="openAddDailyTask()">+ add task</button>`;
+}
+
+window.toggleDailyTask = function(taskId) {
+  if (!dailyDraftEntry) return;
+  const t = (dailyDraftEntry.tasks || []).find(x => x.id === taskId);
+  if (!t) return;
+  t.completed = !t.completed;
+  t.completedAt = t.completed ? nowISTIso() : null;
+  saveDailyJournalSilent();
+  renderDailyTasks();
+};
+
+window.editDailyTask = function(taskId) {
+  if (!dailyDraftEntry) return;
+  const t = (dailyDraftEntry.tasks || []).find(x => x.id === taskId);
+  if (!t) return;
+  const row = document.querySelector(`.dj-task-row[data-task-id="${CSS.escape(taskId)}"]`);
+  if (!row) return;
+  const span = row.querySelector('.dj-task-text');
+  if (!span) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'dj-task-input';
+  input.value = t.text || '';
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { input.value = t.text || ''; input.blur(); }
+  });
+  input.addEventListener('blur', () => {
+    const next = input.value.trim();
+    if (next && next !== t.text) {
+      t.text = next;
+      saveDailyJournalSilent();
+    }
+    renderDailyTasks();
+  });
+  span.replaceWith(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+};
+
+window.deleteDailyTask = function(taskId) {
+  if (!dailyDraftEntry) return;
+  dailyDraftEntry.tasks = (dailyDraftEntry.tasks || []).filter(x => x.id !== taskId);
+  saveDailyJournalSilent();
+  renderDailyTasks();
+};
+
+window.openDailyJournalEditor = function(date) {
+  // Public entry point — used by feed cards (and later A2/A3) to jump into a
+  // specific day's journal. Re-uses the capture sheet plumbing.
+  editingCaptureId = null;
+  selCapType = 'daily';
+  document.getElementById('f-cap-body').value = '';
+  document.getElementById('f-project-tag').value = '';
+  renderCapTypeRow();
+  initDailyJournalEditor(date || todayStr());
+  toggleCaptureFieldVisibility();
+  captureTagCustomOpen = false;
+  renderTagPicker('capture');
+  openSheet('sheet-capture');
+  setTimeout(() => {
+    const t = document.getElementById('f-daily-thoughts');
+    if (t) t.focus();
+  }, 300);
 };
 
 window.saveCapture = function() {
+  // Daily Journal: auto-save model — commit any pending edits and close.
+  if (selCapType === 'daily') {
+    saveDailyJournalSilent();
+    closeSheets();
+    return;
+  }
   const body = document.getElementById('f-cap-body').value.trim();
   if (!body) { toast('Capture cannot be empty'); return; }
   const projectTag = document.getElementById('f-project-tag').value.trim();
@@ -5938,6 +6493,10 @@ function openSheet(id) {
 }
 
 window.closeSheets = function() {
+  // If the Daily Journal editor is currently open, flush a final save before
+  // tearing down the modal so any unsaved keystrokes (e.g. user typed and
+  // immediately tapped Cancel) aren't lost.
+  flushDailyJournalIfOpen();
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('open'));
   document.getElementById('backdrop').classList.remove('visible');
 };
@@ -6318,6 +6877,8 @@ async function initialSync(uid) {
   loadTagHistoryFromCloud(uid);
   const sessLoad  = loadSessionsFromCloud(uid);
   const learnLoad = loadLearningFromCloud(uid);
+  // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
+  subscribeDailyJournal(uid);
   try {
     const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
