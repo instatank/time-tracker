@@ -23,6 +23,11 @@
 <meta name="apple-mobile-web-app-title" content="DayOS">
 <title>DayOS</title>
 <link rel="manifest" href="manifest.json">
+
+<!-- Type system: system sans for UI, IBM Plex Mono for data (durations, times, counts) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -116,6 +121,10 @@
   --nav-h: 64px;
   --hdr-h: 52px;
   --r: 10px;
+
+  /* Type families — mono for data, sans for UI (theme-independent) */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
 [data-theme="light"] {
@@ -205,12 +214,24 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   max-width: 100vw;
+}
+
+/* Type system: data values render in mono for steady alignment & a "console" feel.
+   Section labels (.sec-title) are already uppercase + letterspaced — see definition below. */
+.block-time,
+.block-dur,
+.cap-time,
+.score-val,
+.sec-meta {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 #root {
