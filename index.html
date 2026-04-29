@@ -8649,6 +8649,92 @@ function paintChartZoom() {
     bodyEl.innerHTML = keys.length
       ? `<div class="bar-chart">${keys.map((p, i) => renderProjBar(p, projectHrs[p], MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length])).join('')}</div>`
       : `<div class="empty" style="padding:1rem 0;color:var(--text3)">No project hours logged.</div>`;
+  } else if (chartZoomKey === 'overtime-cat' || chartZoomKey === 'overtime-proj') {
+    // Mount a larger Chart.js line chart inside the modal. Tear down any
+    // prior modal instance first so we don't leak canvases.
+    if (window._zoomChartInstance) {
+      try { window._zoomChartInstance.destroy(); } catch {}
+      window._zoomChartInstance = null;
+    }
+    const isCat = chartZoomKey === 'overtime-cat';
+    titleEl.textContent = (isCat ? 'Categories Over Time' : 'Projects Over Time')
+      + ' — ' + (dashRange === 'month' ? 'Last 30 days' : 'Last 7 days');
+    bodyEl.innerHTML = `<div style="position:relative;height:60vh;min-height:280px"><canvas id="zoom-line-canvas"></canvas></div>`;
+
+    // Build the same bucket structure buildTrendsOverTimeCharts uses.
+    const days = _enumerateDates(startDate, td);
+    let buckets, labels, yMax;
+    if (dashRange === 'month') {
+      const bsz = Math.ceil(days.length / 4);
+      buckets = []; labels = [];
+      for (let i = 0; i < 4; i++) {
+        const a = i * bsz, bend = Math.min(days.length, (i + 1) * bsz);
+        if (a >= days.length) break;
+        buckets.push({ start: days[a], end: days[bend - 1] });
+        labels.push('W' + (i + 1));
+      }
+      yMax = 84;
+    } else {
+      buckets = days.map(d => ({ start: d, end: d }));
+      labels = days.map(d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }));
+      yMax = 12;
+    }
+    const catData = {}; CATS.forEach(c => { catData[c.id] = buckets.map(() => 0); });
+    const projData = {};
+    rangeBlocks.forEach(b => {
+      const i = buckets.findIndex(bk => b.date >= bk.start && b.date <= bk.end);
+      if (i < 0) return;
+      const hrs = (b.duration_min || 0) / 60;
+      if (catData[b.category]) catData[b.category][i] += hrs;
+      const p = getProjectForBlock(b);
+      if (p) {
+        if (!projData[p]) projData[p] = buckets.map(() => 0);
+        projData[p][i] += hrs;
+      }
+    });
+    Object.keys(projData).forEach(k => { if (projData[k].every(v => v === 0)) delete projData[k]; });
+
+    loadChartJs().then(() => {
+      const canvas = document.getElementById('zoom-line-canvas');
+      if (!canvas) return;
+      const styles = getComputedStyle(document.documentElement);
+      const tickColor   = (styles.getPropertyValue('--chart-tick')   || '#666').trim();
+      const gridColor   = (styles.getPropertyValue('--chart-grid')   || '#2d2d2d').trim();
+      const legendColor = (styles.getPropertyValue('--chart-legend') || '#999').trim();
+      let datasets;
+      if (isCat) {
+        datasets = CATS.map(c => ({
+          label: c.label, data: catData[c.id],
+          borderColor: c.color, backgroundColor: c.color,
+          borderWidth: 2, pointRadius: 3, tension: 0.25,
+        }));
+      } else {
+        const keys = Object.keys(projData);
+        if (!keys.length) {
+          bodyEl.innerHTML = `<div class="empty" style="padding:1rem 0;color:var(--text3)">No project hours logged for this period.</div>`;
+          return;
+        }
+        datasets = keys.map((p, i) => {
+          const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
+          return { label: p, data: projData[p], borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 3, tension: 0.25 };
+        });
+      }
+      window._zoomChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line', data: { labels, datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'bottom', labels: { color: legendColor, font: { size: 12 }, boxWidth: 12, padding: 10 } },
+            tooltip: { intersect: false, mode: 'index' },
+          },
+          scales: {
+            x: { ticks: { color: tickColor, font: { size: 12 } }, grid: { color: gridColor } },
+            y: { beginAtZero: true, suggestedMax: yMax, ticks: { color: tickColor, font: { size: 12 }, callback: v => v + 'h' }, grid: { color: gridColor } },
+          },
+        },
+      });
+    }).catch(() => { /* loadChartJs failed — leave the empty body */ });
   }
 }
 
