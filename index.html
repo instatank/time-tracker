@@ -1124,9 +1124,9 @@ html, body {
   font-size: 0.95rem;
   outline: none;
   transition: border-color 0.15s;
-  /* Twice the natural input height so the expanded overlay feels comfortable
-     to type into across all three contexts (Journal, Projects, Learning). */
-  min-height: 5.5rem;
+  /* Match the search icon button's collapsed height so toggling between the
+     icon and the expanded input doesn't change the row's visual height. */
+  min-height: 2.75rem;
 }
 .proj-search input::placeholder { color: var(--text3); }
 .proj-search input:focus { border-color: var(--border2); }
