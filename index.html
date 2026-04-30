@@ -482,11 +482,25 @@ html, body {
   padding: 0.75rem;
   margin-bottom: 0.5rem;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
   max-width: 100%;
   box-sizing: border-box;
 }
 .capture-item:hover { border-color: var(--border2); }
+
+/* Daily Journal pane stands out — soft green glow + green type label.
+   Identified by the data-daily-date attribute set in renderDailyJournalCard. */
+.capture-item[data-daily-date] {
+  border-color: rgba(74, 222, 128, 0.4);
+  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.18), 0 0 14px rgba(74, 222, 128, 0.14);
+}
+.capture-item[data-daily-date]:hover {
+  border-color: rgba(74, 222, 128, 0.6);
+  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.32), 0 0 16px rgba(74, 222, 128, 0.2);
+}
+.capture-item[data-daily-date] .cap-type {
+  color: var(--c-learning);
+}
 .cap-meta {
   display: flex;
   align-items: center;
