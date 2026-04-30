@@ -498,18 +498,19 @@ html, body {
 }
 .capture-item:hover { border-color: var(--border2); }
 
-/* Daily Journal pane stands out — soft green glow + green type label.
-   Identified by the data-daily-date attribute set in renderDailyJournalCard. */
+/* Daily Journal pane stands out — soft blue glow + Practice-coloured type
+   label. Identified by the data-daily-date attribute set by
+   renderDailyJournalCard. RGB matches --c-practice (#3b82f6). */
 .capture-item[data-daily-date] {
-  border-color: rgba(74, 222, 128, 0.4);
-  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.18), 0 0 14px rgba(74, 222, 128, 0.14);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18), 0 0 14px rgba(59, 130, 246, 0.14);
 }
 .capture-item[data-daily-date]:hover {
-  border-color: rgba(74, 222, 128, 0.6);
-  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.32), 0 0 16px rgba(74, 222, 128, 0.2);
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.32), 0 0 16px rgba(59, 130, 246, 0.2);
 }
 .capture-item[data-daily-date] .cap-type {
-  color: var(--c-learning);
+  color: var(--c-practice);
 }
 .cap-meta {
   display: flex;
