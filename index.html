@@ -460,17 +460,16 @@ html, body {
 .cat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .cat-label { font-size: 0.88rem; font-weight: 600; flex-shrink: 0; }
 .block-dur { font-size: 0.72rem; color: var(--text3); margin-left: auto; flex-shrink: 0; }
-.block-label {
-  flex: 1;
-  min-width: 0;
+/* Row 2: activity label (+ optional ": note" inlined onto the same line). */
+.block-line2 {
   font-size: 0.88rem;
-  font-weight: 500;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: center;          /* centered in the space between category and duration */
+  margin-top: 0.15rem;
+  line-height: 1.35;
+  word-break: break-word;
 }
+.block-label { font-weight: 500; }
+.block-note-inline { color: var(--text2); }
 .block-note { font-size: 0.78rem; color: var(--text2); margin-top: 0.15rem; }
 .energy-badge {
   display: inline-block;
@@ -3863,11 +3862,12 @@ function renderToday() {
 function renderBlock(b) {
   const cat = catById(b.category);
   const delKey = 'block-' + b.id;
-  // Compact 2-line layout:
-  //   row 1 → category dot · category label · activity label · duration
-  //   row 2 → note (only when present)
-  // Legacy energy_level data is not displayed (UI was removed). Restore by
-  // re-adding the energy-badge span to the row when needed.
+  // 2-line layout:
+  //   row 1 → category dot · category label · duration
+  //   row 2 → activity label[: note]   (note glued onto the same line via ":")
+  const labelRow = b.note
+    ? `<span class="block-label">${esc(b.label)}</span><span class="block-note-inline">: ${esc(b.note)}</span>`
+    : `<span class="block-label">${esc(b.label)}</span>`;
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
@@ -3880,10 +3880,9 @@ function renderBlock(b) {
           <div class="block-top">
             <span class="cat-dot" style="background:${cat.color}"></span>
             <span class="cat-label" style="color:${cat.color}">${cat.label}</span>
-            <span class="block-label">${esc(b.label)}</span>
             ${b.duration_min ? `<span class="block-dur">${b.duration_min}m</span>` : ''}
           </div>
-          ${b.note ? `<div class="block-note">${esc(b.note)}</div>` : ''}
+          <div class="block-line2">${labelRow}</div>
         </div>
       </div>
     </div>`;
