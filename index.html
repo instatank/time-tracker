@@ -453,14 +453,24 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  margin-bottom: 0.2rem;
-  flex-wrap: wrap;
+  margin-bottom: 0.15rem;
+  /* Stay on one line — flex-wrap removed so the activity label can sit
+     inline with the category. .block-label ellipses when too long. */
 }
 .cat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.cat-label { font-size: 0.72rem; font-weight: 600; }
-.block-dur { font-size: 0.7rem; color: var(--text3); margin-left: auto; }
-.block-label { font-size: 0.88rem; font-weight: 500; color: var(--text); }
-.block-note { font-size: 0.78rem; color: var(--text2); margin-top: 0.2rem; }
+.cat-label { font-size: 0.72rem; font-weight: 600; flex-shrink: 0; }
+.block-dur { font-size: 0.7rem; color: var(--text3); margin-left: auto; flex-shrink: 0; }
+.block-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.block-note { font-size: 0.78rem; color: var(--text2); margin-top: 0.15rem; }
 .energy-badge {
   display: inline-block;
   margin-top: 0.3rem;
@@ -3836,6 +3846,11 @@ function renderToday() {
 function renderBlock(b) {
   const cat = catById(b.category);
   const delKey = 'block-' + b.id;
+  // Compact 2-line layout:
+  //   row 1 → category dot · category label · activity label · duration
+  //   row 2 → note (only when present)
+  // Legacy energy_level data is not displayed (UI was removed). Restore by
+  // re-adding the energy-badge span to the row when needed.
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
@@ -3848,11 +3863,10 @@ function renderBlock(b) {
           <div class="block-top">
             <span class="cat-dot" style="background:${cat.color}"></span>
             <span class="cat-label" style="color:${cat.color}">${cat.label}</span>
+            <span class="block-label">${esc(b.label)}</span>
             ${b.duration_min ? `<span class="block-dur">${b.duration_min}m</span>` : ''}
           </div>
-          <div class="block-label">${esc(b.label)}</div>
           ${b.note ? `<div class="block-note">${esc(b.note)}</div>` : ''}
-          ${b.energy_level ? `<span class="energy-badge energy-${b.energy_level.toLowerCase()}">${b.energy_level} energy</span>` : ''}
         </div>
       </div>
     </div>`;
