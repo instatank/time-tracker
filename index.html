@@ -960,20 +960,21 @@ html, body {
 /* ── Day score ──────────────────────────────────────────────── */
 .score-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.5rem;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.35rem;
 }
 .score-item {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  padding: 0.6rem 0.4rem;
+  padding: 0.55rem 0.25rem;
   text-align: center;
 }
-.score-val { display: block; font-size: 1rem; font-weight: 700; }
+.score-val { display: block; font-size: 0.95rem; font-weight: 700; }
 .score-val.warn { color: var(--warn); }
 .score-val.good { color: var(--success); }
-.score-label { display: block; font-size: 0.65rem; color: var(--text2); margin-top: 2px; }
+.score-val.bad  { color: var(--danger); }
+.score-label { display: block; font-size: 0.6rem; color: var(--text2); margin-top: 2px; white-space: nowrap; }
 
 /* ── Star rating ────────────────────────────────────────────── */
 .star-row { display: flex; gap: 0.5rem; }
@@ -3671,6 +3672,10 @@ function renderToday() {
   ].sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
   const sc = dayScore(d);
   const r = ratings[d] || 0;
+  // Entertainment Cap (from Daily Journal toggle): 'yes' = stayed under cap,
+  // 'no' = exceeded, null = not recorded.
+  const _todayDailyForEC = (dailyJournals || []).find(j => j && j.date === d);
+  const entCap = (_todayDailyForEC && _todayDailyForEC.entertainmentCap) || null;
 
   const visBks  = todayBksExpanded  ? bks  : bks.slice(0, TODAY_PREVIEW);
   const visCapItems = todayCapsExpanded ? allCapItems : allCapItems.slice(0, TODAY_PREVIEW);
@@ -3785,6 +3790,10 @@ function renderToday() {
         <div class="score-item">
           <span class="score-val ${sc.journalDone ? 'good' : ''}">${sc.journalDone ? '✓' : '–'}</span>
           <span class="score-label">Journal</span>
+        </div>
+        <div class="score-item">
+          <span class="score-val ${entCap === 'yes' ? 'good' : entCap === 'no' ? 'bad' : ''}">${entCap === 'yes' ? '✓' : entCap === 'no' ? '✕' : '–'}</span>
+          <span class="score-label">Ent Cap</span>
         </div>
       </div>
     </div>
