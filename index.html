@@ -3161,6 +3161,8 @@ let journalProjectFilter = null;
 let journalExpanded = false;
 let journalSearch = '';
 let journalSearchOpen = false;                          // Journal tab: search overlay expanded?
+let homeSearchOpen    = false;                          // Today tab: search overlay expanded?
+let homeSearch        = '';                              // Today tab: free-text query
 let dashRange = 'week';
 let dashDay = todayStr(); // selected date for Day view
 let showWeeklyReview = false;
@@ -3619,12 +3621,24 @@ window.openWinSource = function(srcType, id, project) {
 
 function renderToday() {
   const d = todayStr();
-  const bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
-  const caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+  let bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
+  let caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
   // Merge today's Daily Journal entry into the captures feed so it shows up
   // alongside Quick Notes / Project captures (was missing — Daily Journal
   // lives in a separate collection from `captures`).
-  const todayDaily = (dailyJournals || []).filter(j => j && j.date === d && !isDailyEntryEmpty(j));
+  let todayDaily = (dailyJournals || []).filter(j => j && j.date === d && !isDailyEntryEmpty(j));
+
+  // Home-page search — narrows the lists in place. Other panels (DFT,
+  // Day Score, Wins, Rate Your Day, etc.) are unaffected.
+  const homeQ = (homeSearch || '').trim().toLowerCase();
+  if (homeQ) {
+    const blockHay = b => [b.label||'', b.note||'', b.projectTag||'', (b.tags||[]).join(' ')].join(' ').toLowerCase();
+    const capHay   = c => [c.body||'', c.project_tag||'', (c.tags||[]).join(' ')].join(' ').toLowerCase();
+    const dailyHay = j => [j.thoughts||'', j.reflection||'', ...(j.tasks||[]).map(t => t.text||''), (j.tags||[]).join(' ')].join(' ').toLowerCase();
+    bks        = bks.filter(b => blockHay(b).includes(homeQ));
+    caps       = caps.filter(c => capHay(c).includes(homeQ));
+    todayDaily = todayDaily.filter(j => dailyHay(j).includes(homeQ));
+  }
   const allCapItems = [
     ...todayDaily.map(j => ({ kind: 'daily', item: j, sortKey: j.lastEditedAt || j.timestamp || (j.date + 'T23:59:59') })),
     ...caps.map(c => ({ kind: 'cap', item: c, sortKey: c.timestamp })),
@@ -3713,10 +3727,19 @@ function renderToday() {
     ${monthlySuggestBanner}
     ${intentionBanner}
     ${suggestBanner}
-    <div class="action-row">
-      <button class="btn-log" onclick="openLogBlock()">+ Log Activity</button>
-      <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
-    </div>
+    ${homeSearchOpen
+      ? `<div class="action-row">
+          <div class="proj-search">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" placeholder="Search today…" value="${esc(homeSearch)}" oninput="setHomeSearch(this.value)" />
+            <button class="search-clear visible" onclick="closeHomeSearch()" aria-label="Close search">&times;</button>
+          </div>
+        </div>`
+      : `<div class="action-row">
+          <button class="btn-log" onclick="openLogBlock()">+ Log Activity</button>
+          <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
+          <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search today">&#128269;</button>
+        </div>`}
 
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Day Score</span></div>
@@ -8681,6 +8704,36 @@ window.closeJournalSearch = function() {
   journalSearch = '';
   document.removeEventListener('click', _journalSearchOutsideHandler, true);
   renderMain(true);
+};
+
+// ── Home-page (Today tab) search ────────────────────────────────
+function _homeSearchOutsideHandler(e) {
+  const wrap = document.querySelector('.action-row .proj-search');
+  if (wrap && wrap.contains(e.target)) return;
+  if (e.target.closest && e.target.closest('.card-swipe-wrap, .more-btn, .fpill, .proj-pill-lg')) return;
+  closeHomeSearch();
+}
+window.openHomeSearch = function() {
+  homeSearchOpen = true;
+  renderMain(true);
+  const input = document.querySelector('.action-row .proj-search input');
+  if (input) input.focus();
+  setTimeout(() => {
+    document.addEventListener('click', _homeSearchOutsideHandler, true);
+  }, 0);
+};
+window.closeHomeSearch = function() {
+  if (!homeSearchOpen) return;
+  homeSearchOpen = false;
+  homeSearch = '';
+  document.removeEventListener('click', _homeSearchOutsideHandler, true);
+  renderMain(true);
+};
+window.setHomeSearch = function(q) {
+  homeSearch = q;
+  renderMain(true);
+  const input = document.querySelector('.action-row .proj-search input');
+  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
 };
 window.setDashRange = function(r) { dashRange = r; if (r === 'day') dashDay = todayStr(); renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
