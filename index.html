@@ -3425,7 +3425,12 @@ function dayScore(date) {
   const deepWorkMin = bks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0);
   const leakMin = bks.filter(b => b.category === 'leaks').reduce((s, b) => s + (b.duration_min || 0), 0);
   const practiceDone = bks.some(b => b.category === 'practice');
-  const journalDone = caps.some(c => c.type === 'journal');
+  // Journal "done" = a Daily Journal entry exists for the day (with any
+  // content). Legacy `type='journal'` captures also count for backward
+  // compatibility — older data shouldn't suddenly read as un-journaled.
+  const journalDone =
+    (dailyJournals || []).some(j => j && j.date === date && !isDailyEntryEmpty(j)) ||
+    caps.some(c => c.type === 'journal');
   return {
     totalHrs: totalMin / 60,
     deepWorkHrs: deepWorkMin / 60,
@@ -3672,10 +3677,11 @@ function renderToday() {
   ].sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
   const sc = dayScore(d);
   const r = ratings[d] || 0;
-  // Entertainment Cap (from Daily Journal toggle): 'yes' = stayed under cap,
+  // Entertainment Cap is an end-of-day check, so on the home page it reflects
+  // YESTERDAY's value (judged the morning after). 'yes' = stayed under cap,
   // 'no' = exceeded, null = not recorded.
-  const _todayDailyForEC = (dailyJournals || []).find(j => j && j.date === d);
-  const entCap = (_todayDailyForEC && _todayDailyForEC.entertainmentCap) || null;
+  const _yesterdayDaily = (dailyJournals || []).find(j => j && j.date === addDays(d, -1));
+  const entCap = (_yesterdayDaily && _yesterdayDaily.entertainmentCap) || null;
 
   const visBks  = todayBksExpanded  ? bks  : bks.slice(0, TODAY_PREVIEW);
   const visCapItems = todayCapsExpanded ? allCapItems : allCapItems.slice(0, TODAY_PREVIEW);
@@ -3791,7 +3797,7 @@ function renderToday() {
           <span class="score-val ${sc.journalDone ? 'good' : ''}">${sc.journalDone ? '✓' : '–'}</span>
           <span class="score-label">Journal</span>
         </div>
-        <div class="score-item">
+        <div class="score-item" title="Entertainment Cap — yesterday's check">
           <span class="score-val ${entCap === 'yes' ? 'good' : entCap === 'no' ? 'bad' : ''}">${entCap === 'yes' ? '✓' : entCap === 'no' ? '✕' : '–'}</span>
           <span class="score-label">Ent Cap</span>
         </div>
