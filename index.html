@@ -2037,10 +2037,10 @@ html, body {
   margin-top: 0.3rem;
 }
 /* Reserve bottom space so the sticky Save button doesn't cover content. */
-.wr-view { padding-bottom: 5rem; }
+.wr-view { padding-bottom: 1rem; }
 
 /* ── Monthly Review (C1) ─────────────────────────────────── */
-.mr-view { padding-bottom: 5rem; }
+.mr-view { padding-bottom: 1rem; }
 .mr-section {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2328,16 +2328,14 @@ html, body {
 .wr-patterns { display: flex; flex-direction: column; gap: 0.4rem; }
 
 .wr-save-btn {
-  /* Sticky to the bottom of the viewport so it stays in reach as the user
-     scrolls through the review. The .wr-view bottom padding above keeps
-     content from sitting under it. */
-  position: fixed;
-  left: 50%;
-  bottom: calc(env(safe-area-inset-bottom) + 1rem);
-  transform: translateX(-50%);
-  width: calc(100% - 2rem);
-  max-width: 568px;
-  padding: 0.85rem 1.2rem;
+  /* Renders inline at the end of the scrollable content. Earlier this was
+     position:fixed but on some devices it sat hidden inside the bottom-nav
+     region. Inline + full-width is plain reliable — user scrolls to the
+     bottom of the review and the button is right there. */
+  display: block;
+  width: 100%;
+  margin: 1.25rem 0 0.75rem;
+  padding: 0.95rem 1.2rem;
   background: var(--accent);
   color: var(--on-accent);
   border: none;
@@ -2346,10 +2344,9 @@ html, body {
   font-weight: 600;
   cursor: pointer;
   box-shadow: var(--shadow-accent);
-  z-index: 50;
   transition: opacity 0.15s, transform 0.08s;
 }
-.wr-save-btn:active { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
+.wr-save-btn:active { opacity: 0.85; transform: scale(0.98); }
 .wr-save-btn.disabled, .wr-save-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
