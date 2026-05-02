@@ -9522,6 +9522,33 @@ function setAuthError(msg) {
 }
 
 // ── Firestore batch write (handles >500 docs by splitting) ────
+// Lean variant used during initialSync: skips blocks + captures because
+// mergeWithTombstones already re-pushes any dirty items via syncBlockDoc /
+// syncCaptureDoc fire-and-forget. Re-uploading every block + capture on
+// every sign-in was burning time + write quota for no benefit.
+async function initialSyncBatchWrite(uid, allRatings, allLifeRatings = {}, allEodNotes = {}) {
+  const ops = [
+    ...Object.entries(allRatings).map(([date, r]) => ({
+      ref: doc(db, 'users', uid, 'ratings', date), data: { rating: r }
+    })),
+    ...Object.entries(allLifeRatings).map(([date, lr]) => ({
+      ref: doc(db, 'users', uid, 'life_ratings', date), data: lr
+    })),
+    ...Object.entries(allEodNotes).map(([date, text]) => ({
+      ref: doc(db, 'users', uid, 'eod', date), data: { text }
+    })),
+    { ref: doc(db, 'users', uid, 'meta', 'projects'),     data: { list: projects } },
+    { ref: doc(db, 'users', uid, 'meta', 'tag_history'),  data: { history: tagHistory } },
+  ];
+  if (!ops.length) return;
+  const CHUNK = 400;
+  for (let i = 0; i < ops.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    ops.slice(i, i + CHUNK).forEach(op => batch.set(op.ref, op.data));
+    await batch.commit();
+  }
+}
+
 async function firestoreBatchWrite(uid, allBlocks, allCaptures, allRatings, allLifeRatings = {}, allEodNotes = {}) {
   // NOTE: sessions + learning are intentionally NOT included here. They have their
   // own per-doc sync paths (syncSessionDoc, syncLearningDoc, cloudDeleteWithVerify)
@@ -9859,6 +9886,15 @@ function deleteAllProjectRefsForEntry(sourceType, sourceId, tags) {
 
 async function initialSync(uid) {
   setSyncStatus('syncing');
+  // Watchdog: if any awaited Firestore op hangs longer than 20s, force the
+  // sync indicator out of the "syncing…" state so the UI doesn't look frozen.
+  // Background writes keep running; this only unblocks the visual status.
+  const _syncWatchdog = setTimeout(() => {
+    if (syncStatus === 'syncing') {
+      setSyncStatus('ok');
+      console.warn('[DayOS] initialSync watchdog fired — visual status unblocked; background writes may still be in flight.');
+    }
+  }, 20000);
   const localBlocksBefore   = blocks.length;
   const localCapturesBefore = captures.length;
   // Load projects list, tag history, sessions, and learning in parallel, but AWAIT sessions
@@ -9921,9 +9957,12 @@ async function initialSync(uid) {
     // (tombstone-filtered) state — NOT the raw localStorage state that may still hold zombies.
     await Promise.allSettled([sessLoad, learnLoad]);
 
-    // Upload everything (including local-only items) to Firestore
-    await firestoreBatchWrite(uid, mergedBlocks, mergedCaptures, mergedRatings, mergedLifeRatings, mergedEodNotes);
+    // Lean batch write — only ratings / life_ratings / eod / meta. Blocks
+    // and captures are NOT re-uploaded here; mergeWithTombstones already
+    // re-pushed any dirty items via per-doc syncBlockDoc / syncCaptureDoc.
+    await initialSyncBatchWrite(uid, mergedRatings, mergedLifeRatings, mergedEodNotes);
 
+    clearTimeout(_syncWatchdog);
     setSyncStatus('ok');
 
     // Tell the user exactly what happened to their data
@@ -9940,6 +9979,7 @@ async function initialSync(uid) {
     sweepOldDfts();
     render();
   } catch (err) {
+    clearTimeout(_syncWatchdog);
     setSyncStatus('error');
     const isPerms = err.code === 'permission-denied' || err.message?.includes('permission');
     const msg = isPerms
