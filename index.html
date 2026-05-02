@@ -7491,20 +7491,20 @@ function renderWeeklyReview() {
 
     ${isPastWeek
       ? '<div style="text-align:center;font-size:0.78rem;color:var(--text3);padding:1rem 0">Past weeks are read-only.</div>'
-      : `<button class="wr-save-btn ${currentIntention ? '' : 'disabled'}" id="wr-save-btn"
-          onclick="saveWeeklyReview()" ${currentIntention ? '' : 'disabled'}>
+      : `<button class="wr-save-btn" id="wr-save-btn" onclick="saveWeeklyReview()">
           ${savedReview ? 'Update Review' : 'Save Review'}
         </button>`}
   </div>`;
 }
 
-// Live-toggle the Save button enabled state as the user types the intention.
+// No-op kept so existing oninput="onWrIntentionChange()" attributes don't
+// error. Save button is always enabled now (no validation gate).
 window.onWrIntentionChange = function() {
   const inp = document.getElementById('wr-intention');
   const btn = document.getElementById('wr-save-btn');
   if (!inp || !btn) return;
   const has = inp.value.trim().length > 0;
-  btn.disabled = !has;
+  // Visual hint only — no longer toggles the disabled attribute.
   btn.classList.toggle('disabled', !has);
 };
 
@@ -9049,14 +9049,9 @@ async function loadMonthlyReviewsFromCloud(uid) {
 }
 
 // Live-toggle the Save button enabled state as the user types the focus.
-window.onMrFocusChange = function() {
-  const inp = document.getElementById('mr-focus');
-  const btn = document.getElementById('mr-save-btn');
-  if (!inp || !btn) return;
-  const has = inp.value.trim().length > 0;
-  btn.disabled = !has;
-  btn.classList.toggle('disabled', !has);
-};
+// No-op kept so existing oninput="onMrFocusChange()" attributes don't error.
+// Save button is always enabled now (no validation gate).
+window.onMrFocusChange = function() {};
 
 // Coherence pill picker — single-select, captured into draft.
 window.selectCoherence = function(value) {
@@ -9333,12 +9328,12 @@ function renderMonthlyReview() {
     </div>
     <div class="wr-subline">${esc(subtitle)}</div>`;
 
-  // Save row (placeholder for sections 3–5; real save lands in C1.5)
-  const focusValue = (saved && saved.oneFocus) || '';
+  // Save row — always enabled. Validation gate was removed because users
+  // were losing all their other field input when they hadn't filled in the
+  // (formerly required) focus field.
   const saveRow = isReadOnly
     ? `<div style="text-align:center;font-size:0.78rem;color:var(--text3);padding:1rem 0">Past month — read-only.</div>`
-    : `<button class="wr-save-btn ${focusValue ? '' : 'disabled'}" id="mr-save-btn"
-        onclick="saveMonthlyReview()" ${focusValue ? '' : 'disabled'}>
+    : `<button class="wr-save-btn" id="mr-save-btn" onclick="saveMonthlyReview()">
         ${saved ? 'Update Review' : 'Save Review'}
       </button>`;
 
@@ -9361,7 +9356,6 @@ window.saveMonthlyReview = function() {
   if (!monthlyReviewYM || !monthlyDraft) return;
   const ym = monthlyReviewYM;
   const focus = (document.getElementById('mr-focus')?.value || '').trim().slice(0, 150);
-  if (!focus) { toast('Add a focus before saving'); return; }
   const stats = monthlyStats(ym);
   // Project actions array — one entry per project listed in the draft, even
   // if action is null (so the saved doc preserves the full surveyed set).
@@ -9438,7 +9432,7 @@ window.dismissMonthlyReviewBanner = function() {
 // intention for next week. Idempotent on re-save.
 window.saveWeeklyReview = function() {
   const intention = (document.getElementById('wr-intention')?.value || '').trim().slice(0, 120);
-  if (!intention) { toast('Add an intention before saving'); return; }
+  // Validation gate removed — saving now persists whatever's in the form.
   const weekStart = addDays(getWeekStart(todayStr()), weeklyReviewOffset * 7);
   const weekEnd   = addDays(weekStart, 6);
   const ws        = weeklyStats(weekStart);
