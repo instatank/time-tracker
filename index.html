@@ -9694,7 +9694,27 @@ window.forcePushToCloud = async function() {
   openAuth();
   console.log('[DayOS] Push → UID:', user.uid, '| blocks:', blocks.length, '| captures:', captures.length);
   try {
+    // 1) Batch the things that don't have per-doc sync flows (blocks +
+    //    captures + ratings + life_ratings + eod + meta).
     await firestoreBatchWrite(user.uid, blocks, captures, ratings, lifeRatings, eodNotes);
+
+    // 2) Push collections that DO have per-doc sync flows. The batch write
+    //    above intentionally skips them (they have tombstones / verify
+    //    semantics that batch.set() bypasses). Without this loop, manual
+    //    Push left sessions / learning / daily journals / monthly reviews
+    //    out of sync — that was the visible symptom across devices.
+    const sessionDocs = Object.values(sessions).flat().filter(s => s && s.id && s.projectName);
+    const learningDocs = (learning || []).filter(e => e && e.id);
+    const dailyDocs    = (dailyJournals || []).filter(j => j && j.date && !isDailyEntryEmpty(j));
+    const monthlyDocs  = Object.values(monthlyReviews || {}).filter(r => r && r.month);
+    const perDocPushes = [
+      ...sessionDocs.map(s  => syncSessionDoc(s)),
+      ...learningDocs.map(e => syncLearningDoc(e)),
+      ...dailyDocs.map(j    => syncDailyJournalDoc(j)),
+      ...monthlyDocs.map(r  => syncMonthlyReviewDoc(r)),
+    ];
+    // allSettled so one failed write doesn't kill the rest.
+    if (perDocPushes.length) await Promise.allSettled(perDocPushes);
 
     // ── Verification: confirm at least one doc actually landed on the server ──
     if (blocks.length > 0) {
@@ -9710,8 +9730,10 @@ window.forcePushToCloud = async function() {
     }
 
     setSyncStatus('ok');
-    console.log('[DayOS] Push verified ✓');
-    toast(`✓ Uploaded & verified ${blocks.length} blocks & ${captures.length} captures`, 3500);
+    console.log('[DayOS] Push verified ✓ — blocks:', blocks.length, 'captures:', captures.length,
+      'sessions:', sessionDocs.length, 'learning:', learningDocs.length,
+      'daily:', dailyDocs.length, 'monthly:', monthlyDocs.length);
+    toast(`✓ Pushed ${blocks.length} blocks · ${captures.length} captures · ${sessionDocs.length} sessions · ${learningDocs.length} learning · ${dailyDocs.length} daily · ${monthlyDocs.length} monthly`, 5000);
     openAuth();
   } catch (err) {
     setSyncStatus('error');
@@ -9733,12 +9755,14 @@ window.forcePullFromCloud = async function() {
   openAuth();
   console.log('[DayOS] Pull → UID:', user.uid);
   try {
-    const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
+    // 1) Pull the five "flat" collections that have no per-doc sync flow.
+    const [bSnap, cSnap, rSnap, lrSnap, eodSnap, djSnap] = await Promise.all([
       getDocs(collection(db, 'users', user.uid, 'blocks')),
       getDocs(collection(db, 'users', user.uid, 'captures')),
       getDocs(collection(db, 'users', user.uid, 'ratings')),
       getDocs(collection(db, 'users', user.uid, 'life_ratings')),
       getDocs(collection(db, 'users', user.uid, 'eod')),
+      getDocs(collection(db, 'users', user.uid, 'dailyJournal')),
     ]);
     const remoteBlocks      = bSnap.docs.map(d => d.data());
     const remoteCaptures    = cSnap.docs.map(d => d.data());
@@ -9748,7 +9772,9 @@ window.forcePullFromCloud = async function() {
     lrSnap.docs.forEach(d => { remoteLifeRatings[d.id] = d.data(); });
     const remoteEodNotes    = {};
     eodSnap.docs.forEach(d => { remoteEodNotes[d.id] = d.data().text; });
-    console.log('[DayOS] Pull raw from Firestore → blocks:', remoteBlocks.length, '| captures:', remoteCaptures.length);
+    console.log('[DayOS] Pull raw → blocks:', remoteBlocks.length,
+      '| captures:', remoteCaptures.length,
+      '| dailyJournal:', djSnap.docs.length);
 
     // Tombstone + _synced aware merge (blocks/captures)
     blocks   = mergeWithTombstones({
@@ -9764,10 +9790,43 @@ window.forcePullFromCloud = async function() {
     ratings     = { ...ratings, ...remoteRatings };
     lifeRatings = { ...lifeRatings, ...remoteLifeRatings };
     eodNotes    = { ...eodNotes, ...remoteEodNotes };
+
+    // 2) Daily Journal — keyed by date so merge is "remote wins per date,
+    //    preserve any local-only entries the user typed offline".
+    const djByDate = {};
+    djSnap.docs.forEach(d => {
+      const e = d.data();
+      if (!e || !e.date) return;
+      e._synced = true;
+      djByDate[e.date] = e;
+    });
+    (dailyJournals || []).forEach(e => {
+      if (!e || !e.date) return;
+      if (djByDate[e.date]) return;
+      if (e._synced === false) djByDate[e.date] = e;       // local-only & unsynced — keep
+    });
+    dailyJournals = Object.values(djByDate);
+    saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+
     saveAll();
 
+    // 3) Pull the collections with their own loaders (sessions / learning /
+    //    monthlyReviews / projects / tag history / adherence / dismissals).
+    //    Each loader does its own tombstone-aware merge.
+    await Promise.allSettled([
+      loadSessionsFromCloud(user.uid),
+      loadLearningFromCloud(user.uid),
+      loadMonthlyReviewsFromCloud(user.uid),
+      loadProjectsFromCloud(user.uid),
+      loadTagHistoryFromCloud(user.uid),
+      loadAdherenceConfigFromCloud(user.uid),
+      loadDismissalsFromCloud(user.uid),
+    ]);
+
     setSyncStatus('ok');
-    toast(`✓ Pulled ${blocks.length} blocks & ${captures.length} captures from cloud`, 3500);
+    const sessCount  = Object.values(sessions).flat().length;
+    const learnCount = (learning || []).length;
+    toast(`✓ Pulled ${blocks.length} blocks · ${captures.length} captures · ${sessCount} sessions · ${learnCount} learning · ${dailyJournals.length} daily`, 5000);
     openAuth();
     render();
   } catch (err) {
