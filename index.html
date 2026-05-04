@@ -8490,6 +8490,7 @@ window.saveDft = function(val) {
   const existing = getDft(d);
   dfts[d] = { text, status: existing && existing.status !== 'pending' ? existing.status : 'pending' };
   saveLocal('dayos_dfts_v1', dfts);
+  syncDftDoc(d);
   renderMain();
 };
 
@@ -8511,6 +8512,7 @@ window.doneDft = function() {
   if (!dft) return;
   dfts[d] = { text: dft.text, status: 'done' };
   saveLocal('dayos_dfts_v1', dfts);
+  syncDftDoc(d);
   // Auto-capture to journal with #dft tag
   const body = `✅ DFT done: ${dft.text} #dft`;
   const c = { id: uid(), timestamp: nowISTIso(), type: 'note', body, project_tag: '', tags: extractTags(body) };
@@ -8531,6 +8533,7 @@ window.skipDft = function() {
   if (!dft) return;
   dfts[d] = { text: dft.text, status: 'skipped' };
   saveLocal('dayos_dfts_v1', dfts);
+  syncDftDoc(d);
   // Log to journal with #dft tag
   const body = dft.text ? `❌ DFT skipped: ${dft.text} #dft` : `❌ DFT skipped #dft`;
   const c = { id: uid(), timestamp: nowISTIso(), type: 'note', body, project_tag: '', tags: extractTags(body) };
@@ -8546,8 +8549,10 @@ window.skipDft = function() {
 };
 
 window.clearDft = function() {
-  delete dfts[todayStr()];
+  const d = todayStr();
+  delete dfts[d];
   saveLocal('dayos_dfts_v1', dfts);
+  deleteDftDoc(d);
   renderMain();
 };
 
@@ -8555,12 +8560,14 @@ function sweepOldDfts() {
   const today = todayStr();
   let changed = false;
   const toSync = [];
+  const dftDatesToSync = [];
   Object.keys(dfts).forEach(d => {
     if (d < today) {
       const dft = getDft(d);
       if (dft && dft.status === 'pending') {
         dfts[d] = { text: dft.text, status: 'skipped' };
         changed = true;
+        dftDatesToSync.push(d);
         // Log to journal as auto-skipped
         const body = dft.text ? `❌ DFT skipped: ${dft.text} #dft` : `❌ DFT skipped #dft`;
         const c = { id: uid(), timestamp: d + 'T23:59:00', type: 'note', body, project_tag: '', tags: extractTags(body) };
@@ -8579,6 +8586,7 @@ function sweepOldDfts() {
         preview: c.body, date: capDateIST(c), createdAt: c.timestamp,
       });
     });
+    dftDatesToSync.forEach(d => syncDftDoc(d));
   }
 }
 
@@ -9042,6 +9050,36 @@ async function loadMonthlyReviewsFromCloud(uid) {
     saveLocal('dayos_monthly_reviews_v1', monthlyReviews);
   } catch (err) {
     console.error('[DayOS] Monthly reviews load error:', err);
+  }
+}
+
+// ── DFT (Daily Focus Task) cloud sync ─────────────────────────
+// One doc per date at users/{uid}/dfts/{YYYY-MM-DD} with shape { text, status }.
+// Per-write fire-and-forget mirrors the ratings/EOD pattern: on save we push,
+// on clear we delete. Loader merges remote → local on sign-in / pull.
+async function syncDftDoc(date) {
+  if (!user || !date) return;
+  const v = dfts[date];
+  if (!v) return; // nothing to write
+  const payload = (typeof v === 'string') ? { text: v, status: 'pending' } : v;
+  try { await setDoc(doc(db, 'users', user.uid, 'dfts', date), payload); }
+  catch (err) { console.error('[DayOS] DFT sync error:', err); }
+}
+async function deleteDftDoc(date) {
+  if (!user || !date) return;
+  try { await deleteDoc(doc(db, 'users', user.uid, 'dfts', date)); }
+  catch (err) { console.error('[DayOS] DFT delete error:', err); }
+}
+async function loadDftsFromCloud(uid) {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'dfts'));
+    const remote = {};
+    snap.docs.forEach(d => { remote[d.id] = d.data() || {}; });
+    // Remote wins per date — same merge shape as ratings/eod.
+    dfts = { ...dfts, ...remote };
+    saveLocal('dayos_dfts_v1', dfts);
+  } catch (err) {
+    console.error('[DayOS] DFTs load error:', err);
   }
 }
 
@@ -9707,11 +9745,13 @@ window.forcePushToCloud = async function() {
     const learningDocs = (learning || []).filter(e => e && e.id);
     const dailyDocs    = (dailyJournals || []).filter(j => j && j.date && !isDailyEntryEmpty(j));
     const monthlyDocs  = Object.values(monthlyReviews || {}).filter(r => r && r.month);
+    const dftDates     = Object.keys(dfts || {}).filter(d => dfts[d]);
     const perDocPushes = [
       ...sessionDocs.map(s  => syncSessionDoc(s)),
       ...learningDocs.map(e => syncLearningDoc(e)),
       ...dailyDocs.map(j    => syncDailyJournalDoc(j)),
       ...monthlyDocs.map(r  => syncMonthlyReviewDoc(r)),
+      ...dftDates.map(d     => syncDftDoc(d)),
     ];
     // allSettled so one failed write doesn't kill the rest.
     if (perDocPushes.length) await Promise.allSettled(perDocPushes);
@@ -9732,8 +9772,8 @@ window.forcePushToCloud = async function() {
     setSyncStatus('ok');
     console.log('[DayOS] Push verified ✓ — blocks:', blocks.length, 'captures:', captures.length,
       'sessions:', sessionDocs.length, 'learning:', learningDocs.length,
-      'daily:', dailyDocs.length, 'monthly:', monthlyDocs.length);
-    toast(`✓ Pushed ${blocks.length} blocks · ${captures.length} captures · ${sessionDocs.length} sessions · ${learningDocs.length} learning · ${dailyDocs.length} daily · ${monthlyDocs.length} monthly`, 5000);
+      'daily:', dailyDocs.length, 'monthly:', monthlyDocs.length, 'dfts:', dftDates.length);
+    toast(`✓ Pushed ${blocks.length} blocks · ${captures.length} captures · ${sessionDocs.length} sessions · ${learningDocs.length} learning · ${dailyDocs.length} daily · ${monthlyDocs.length} monthly · ${dftDates.length} dfts`, 5000);
     openAuth();
   } catch (err) {
     setSyncStatus('error');
@@ -9821,6 +9861,7 @@ window.forcePullFromCloud = async function() {
       loadTagHistoryFromCloud(user.uid),
       loadAdherenceConfigFromCloud(user.uid),
       loadDismissalsFromCloud(user.uid),
+      loadDftsFromCloud(user.uid),
     ]);
 
     setSyncStatus('ok');
@@ -9968,6 +10009,7 @@ async function initialSync(uid) {
   loadMonthlyReviewsFromCloud(uid);
   loadSessionsFromCloud(uid);
   loadLearningFromCloud(uid);
+  loadDftsFromCloud(uid);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
   subscribeDailyJournal(uid);
 
