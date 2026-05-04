@@ -9945,31 +9945,36 @@ function deleteAllProjectRefsForEntry(sourceType, sourceId, tags) {
 
 async function initialSync(uid) {
   setSyncStatus('syncing');
-  // Watchdog: if any awaited Firestore op hangs longer than 20s, force the
-  // sync indicator out of the "syncing…" state so the UI doesn't look frozen.
-  // Background writes keep running; this only unblocks the visual status.
+  // Watchdog: if anything hangs longer than 12s (typical: flaky cellular),
+  // unblock the visual status. Background writes keep running.
   const _syncWatchdog = setTimeout(() => {
     if (syncStatus === 'syncing') {
       setSyncStatus('ok');
       console.warn('[DayOS] initialSync watchdog fired — visual status unblocked; background writes may still be in flight.');
     }
-  }, 20000);
+  }, 12000);
   const localBlocksBefore   = blocks.length;
   const localCapturesBefore = captures.length;
-  // Load projects list, tag history, sessions, and learning in parallel, but AWAIT sessions
-  // and learning before the batch write below. Otherwise the batch write re-uploads whatever
-  // is in the `sessions`/`learning` globals at that instant (the stale localStorage copy),
-  // which can resurrect items that were deleted on this device.
+
+  // ── Background loaders ─────────────────────────────────────
+  // None of these block the visual "Synced ✓" indicator. Each one merges
+  // remote-into-local with tombstone awareness and re-renders if the active
+  // tab is showing data they own. Sessions/learning/monthly/projects/etc. all
+  // resolve in parallel with the critical read below.
   loadProjectsFromCloud(uid);
   loadTagHistoryFromCloud(uid);
   loadAdherenceConfigFromCloud(uid);
   loadDismissalsFromCloud(uid);
   loadMonthlyReviewsFromCloud(uid);
-  const sessLoad  = loadSessionsFromCloud(uid);
-  const learnLoad = loadLearningFromCloud(uid);
+  loadSessionsFromCloud(uid);
+  loadLearningFromCloud(uid);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
   subscribeDailyJournal(uid);
+
   try {
+    // ── Critical read ──
+    // Only the 5 collections that drive Today / Journal / Trends views.
+    // Everything else is background. This is the ONLY await before "Synced ✓".
     const [bSnap, cSnap, rSnap, lrSnap, eodSnap] = await Promise.all([
       getDocs(collection(db, 'users', uid, 'blocks')),
       getDocs(collection(db, 'users', uid, 'captures')),
@@ -10012,20 +10017,10 @@ async function initialSync(uid) {
     eodNotes    = mergedEodNotes;
     saveAll();
 
-    // Wait for sessions + learning cloud merges so the batch write below uses the post-merge
-    // (tombstone-filtered) state — NOT the raw localStorage state that may still hold zombies.
-    await Promise.allSettled([sessLoad, learnLoad]);
-
-    // Lean batch write — only ratings / life_ratings / eod / meta. Blocks
-    // and captures are NOT re-uploaded here; mergeWithTombstones already
-    // re-pushed any dirty items via per-doc syncBlockDoc / syncCaptureDoc.
-    await initialSyncBatchWrite(uid, mergedRatings, mergedLifeRatings, mergedEodNotes);
-
     clearTimeout(_syncWatchdog);
     setSyncStatus('ok');
 
     // Tell the user exactly what happened to their data
-    const localUploaded = mergedBlocks.length - remoteBlocks.length + mergedCaptures.length - remoteCaptures.length;
     if (localBlocksBefore > 0 && remoteBlocks.length === 0) {
       toast(`✓ Signed in — ${localBlocksBefore} blocks & ${localCapturesBefore} entries backed up`, 3500);
     } else if (remoteBlocks.length > 0 || remoteCaptures.length > 0) {
@@ -10037,6 +10032,21 @@ async function initialSync(uid) {
     autoLogSleep();
     sweepOldDfts();
     render();
+
+    // ── Background cleanup ──
+    // Pushes any local-only ratings/life/eod/meta that didn't sync via the
+    // per-write paths (e.g. written while offline). Fire-and-forget — the user
+    // already sees "Synced ✓" so this slow-but-rare path doesn't block UI.
+    // Only runs when there's something local-only to push, to avoid burning
+    // write quota on every sign-in.
+    const hasLocalOnly =
+      Object.keys(mergedRatings).length     > Object.keys(remoteRatings).length     ||
+      Object.keys(mergedLifeRatings).length > Object.keys(remoteLifeRatings).length ||
+      Object.keys(mergedEodNotes).length    > Object.keys(remoteEodNotes).length;
+    if (hasLocalOnly) {
+      initialSyncBatchWrite(uid, mergedRatings, mergedLifeRatings, mergedEodNotes)
+        .catch(err => console.error('[DayOS] background cleanup write error:', err));
+    }
   } catch (err) {
     clearTimeout(_syncWatchdog);
     setSyncStatus('error');
