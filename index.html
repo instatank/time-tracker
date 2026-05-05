@@ -1147,6 +1147,16 @@ html, body {
 }
 .proj-pill-lg.new-pill { border-style: dashed; color: var(--text3); }
 .proj-pill-lg.new-pill:hover { color: var(--text2); }
+/* Project-row "▾ more (N)" / "▴ less" expander — same shape as a pill,
+   muted styling so it reads as a control, not a project. */
+.proj-pill-lg.more-pill,
+.proj-pill.more-pill {
+  background: transparent;
+  color: var(--text2);
+  font-weight: 500;
+}
+.proj-pill-lg.more-pill:hover,
+.proj-pill.more-pill:hover { color: var(--text); border-color: var(--text3); }
 .proj-new-input {
   flex-shrink: 0;
   font-size: 0.82rem;
@@ -4144,9 +4154,13 @@ function renderJournal() {
   const projectSubTabs = journalFilter === 'project' && projectNames.length ? `
     <div class="project-subtabs">
       <button class="proj-pill ${!journalProjectFilter ? 'active' : ''}" onclick="setJProjectFilter(null)">All Projects</button>
-      ${projectNames.map(p => `
-        <button class="proj-pill ${(journalProjectFilter||'').toLowerCase()===p.toLowerCase() ? 'active' : ''}" onclick="setJProjectFilter('${esc(p)}')">${esc(p)}</button>
-      `).join('')}
+      ${renderProjectPillRow({
+        key: 'journal',
+        items: projectNames,
+        activeMatch: p => (journalProjectFilter || '').toLowerCase() === p.toLowerCase(),
+        onclickFn: safeName => `setJProjectFilter('${safeName}')`,
+        pillClass: 'proj-pill',
+      })}
     </div>` : '';
 
   // Row 1 — bigger sub-tab-style pills (All / Journal / Quick Note / Project)
@@ -4604,6 +4618,57 @@ function renderBlockInJournal(b) {
 }
 
 // ── Projects ──────────────────────────────────────────────────
+// ── Project-row truncation helper ────────────────────────────
+// Single-line pill rows with a "▾ more (N)" expander — used by the
+// Projects tab pill row, the Journal "Project" sub-tabs, and the Activity
+// Log block sheet's project picker. The helper is active-aware: if the
+// currently-selected pill would be hidden by the limit, it's swapped into
+// the visible slice so the user never loses sight of their selection.
+const PROJ_PILL_LIMIT = 5;
+let _projPillExpanded = {}; // { 'main': true, 'block': false, 'journal': true }
+
+function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 'proj-pill-lg' }) {
+  if (!items.length) return '';
+  const expanded = !!_projPillExpanded[key];
+  const showAll  = expanded || items.length <= PROJ_PILL_LIMIT;
+
+  let visible, hidden;
+  if (showAll) {
+    visible = items.slice();
+    hidden  = 0;
+  } else {
+    visible = items.slice(0, PROJ_PILL_LIMIT);
+    hidden  = items.length - visible.length;
+    // Active-aware: if the selected item is beyond the cutoff, swap it in
+    // so it's always visible (replacing the last visible slot).
+    const activeIdx = items.findIndex(activeMatch);
+    if (activeIdx >= PROJ_PILL_LIMIT) {
+      visible[PROJ_PILL_LIMIT - 1] = items[activeIdx];
+    }
+  }
+
+  const pills = visible.map(p => {
+    const safeName = esc(p).replace(/'/g, "\\'");
+    return `<button class="${pillClass} ${activeMatch(p) ? 'active' : ''}" onclick="${onclickFn(safeName)}">${esc(p)}</button>`;
+  }).join('');
+
+  let trail = '';
+  if (hidden > 0) {
+    trail = `<button class="${pillClass} more-pill" onclick="toggleProjPillRow('${key}')">▾ more (${hidden})</button>`;
+  } else if (expanded && items.length > PROJ_PILL_LIMIT) {
+    trail = `<button class="${pillClass} more-pill" onclick="toggleProjPillRow('${key}')">▴ less</button>`;
+  }
+  return pills + trail;
+}
+
+window.toggleProjPillRow = function(key) {
+  _projPillExpanded[key] = !_projPillExpanded[key];
+  // Re-render the surfaces that own pill rows. Cheap to call all of them —
+  // each is a no-op if the relevant DOM root isn't currently mounted.
+  if (activeTab === 'projects' || activeTab === 'journal') renderMain(true);
+  if (document.getElementById('f-block-project-row')) renderBlockProjectPills();
+};
+
 function renderProjects() {
   // Sub-tab toggle (Projects | Learning) at the top — always visible
   const toggle = `
@@ -4617,13 +4682,17 @@ function renderProjects() {
   }
 
   // ── Projects sub-tab (original) ──
-  // "All" pill first, then each project, then "+ new"
+  // "All" pill always visible first; project pills go through the
+  // truncate-+-more helper; "+ new" always visible last. Keeping All / + new
+  // OUT of the items array means they never get folded behind "more".
   const allPill = `<button class="proj-pill-lg ${selectedProject === null ? 'active' : ''}" onclick="selectProject(null)">All</button>`;
 
-  const pills = projects.map(p => `
-    <button class="proj-pill-lg ${p === selectedProject ? 'active' : ''}"
-            onclick="selectProject('${esc(p).replace(/'/g, "\\'")}')">${esc(p)}</button>
-  `).join('');
+  const pills = renderProjectPillRow({
+    key: 'main',
+    items: projects,
+    activeMatch: p => p === selectedProject,
+    onclickFn: safeName => `selectProject('${safeName}')`,
+  });
 
   const newPill = projectCreating
     ? `<input class="proj-new-input" id="proj-new-input"
@@ -7805,12 +7874,12 @@ function renderBlockProjectPills() {
     row.innerHTML = `<span style="color:var(--text3);font-size:0.78rem;padding:0.4rem 0">No projects yet — add them in the Projects tab.</span>`;
     return;
   }
-  const pills = projects.map(p => {
-    const active = p === selBlockProject;
-    return `<button type="button" class="proj-pill-lg ${active ? 'active' : ''}"
-      onclick="toggleBlockProject('${esc(p).replace(/'/g, "\\'")}')">${esc(p)}</button>`;
-  }).join('');
-  row.innerHTML = pills;
+  row.innerHTML = renderProjectPillRow({
+    key: 'block',
+    items: projects,
+    activeMatch: p => p === selBlockProject,
+    onclickFn: safeName => `toggleBlockProject('${safeName}')`,
+  });
 }
 
 window.toggleBlockProject = function(name) {
