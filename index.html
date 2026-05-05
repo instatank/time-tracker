@@ -270,6 +270,50 @@ html, body {
 }
 .auth-btn:hover { color: var(--text); }
 
+/* Header icon button (gear, etc.) — subtle, icon-only, matches auth-btn weight */
+.hdr-icon-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.hdr-icon-btn:hover { color: var(--text); background: var(--surface2); }
+.hdr-icon-btn svg   { width: 18px; height: 18px; display: block; }
+
+/* Settings sheet — section list (Projects · Tags · Day Score · ...) */
+.settings-list { display: flex; flex-direction: column; gap: 4px; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: left;
+  width: 100%;
+}
+.settings-row:hover  { background: var(--surface2); border-color: var(--border2); }
+.settings-row:active { transform: scale(0.99); }
+.settings-row-icon {
+  font-size: 1.1rem;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.settings-row-text  { flex: 1; min-width: 0; }
+.settings-row-label { font-size: 0.92rem; color: var(--text); font-weight: 500; }
+.settings-row-sub   { font-size: 0.72rem; color: var(--text3); margin-top: 2px; }
+.settings-row-chev  { color: var(--text3); font-size: 1.1rem; flex-shrink: 0; }
+.settings-row.placeholder .settings-row-label { color: var(--text2); }
+.settings-row.placeholder .settings-row-sub   { font-style: italic; }
+
 /* ── Main scroll area ────────────────────────────────────────── */
 #main {
   flex: 1;
@@ -3014,6 +3058,13 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
   <div class="sheet-body" id="auth-body"></div>
 </div>
 
+<!-- Sheet: Settings (shell — sections wired up incrementally) -->
+<div id="sheet-settings" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">Settings</div>
+  <div class="sheet-body" id="settings-body"></div>
+</div>
+
 <div id="backdrop" class="backdrop" onclick="closeSheets()"></div>
 <div id="toasts"></div>
 <!-- Trends-tab zoom modal (D3) — reused by Time by Category, Time by Project,
@@ -3478,6 +3529,12 @@ function renderHdr() {
     <div class="hdr-right">
       <span class="hdr-date">${fmtDayHeaderShort()}</span>
       <span class="sync-dot ${syncStatus}" title="${syncStatus}"></span>
+      <button class="hdr-icon-btn" onclick="openSettings()" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
       <button class="auth-btn" onclick="openAuth()">${user ? (user.displayName?.split(' ')[0] || 'Me') : 'Sign in'}</button>
     </div>
   `;
@@ -9523,6 +9580,48 @@ function openSheet(id) {
   document.getElementById(id).classList.add('open');
   document.getElementById('backdrop').classList.add('visible');
 }
+
+// ── Settings sheet (shell) ────────────────────────────────────
+// Section list rendered into #settings-body. Each row is wired to a stub
+// handler; we'll populate sections one at a time in subsequent commits
+// (Projects · Tags · Day Score · Adherence · Sleep & EOD · Appearance · Sync · About).
+const SETTINGS_SECTIONS = [
+  { id: 'projects',   icon: '📁', label: 'Projects',     sub: 'Rename, delete, merge'                  },
+  { id: 'tags',       icon: '🏷️', label: 'Tags',         sub: 'Used tags · rename · merge'             },
+  { id: 'dayscore',   icon: '⭐', label: 'Day Score',     sub: 'Tiles, thresholds, what counts'         },
+  { id: 'adherence',  icon: '✅', label: 'Adherence',    sub: 'Daily systems & rules'                  },
+  { id: 'sleepEod',   icon: '🌙', label: 'Sleep & EOD',   sub: 'Auto-log sleep · end-of-day prompt'     },
+  { id: 'appearance', icon: '🎨', label: 'Appearance',    sub: 'System · Light · Dark'                  },
+  { id: 'sync',       icon: '☁️', label: 'Sync',          sub: 'Push · Pull · sign-out'                 },
+  { id: 'about',      icon: 'ℹ️', label: 'About',         sub: 'DayOS · version · feedback'             },
+];
+
+window.openSettings = function() {
+  const body = document.getElementById('settings-body');
+  body.innerHTML = `
+    <div class="settings-list">
+      ${SETTINGS_SECTIONS.map(s => `
+        <button class="settings-row placeholder" onclick="openSettingsSection('${s.id}')">
+          <span class="settings-row-icon">${s.icon}</span>
+          <div class="settings-row-text">
+            <div class="settings-row-label">${esc(s.label)}</div>
+            <div class="settings-row-sub">${esc(s.sub)}</div>
+          </div>
+          <span class="settings-row-chev">›</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+  openSheet('sheet-settings');
+};
+
+// Stub handler — sections wire real content in later commits. For now each
+// section toasts so users (and Claude) can see the shell is plumbed and the
+// rows are tappable, without pretending they do anything yet.
+window.openSettingsSection = function(id) {
+  const s = SETTINGS_SECTIONS.find(x => x.id === id);
+  toast(`${s?.label || id} — coming next`, 2000);
+};
 
 window.closeSheets = function() {
   // If the Daily Journal editor is currently open, flush a final save before
