@@ -3421,11 +3421,13 @@ function dayScore(date) {
   const deepWorkMin = bks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0);
   const leakMin = bks.filter(b => b.category === 'leaks').reduce((s, b) => s + (b.duration_min || 0), 0);
   const practiceDone = bks.some(b => b.category === 'practice');
-  // Journal "done" = a Daily Journal entry exists for the day (with any
-  // content). Legacy `type='journal'` captures also count for backward
-  // compatibility — older data shouldn't suddenly read as un-journaled.
+  // Journal "done" = today's Daily Journal entry has a non-empty Reflection
+  // (the end-of-day review section). Saving the EOD note also flows into the
+  // reflection field via appendEodToDailyJournal, so closing the day either
+  // way flips this green. Legacy `type='journal'` captures still count so
+  // older days with pre-Daily-Journal data don't suddenly read as un-journaled.
   const journalDone =
-    (dailyJournals || []).some(j => j && j.date === date && !isDailyEntryEmpty(j)) ||
+    (dailyJournals || []).some(j => j && j.date === date && (j.reflection || '').trim()) ||
     caps.some(c => c.type === 'journal');
   return {
     totalHrs: totalMin / 60,
