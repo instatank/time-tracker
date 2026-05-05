@@ -5592,8 +5592,6 @@ window.saveLearning = function() {
   const fullNotes  = document.getElementById('f-learn-notes').value.trim();
 
   if (!sourceName)       { toast('Source name is required'); document.getElementById('f-learn-source').focus(); return; }
-  if (!selLearningType)  { toast('Pick a source type'); return; }
-  if (!takeaway)         { toast('Key takeaway is required'); document.getElementById('f-learn-takeaway').focus(); return; }
 
   // Layer 1 (pill) + Layer 2 (inline #hashtag from takeaway + notes). Merge + dedupe.
   const inlineTags = extractTags(takeaway + ' ' + fullNotes);
