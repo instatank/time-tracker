@@ -9960,6 +9960,12 @@ function settingsSubhdrHtml(title) {
 // ── Settings → Appearance ─────────────────────────────────────
 // Relocated from the Account sheet. Same segmented control, same setTheme
 // handler — only the host has changed.
+//
+// Note: the six Settings sub-screen openers below (Appearance, Sync,
+// Projects, Tags, DayScore, LifeCheck) are also exposed on `window` at
+// the bottom of this block. Inline `onclick="openSettings*()"` handlers
+// run in global scope, so they need window references — without these
+// exports, "back" arrows inside action panels were silent no-ops.
 function openSettingsAppearance() {
   const body = document.getElementById('settings-body');
   body.innerHTML = `
@@ -10709,6 +10715,17 @@ window.toggleLifeMetric = function(idx) {
   openSettingsLifeCheck();
   if (activeTab === 'today') renderMain(true);
 };
+
+// Expose all six Settings sub-screen openers on window so the inline
+// "back" arrows in action panels (rendered into innerHTML) can resolve
+// them in global scope. Internal callers continue to use the bare module
+// reference — both paths point at the same function object.
+window.openSettingsAppearance = openSettingsAppearance;
+window.openSettingsSync       = openSettingsSync;
+window.openSettingsProjects   = openSettingsProjects;
+window.openSettingsTags       = openSettingsTags;
+window.openSettingsDayScore   = openSettingsDayScore;
+window.openSettingsLifeCheck  = openSettingsLifeCheck;
 
 window.openLifeMetricAction = function(idx) {
   _settingsLifeAction = { idx, mode: 'menu' };
