@@ -9700,6 +9700,7 @@ window.openSettingsSection = function(id) {
     case 'appearance': return openSettingsAppearance();
     case 'sync':       return openSettingsSync();
     case 'projects':   return openSettingsProjects();
+    case 'tags':       return openSettingsTags();
     default: {
       const s = SETTINGS_SECTIONS.find(x => x.id === id);
       toast(`${s?.label || id} — coming next`, 2000);
@@ -9801,20 +9802,18 @@ function projectUsageCounts(name) {
   };
 }
 
-// Rewrite every reference to oldSlug → newSlug across all collections.
-// `newName` is the canonical-cased project name (used for project_tag).
-// If newSlug is null, this is a delete: the tag is stripped, project_tag cleared.
-// Returns { captures, learning, daily, sessions } — count of items modified.
-function rewriteProjectReferences(oldSlug, newSlug, newName) {
-  let nCap = 0, nLearn = 0, nDaily = 0, nSess = 0;
-  const oldTag = '#' + oldSlug;
-  const newTag = newSlug ? '#' + newSlug : null;
+// Generic tag rewrite — used by both project rename/delete and tag rename/delete.
+// Walks every collection that carries a tags[] array and replaces (or removes)
+// the matching tag string. Tags are compared as exact normalised strings
+// (e.g. "#mealplan"), not by slug — callers pass the already-prefixed form.
+// Per-doc cloud syncs fire for every modified document. Returns a counts map.
+function rewriteTagAcrossAll(oldTag, newTag) {
   const remap = arr => {
     if (!Array.isArray(arr)) return { arr: [], changed: false };
     let changed = false;
     const out = [];
     arr.forEach(t => {
-      if (projectSlug(t) === oldSlug) {
+      if (t === oldTag) {
         changed = true;
         if (newTag && !out.includes(newTag)) out.push(newTag);
       } else {
@@ -9824,19 +9823,15 @@ function rewriteProjectReferences(oldSlug, newSlug, newName) {
     return { arr: out, changed };
   };
 
+  let nCap = 0, nLearn = 0, nDaily = 0, nSess = 0, nBlock = 0;
+
   captures.forEach(c => {
-    let touched = false;
     const r = remap(c.tags);
-    if (r.changed) { c.tags = r.arr; touched = true; }
-    if (c.project_tag && projectSlug(c.project_tag) === oldSlug) {
-      c.project_tag = newName || '';
-      touched = true;
-    }
-    if (touched) {
-      c._synced = false;
-      try { syncCaptureDoc(c); } catch {}
-      nCap++;
-    }
+    if (!r.changed) return;
+    c.tags = r.arr;
+    c._synced = false;
+    try { syncCaptureDoc(c); } catch {}
+    nCap++;
   });
   if (nCap) saveLocal(SK.CAPTURES, captures);
 
@@ -9860,9 +9855,68 @@ function rewriteProjectReferences(oldSlug, newSlug, newName) {
   });
   if (nDaily) saveLocal(SK.DAILY_JOURNAL, dailyJournals);
 
-  // sessions are keyed by project name (not by tag) — handled by callers
-  // that need to rekey/merge them. We just return the counts here.
-  return { captures: nCap, learning: nLearn, daily: nDaily, sessions: nSess };
+  Object.values(sessions || {}).forEach(list => {
+    (list || []).forEach(s => {
+      const r = remap(s.tags);
+      if (!r.changed) return;
+      s.tags = r.arr;
+      s._synced = false;
+      try { syncSessionDoc(s); } catch {}
+      nSess++;
+    });
+  });
+  if (nSess) saveLocal(SK.SESSIONS, sessions);
+
+  blocks.forEach(b => {
+    const r = remap(b.tags);
+    if (!r.changed) return;
+    b.tags = r.arr;
+    b._synced = false;
+    try { syncBlockDoc(b); } catch {}
+    nBlock++;
+  });
+  if (nBlock) saveLocal(SK.BLOCKS, blocks);
+
+  return { captures: nCap, learning: nLearn, daily: nDaily, sessions: nSess, blocks: nBlock };
+}
+
+// Project-rename also needs to canonicalise the legacy `c.project_tag` field
+// on captures (whose value is the human name, not a tag). This is split out
+// from the generic tag rewrite so the latter stays focused on tags[].
+function canonicaliseProjectTagField(oldSlug, newName) {
+  let n = 0;
+  captures.forEach(c => {
+    if (!c.project_tag) return;
+    if (projectSlug(c.project_tag) !== oldSlug) return;
+    c.project_tag = newName || '';
+    c._synced = false;
+    try { syncCaptureDoc(c); } catch {}
+    n++;
+  });
+  if (n) saveLocal(SK.CAPTURES, captures);
+  return n;
+}
+
+// Rewrite every reference to oldSlug → newSlug across all collections.
+// `newName` is the canonical-cased project name (used for project_tag).
+// If newSlug is null, this is a delete: the tag is stripped, project_tag cleared.
+// Returns { captures, learning, daily, sessions, blocks } — count of items
+// modified per collection. Note: `captures` may double-count items modified
+// by both the tag rewrite and the project_tag rewrite — we return the
+// max-touched figure rather than fight the precision since per-doc syncs
+// already coalesce duplicates correctly.
+function rewriteProjectReferences(oldSlug, newSlug, newName) {
+  const oldTag = '#' + oldSlug;
+  const newTag = newSlug ? '#' + newSlug : null;
+  const tagCounts  = rewriteTagAcrossAll(oldTag, newTag);
+  const fieldCount = canonicaliseProjectTagField(oldSlug, newName);
+  return {
+    captures: Math.max(tagCounts.captures, fieldCount),
+    learning: tagCounts.learning,
+    daily:    tagCounts.daily,
+    sessions: tagCounts.sessions,
+    blocks:   tagCounts.blocks,
+  };
 }
 
 // Rename / merge: changes the canonical entry from `from` → `to`. If `to`
@@ -10085,6 +10139,236 @@ window.confirmProjectDelete = function() {
   if (selectedProject === name) selectedProject = null;
   openSettingsProjects();
   if (activeTab === 'projects' || activeTab === 'journal') renderMain(true);
+};
+
+// ── Settings → Tags ───────────────────────────────────────────
+// Built-in content tags are read-only (the app gives them special meaning).
+// Project tags are managed in Settings → Projects (renaming there cascades
+// here automatically). "Your tags" = everything else — usually the user's
+// custom tags from inline #hashtags or the picker's "+ custom" input.
+
+const TAG_BUILT_IN = ['#win', '#insight', '#dft', '#pending', '#1%'];
+
+// Walk every collection, count how many entries carry each tag. Returns
+// Map<tag, { total, captures, learning, daily, sessions, blocks }>.
+function collectAllTagsInUse() {
+  const acc = new Map();
+  const bump = (tag, key) => {
+    if (!tag) return;
+    if (!acc.has(tag)) acc.set(tag, { total: 0, captures: 0, learning: 0, daily: 0, sessions: 0, blocks: 0 });
+    const e = acc.get(tag);
+    e[key]++; e.total++;
+  };
+  captures.forEach(c => (c.tags || []).forEach(t => bump(t, 'captures')));
+  (learning || []).forEach(e => (e.tags || []).forEach(t => bump(t, 'learning')));
+  (dailyJournals || []).forEach(d => (d.tags || []).forEach(t => bump(t, 'daily')));
+  Object.values(sessions || {}).forEach(list => (list || []).forEach(s => (s.tags || []).forEach(t => bump(t, 'sessions'))));
+  blocks.forEach(b => (b.tags || []).forEach(t => bump(t, 'blocks')));
+  return acc;
+}
+
+// Tag rename / merge — auto-merges when target already in use.
+function performTagRename(from, to) {
+  const oldTag = normalizeTag(from);
+  const newTag = normalizeTag(to);
+  if (!oldTag || !newTag || oldTag === newTag) return null;
+  const counts = rewriteTagAcrossAll(oldTag, newTag);
+  // tagHistory cleanup
+  const i = tagHistory.indexOf(oldTag);
+  if (i >= 0) tagHistory.splice(i, 1);
+  if (!tagHistory.includes(newTag) && !TAG_BUILT_IN.includes(newTag)) {
+    tagHistory.push(newTag);
+  }
+  tagHistory.sort();
+  saveLocal(SK.TAG_HISTORY, tagHistory);
+  if (typeof syncTagHistory === 'function') syncTagHistory();
+  return counts;
+}
+
+function performTagDelete(tag) {
+  const t = normalizeTag(tag);
+  if (!t) return null;
+  const counts = rewriteTagAcrossAll(t, null);
+  const i = tagHistory.indexOf(t);
+  if (i >= 0) {
+    tagHistory.splice(i, 1);
+    saveLocal(SK.TAG_HISTORY, tagHistory);
+    if (typeof syncTagHistory === 'function') syncTagHistory();
+  }
+  return counts;
+}
+
+let _settingsTagAction = null; // { tag, mode: 'menu'|'rename'|'delete-confirm' }
+
+function openSettingsTags() {
+  _settingsTagAction = null;
+  const usage = collectAllTagsInUse();
+  const projectTagSet = new Set(projects.map(p => '#' + projectSlug(p)));
+  const builtInSet = new Set(TAG_BUILT_IN);
+
+  // Three groupings: built-in (read-only), project tags (link only),
+  // your tags (editable). Sort each by usage desc then alpha.
+  const groups = { builtIn: [], project: [], custom: [] };
+  for (const [tag, counts] of usage.entries()) {
+    if (builtInSet.has(tag))     groups.builtIn.push({ tag, counts });
+    else if (projectTagSet.has(tag)) groups.project.push({ tag, counts });
+    else                          groups.custom.push({ tag, counts });
+  }
+  // Tags in tagHistory but not yet used anywhere — show in custom with 0 count
+  // so the user can clean stale picker history too.
+  tagHistory.forEach(t => {
+    if (!usage.has(t) && !builtInSet.has(t) && !projectTagSet.has(t)) {
+      groups.custom.push({ tag: t, counts: { total: 0, captures: 0, learning: 0, daily: 0, sessions: 0, blocks: 0 } });
+    }
+  });
+  const sortFn = (a, b) => (b.counts.total - a.counts.total) || a.tag.localeCompare(b.tag);
+  groups.builtIn.sort(sortFn);
+  groups.project.sort(sortFn);
+  groups.custom.sort(sortFn);
+
+  const sectionHeader = label => `<div class="settings-row-sub" style="margin:0.85rem 0.1rem 0.35rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600">${esc(label)}</div>`;
+  const readOnlyRow = ({ tag, counts }) => `
+    <div class="settings-row" style="cursor:default">
+      <span class="settings-row-icon">🏷️</span>
+      <div class="settings-row-text">
+        <div class="settings-row-label">${esc(tag)}</div>
+        <div class="settings-row-sub">${counts.total} ${counts.total === 1 ? 'entry' : 'entries'}</div>
+      </div>
+    </div>`;
+  const projectLinkRow = ({ tag, counts }) => `
+    <button class="settings-row" onclick="openSettingsProjects()">
+      <span class="settings-row-icon">📁</span>
+      <div class="settings-row-text">
+        <div class="settings-row-label">${esc(tag)}</div>
+        <div class="settings-row-sub">${counts.total} ${counts.total === 1 ? 'entry' : 'entries'} · manage in Projects</div>
+      </div>
+      <span class="settings-row-chev">›</span>
+    </button>`;
+  const customRow = ({ tag, counts }) => `
+    <button class="settings-row" onclick="openTagAction('${esc(tag).replace(/'/g, "\\'")}')">
+      <span class="settings-row-icon">🏷️</span>
+      <div class="settings-row-text">
+        <div class="settings-row-label">${esc(tag)}</div>
+        <div class="settings-row-sub">${counts.total} ${counts.total === 1 ? 'entry' : 'entries'}${counts.total === 0 ? ' · unused' : ''}</div>
+      </div>
+      <span class="settings-row-chev">›</span>
+    </button>`;
+
+  const body = document.getElementById('settings-body');
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Tags')}
+    ${groups.builtIn.length ? sectionHeader('Built-in') + '<div class="settings-list">' + groups.builtIn.map(readOnlyRow).join('') + '</div>' : ''}
+    ${groups.project.length ? sectionHeader('Project tags') + '<div class="settings-list">' + groups.project.map(projectLinkRow).join('') + '</div>' : ''}
+    ${groups.custom.length
+      ? sectionHeader('Your tags') + '<div class="settings-list">' + groups.custom.map(customRow).join('') + '</div>'
+      : sectionHeader('Your tags') + `<div class="proj-empty" style="padding:1rem 0.5rem;text-align:center;color:var(--text3);font-size:0.85rem">No custom tags yet. Use #hashtag inside any entry to start.</div>`}
+  `;
+  openSheet('sheet-settings');
+}
+
+window.openTagAction = function(tag) {
+  _settingsTagAction = { tag, mode: 'menu' };
+  renderTagActionPanel();
+};
+
+function renderTagActionPanel() {
+  const body = document.getElementById('settings-body');
+  if (!_settingsTagAction) { openSettingsTags(); return; }
+  const { tag, mode } = _settingsTagAction;
+  const usage = collectAllTagsInUse().get(tag) || { total: 0, captures: 0, learning: 0, daily: 0, sessions: 0, blocks: 0 };
+  const back = `
+    <div class="settings-subhdr">
+      <button class="settings-back-btn" onclick="openSettingsTags()" aria-label="Back">‹</button>
+      <span class="settings-subhdr-title">${esc(tag)}</span>
+    </div>`;
+  const usageLine = usage.total
+    ? `${usage.captures} captures · ${usage.learning} learning · ${usage.daily} daily · ${usage.sessions} sessions · ${usage.blocks} blocks`
+    : `Not currently used in any entry (still in your tag history).`;
+
+  if (mode === 'menu') {
+    body.innerHTML = `
+      ${back}
+      <div class="settings-row-sub" style="margin:-0.4rem 0 0.85rem 0.1rem">${esc(usageLine)}</div>
+      <div class="settings-list">
+        <button class="settings-row" onclick="setTagActionMode('rename')">
+          <span class="settings-row-icon">✏️</span>
+          <div class="settings-row-text"><div class="settings-row-label">Rename</div><div class="settings-row-sub">Type a new name. If it matches an existing tag, this becomes a merge.</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+        <button class="settings-row" onclick="setTagActionMode('delete-confirm')">
+          <span class="settings-row-icon" style="color:var(--danger)">🗑</span>
+          <div class="settings-row-text"><div class="settings-row-label" style="color:var(--danger)">Delete</div><div class="settings-row-sub">Strip this tag from every entry. Body text is preserved.</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+      </div>
+    `;
+  } else if (mode === 'rename') {
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc">Type a new name. The leading <code>#</code> is added automatically.</p>
+      <input type="text" id="tag-rename-input" class="mr-input" value="${esc(tag.replace(/^#/, ''))}" autocomplete="off" />
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" onclick="confirmTagRename()">Save</button>
+        <button class="btn-ghost" onclick="setTagActionMode('menu')">Cancel</button>
+      </div>
+    `;
+    setTimeout(() => {
+      const inp = document.getElementById('tag-rename-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }, 50);
+  } else if (mode === 'delete-confirm') {
+    const refsLine = usage.total
+      ? `This will strip <strong>${esc(tag)}</strong> from ${usage.total} ${usage.total === 1 ? 'entry' : 'entries'}. Body text is preserved exactly as written.`
+      : `Removes <strong>${esc(tag)}</strong> from your tag history. No entries reference it.`;
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc" style="color:var(--danger)">${refsLine}</p>
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" style="background:var(--danger)" onclick="confirmTagDelete()">Delete</button>
+        <button class="btn-ghost" onclick="setTagActionMode('menu')">Cancel</button>
+      </div>
+    `;
+  }
+}
+
+window.setTagActionMode = function(mode) {
+  if (!_settingsTagAction) return;
+  _settingsTagAction.mode = mode;
+  renderTagActionPanel();
+};
+
+window.confirmTagRename = function() {
+  if (!_settingsTagAction) return;
+  const inp = document.getElementById('tag-rename-input');
+  let raw = (inp ? inp.value : '').trim();
+  if (!raw) { toast('Tag name cannot be empty'); return; }
+  if (!raw.startsWith('#')) raw = '#' + raw;
+  const newTag = normalizeTag(raw);
+  if (!newTag) { toast('Tag must contain at least one letter or digit'); return; }
+  const from = _settingsTagAction.tag;
+  if (TAG_BUILT_IN.includes(newTag)) { toast(`${newTag} is built-in — pick another name`); return; }
+  const projectTagSet = new Set(projects.map(p => '#' + projectSlug(p)));
+  if (projectTagSet.has(newTag)) {
+    toast(`${newTag} is a project tag — manage it in Settings → Projects`); return;
+  }
+  const res = performTagRename(from, newTag);
+  if (!res) { setTagActionMode('menu'); return; }
+  const merged = res.captures + res.learning + res.daily + res.sessions + res.blocks;
+  toast(`✓ ${from} → ${newTag} — ${merged} ${merged === 1 ? 'entry' : 'entries'} updated`, 4500);
+  openSettingsTags();
+  if (activeTab === 'journal' || activeTab === 'projects' || activeTab === 'today') renderMain(true);
+};
+
+window.confirmTagDelete = function() {
+  if (!_settingsTagAction) return;
+  const tag = _settingsTagAction.tag;
+  if (TAG_BUILT_IN.includes(tag)) { toast(`${tag} is built-in — can't delete`); return; }
+  const res = performTagDelete(tag);
+  if (!res) { setTagActionMode('menu'); return; }
+  const stripped = res.captures + res.learning + res.daily + res.sessions + res.blocks;
+  toast(`✓ Deleted ${tag} — stripped from ${stripped} ${stripped === 1 ? 'entry' : 'entries'}`, 4500);
+  openSettingsTags();
+  if (activeTab === 'journal' || activeTab === 'projects' || activeTab === 'today') renderMain(true);
 };
 
 window.closeSheets = function() {
