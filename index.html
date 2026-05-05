@@ -3983,7 +3983,6 @@ function renderCapPreview(c) {
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
-          ${c.project_tag ? `<span class="project-tag">#${esc(c.project_tag)}</span>` : ''}
           <span class="cap-time">${fmtTime(c.timestamp)}</span>
         </div>
         <div class="cap-body-preview">${esc(c.body)}</div>
@@ -4000,18 +3999,10 @@ function renderJournal() {
   const tagFilters = { '#win': '#win', '#insight': '#insight', '#dft': '#dft' };
   const isTagFilter = journalFilter.startsWith('#');
 
-  // Project names — derived from type=project captures (establishes the canonical list)
-  const projectCaptures = captures.filter(c => c.type === 'project');
-  const projMap = new Map(); // normKey → first original value seen
-  projectCaptures.forEach(c => {
-    if (!c.project_tag) return;
-    const k = c.project_tag.toLowerCase();
-    if (!projMap.has(k)) projMap.set(k, c.project_tag);
-  });
-  const projectNames = [...projMap.values()].sort();
-  // Set of known project hashtags, e.g. {'#timetracker', '#dayos'}.
-  // Use projectSlug so projects with punctuation (e.g. "Meal Co-Pilot")
-  // produce the same slug a user would type as `#mealcopilot`.
+  // Project names — read straight from the canonical `projects` array.
+  // Post-unification (migrateLegacyProjects), every project lives there;
+  // we no longer derive names from legacy `c.project_tag` values.
+  const projectNames = [...projects].sort();
   const knownProjectTags = new Set(projectNames.map(p => '#' + projectSlug(p)));
 
   let filtered;
@@ -4419,7 +4410,6 @@ function renderCapFull(c) {
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
-          ${c.project_tag ? `<span class="project-tag">#${esc(c.project_tag)}</span>` : ''}
           <span class="cap-time">${dateLabel}</span>
         </div>
         <div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>
@@ -4704,12 +4694,10 @@ function getRelatedCapturesFor(projectName) {
   if (!slug) return [];
   const refs = [];
   captures.forEach(c => {
-    const tagMatch     = (c.tags || []).some(t => projectSlug(t) === slug);
-    // Legacy fallback: pre-refactor Project-type captures stored their
-    // affiliation only in `project_tag` and never wrote it into tags[].
-    // We surface those here so old data isn't lost.
-    const legacyMatch  = c.project_tag && projectSlug(c.project_tag) === slug;
-    if (!tagMatch && !legacyMatch) return;
+    // Post-unification: `tags[]` is the single source of truth for project
+    // affiliation. The migration backfilled tags[] from any legacy
+    // project_tag, so the legacy-fallback branch is no longer needed.
+    if (!(c.tags || []).some(t => projectSlug(t) === slug)) return;
     refs.push({
       sourceType: 'journal',
       sourceId:   c.id,
@@ -5892,6 +5880,66 @@ async function syncProjectsDoc() {
   if (!user) return;
   try { await setDoc(doc(db, 'users', user.uid, 'meta', 'projects'), { list: projects }); }
   catch (err) { console.error('[DayOS] Projects sync error:', err); }
+}
+
+// ── Legacy project unification (one-shot migration) ───────────
+// Pre-Settings, two parallel project-name systems coexisted:
+//   - canonical `projects` array (Projects-tab pills, capture pickers)
+//   - legacy `c.project_tag` field on captures (Journal filter, badge)
+// The migration below reconciles them ONCE on app load:
+//   1. Promote any project_tag value not in `projects` into the array
+//      (preserve original casing; case-insensitive de-dupe via slug).
+//   2. Backfill `c.tags[]` so every capture with a project_tag also
+//      carries the corresponding `#slug` tag — making tags[] the single
+//      source of truth for project affiliation going forward.
+// Gated by localStorage flag so it never re-runs. Disk shape of the
+// `project_tag` field is left untouched for safe rollback.
+function migrateLegacyProjects() {
+  const FLAG_KEY = 'dayos_proj_migration_v1';
+  if (localStorage.getItem(FLAG_KEY)) return;
+
+  let promoted = 0, backfilled = 0;
+
+  const seen = new Set(projects.map(p => projectSlug(p)));
+  captures.forEach(c => {
+    if (!c.project_tag) return;
+    const slug = projectSlug(c.project_tag);
+    if (!slug || seen.has(slug)) return;
+    projects.push(c.project_tag);
+    seen.add(slug);
+    promoted++;
+  });
+
+  captures.forEach(c => {
+    if (!c.project_tag) return;
+    const slug = projectSlug(c.project_tag);
+    if (!slug) return;
+    const wantTag = '#' + slug;
+    if (!Array.isArray(c.tags)) c.tags = [];
+    if (!c.tags.includes(wantTag)) {
+      c.tags.push(wantTag);
+      c._synced = false;
+      backfilled++;
+    }
+  });
+
+  if (promoted > 0 || backfilled > 0) {
+    saveLocal(SK.PROJECTS, projects);
+    saveLocal(SK.CAPTURES, captures);
+    if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
+    captures.filter(c => c._synced === false).forEach(c => {
+      try { syncCaptureDoc(c); } catch {}
+    });
+    console.log(`[DayOS] migrateLegacyProjects: promoted ${promoted} projects, backfilled ${backfilled} captures`);
+    if (promoted > 0) {
+      // One-time gentle nudge so the user knows where to clean up.
+      setTimeout(() => {
+        toast(`Found ${promoted} project${promoted === 1 ? '' : 's'} from older entries — review in Settings → Projects`, 6000);
+      }, 1500);
+    }
+  }
+
+  localStorage.setItem(FLAG_KEY, '1');
 }
 
 // ── Today-tab banner dismissals cloud sync (B3) ─────────────
@@ -7795,12 +7843,8 @@ function openCapture(type = 'note') {
   document.getElementById('f-project-tag').value = '';
   renderCapTypeRow();
   toggleCaptureFieldVisibility();
-  const _projSugMap = new Map();
-  captures.filter(c => c.type === 'project' && c.project_tag).forEach(c => {
-    const k = c.project_tag.toLowerCase();
-    if (!_projSugMap.has(k)) _projSugMap.set(k, c.project_tag);
-  });
-  window._projectSuggestions = [..._projSugMap.values()].sort();
+  // Suggestions sourced from the canonical `projects` array (post-unification).
+  window._projectSuggestions = [...projects].sort();
   // Reset tag picker state for a new capture
   captureFormTags = new Set();
   captureTagCustomOpen = false;
@@ -8383,11 +8427,21 @@ window.saveCapture = function() {
   const body = document.getElementById('f-cap-body').value.trim();
   if (!body) { toast('Capture cannot be empty'); return; }
   const projectTag = document.getElementById('f-project-tag').value.trim();
+  // Auto-add freshly typed project name into the canonical list so we never
+  // create stranded "legacy" entries again. Case-insensitive de-dupe via slug.
+  if (projectTag) {
+    const slug = projectSlug(projectTag);
+    if (slug && !projects.some(p => projectSlug(p) === slug)) {
+      projects.push(projectTag);
+      saveLocal(SK.PROJECTS, projects);
+      if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
+    }
+  }
   // Layer 1 (pill-selected) + Layer 2 (inline hashtags). Merge + dedupe.
   // Original body text is preserved verbatim — hashtags are NOT stripped.
-  // The legacy Project-capture-type "project tag" free-form field is also
-  // mirrored into tags[] so Project-type captures get a projectRef and show
-  // up in the Projects → Related Captures section consistently.
+  // The Project-capture-type "project tag" free-form field is also mirrored
+  // into tags[] so Project-type captures get a projectRef and show up in the
+  // Projects → Related Captures section consistently.
   const inlineTags = extractTags(body);
   const projectTagFromField = projectTag ? [normalizeTag('#' + projectTag)] : [];
   const tags = [...new Set(
@@ -9645,6 +9699,7 @@ window.openSettingsSection = function(id) {
   switch (id) {
     case 'appearance': return openSettingsAppearance();
     case 'sync':       return openSettingsSync();
+    case 'projects':   return openSettingsProjects();
     default: {
       const s = SETTINGS_SECTIONS.find(x => x.id === id);
       toast(`${s?.label || id} — coming next`, 2000);
@@ -9723,6 +9778,314 @@ function openSettingsSync() {
   `;
   openSheet('sheet-settings');
 }
+
+// ── Settings → Projects ───────────────────────────────────────
+// Single source-of-truth list; every entry is editable. Tap a row to open
+// an action menu (Rename · Merge into… · Delete). All three operations
+// cascade through every collection that references the project name or
+// its slug — the canonical projects array, sessions[name], and the tags[]
+// arrays of captures / learning / dailyJournals. Per-doc cloud syncs run
+// for every modified document so the change reaches all your devices.
+
+// Tally of how many entries reference a given project (by slug). Used in
+// the row subtitle + delete confirmation.
+function projectUsageCounts(name) {
+  const slug = projectSlug(name);
+  if (!slug) return { sessions: 0, captures: 0, learning: 0, daily: 0 };
+  const tagMatch = arr => (arr || []).some(t => projectSlug(t) === slug);
+  return {
+    sessions: ((sessions && sessions[name]) || []).length,
+    captures: captures.filter(c => tagMatch(c.tags) || projectSlug(c.project_tag || '') === slug).length,
+    learning: (learning || []).filter(e => tagMatch(e.tags)).length,
+    daily:    (dailyJournals || []).filter(d => tagMatch(d.tags)).length,
+  };
+}
+
+// Rewrite every reference to oldSlug → newSlug across all collections.
+// `newName` is the canonical-cased project name (used for project_tag).
+// If newSlug is null, this is a delete: the tag is stripped, project_tag cleared.
+// Returns { captures, learning, daily, sessions } — count of items modified.
+function rewriteProjectReferences(oldSlug, newSlug, newName) {
+  let nCap = 0, nLearn = 0, nDaily = 0, nSess = 0;
+  const oldTag = '#' + oldSlug;
+  const newTag = newSlug ? '#' + newSlug : null;
+  const remap = arr => {
+    if (!Array.isArray(arr)) return { arr: [], changed: false };
+    let changed = false;
+    const out = [];
+    arr.forEach(t => {
+      if (projectSlug(t) === oldSlug) {
+        changed = true;
+        if (newTag && !out.includes(newTag)) out.push(newTag);
+      } else {
+        out.push(t);
+      }
+    });
+    return { arr: out, changed };
+  };
+
+  captures.forEach(c => {
+    let touched = false;
+    const r = remap(c.tags);
+    if (r.changed) { c.tags = r.arr; touched = true; }
+    if (c.project_tag && projectSlug(c.project_tag) === oldSlug) {
+      c.project_tag = newName || '';
+      touched = true;
+    }
+    if (touched) {
+      c._synced = false;
+      try { syncCaptureDoc(c); } catch {}
+      nCap++;
+    }
+  });
+  if (nCap) saveLocal(SK.CAPTURES, captures);
+
+  (learning || []).forEach(e => {
+    const r = remap(e.tags);
+    if (!r.changed) return;
+    e.tags = r.arr;
+    e._synced = false;
+    try { syncLearningDoc(e); } catch {}
+    nLearn++;
+  });
+  if (nLearn) saveLocal(SK.LEARNING, learning);
+
+  (dailyJournals || []).forEach(d => {
+    const r = remap(d.tags);
+    if (!r.changed) return;
+    d.tags = r.arr;
+    d._synced = false;
+    try { syncDailyJournalDoc(d); } catch {}
+    nDaily++;
+  });
+  if (nDaily) saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+
+  // sessions are keyed by project name (not by tag) — handled by callers
+  // that need to rekey/merge them. We just return the counts here.
+  return { captures: nCap, learning: nLearn, daily: nDaily, sessions: nSess };
+}
+
+// Rename / merge: changes the canonical entry from `from` → `to`. If `to`
+// already exists in `projects`, the operation is a merge (sessions get
+// concatenated, original `from` entry is removed). Otherwise it's a rename.
+function performProjectRenameOrMerge(from, to) {
+  const fromSlug = projectSlug(from);
+  const toSlug   = projectSlug(to);
+  if (!fromSlug || !toSlug) return null;
+  if (fromSlug === toSlug) return null;
+
+  const targetExists = projects.some(p => projectSlug(p) === toSlug && projectSlug(p) !== fromSlug);
+  const isMerge = targetExists;
+
+  // 1. Cascade tag references.
+  const counts = rewriteProjectReferences(fromSlug, toSlug, to);
+
+  // 2. Rekey sessions[from] → sessions[to]. On merge, append; on rename, move.
+  if (sessions && sessions[from]) {
+    const list = sessions[from];
+    if (!sessions[to]) sessions[to] = [];
+    list.forEach(s => {
+      s.projectName = to;
+      s._synced = false;
+      sessions[to].push(s);
+      try { syncSessionDoc(s); } catch {}
+      counts.sessions++;
+    });
+    delete sessions[from];
+    saveLocal(SK.SESSIONS, sessions);
+  }
+
+  // 3. Update the canonical projects array.
+  if (isMerge) {
+    projects = projects.filter(p => projectSlug(p) !== fromSlug);
+  } else {
+    const idx = projects.findIndex(p => projectSlug(p) === fromSlug);
+    if (idx >= 0) projects[idx] = to;
+  }
+  saveLocal(SK.PROJECTS, projects);
+  if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
+
+  return { isMerge, ...counts };
+}
+
+// Delete: strips the tag from all referencing entries, removes the project
+// from the canonical list, and deletes any sessions[name] outright. Sessions
+// are keyed by project name with no other anchor, so deleting the project
+// without a target merge means the sessions are destroyed too.
+function performProjectDelete(name) {
+  const slug = projectSlug(name);
+  if (!slug) return null;
+  const counts = rewriteProjectReferences(slug, null, null);
+  if (sessions && sessions[name]) {
+    counts.sessions = sessions[name].length;
+    delete sessions[name];
+    saveLocal(SK.SESSIONS, sessions);
+  }
+  projects = projects.filter(p => projectSlug(p) !== slug);
+  saveLocal(SK.PROJECTS, projects);
+  if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
+  return counts;
+}
+
+// Settings → Projects entry-point. State lives in module-locals so the
+// row → action-sheet → confirm flow can re-render in place without
+// stuffing more globals onto window.
+let _settingsProjAction = null; // { name, mode: 'menu'|'rename'|'merge'|'delete-confirm' }
+
+function openSettingsProjects() {
+  _settingsProjAction = null;
+  const body = document.getElementById('settings-body');
+  const sorted = [...projects].sort((a, b) => a.localeCompare(b));
+  const rows = sorted.length
+    ? sorted.map(name => {
+        const u = projectUsageCounts(name);
+        const sub = `${u.sessions} sessions · ${u.captures} entries${u.learning ? ` · ${u.learning} learning` : ''}${u.daily ? ` · ${u.daily} daily` : ''}`;
+        return `
+          <button class="settings-row" onclick="openProjectAction('${esc(name).replace(/'/g, "\\'")}')">
+            <span class="settings-row-icon">📁</span>
+            <div class="settings-row-text">
+              <div class="settings-row-label">${esc(name)}</div>
+              <div class="settings-row-sub">${esc(sub)}</div>
+            </div>
+            <span class="settings-row-chev">›</span>
+          </button>`;
+      }).join('')
+    : `<div class="proj-empty" style="padding:1.5rem 0.5rem;text-align:center;color:var(--text3);font-size:0.85rem">No projects yet. Create one from the Projects tab.</div>`;
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Projects')}
+    <div class="settings-list">${rows}</div>
+  `;
+  openSheet('sheet-settings');
+}
+
+window.openProjectAction = function(name) {
+  _settingsProjAction = { name, mode: 'menu' };
+  renderProjectActionPanel();
+};
+
+function renderProjectActionPanel() {
+  const body = document.getElementById('settings-body');
+  if (!_settingsProjAction) { openSettingsProjects(); return; }
+  const { name, mode } = _settingsProjAction;
+  const back = `
+    <div class="settings-subhdr">
+      <button class="settings-back-btn" onclick="openSettingsProjects()" aria-label="Back">‹</button>
+      <span class="settings-subhdr-title">${esc(name)}</span>
+    </div>`;
+  const usage = projectUsageCounts(name);
+  const usageLine = `${usage.sessions} sessions · ${usage.captures} entries · ${usage.learning} learning · ${usage.daily} daily`;
+
+  if (mode === 'menu') {
+    body.innerHTML = `
+      ${back}
+      <div class="settings-row-sub" style="margin:-0.4rem 0 0.85rem 0.1rem">${esc(usageLine)}</div>
+      <div class="settings-list">
+        <button class="settings-row" onclick="setProjectActionMode('rename')">
+          <span class="settings-row-icon">✏️</span>
+          <div class="settings-row-text"><div class="settings-row-label">Rename</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+        <button class="settings-row" onclick="setProjectActionMode('merge')" ${projects.length < 2 ? 'disabled style="opacity:0.5"' : ''}>
+          <span class="settings-row-icon">🔀</span>
+          <div class="settings-row-text"><div class="settings-row-label">Merge into…</div><div class="settings-row-sub">Move all entries + sessions into another project</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+        <button class="settings-row" onclick="setProjectActionMode('delete-confirm')">
+          <span class="settings-row-icon" style="color:var(--danger)">🗑</span>
+          <div class="settings-row-text"><div class="settings-row-label" style="color:var(--danger)">Delete</div><div class="settings-row-sub">Removes the project + strips the tag from all entries</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+      </div>
+    `;
+  } else if (mode === 'rename') {
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc">Type a new name. If a project with that name already exists, this becomes a merge.</p>
+      <input type="text" id="proj-rename-input" class="mr-input" value="${esc(name)}" autocomplete="off" />
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" onclick="confirmProjectRename()">Save</button>
+        <button class="btn-ghost" onclick="setProjectActionMode('menu')">Cancel</button>
+      </div>
+    `;
+    setTimeout(() => {
+      const inp = document.getElementById('proj-rename-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }, 50);
+  } else if (mode === 'merge') {
+    const targets = projects.filter(p => projectSlug(p) !== projectSlug(name));
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc">Pick the project to merge <strong>${esc(name)}</strong> into. All sessions and tags will move; this entry will be removed.</p>
+      <div class="settings-list">
+        ${targets.map(t => `
+          <button class="settings-row" onclick="confirmProjectMerge('${esc(t).replace(/'/g, "\\'")}')">
+            <span class="settings-row-icon">📁</span>
+            <div class="settings-row-text"><div class="settings-row-label">${esc(t)}</div></div>
+            <span class="settings-row-chev">›</span>
+          </button>`).join('')}
+      </div>
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-ghost" onclick="setProjectActionMode('menu')">Cancel</button>
+      </div>
+    `;
+  } else if (mode === 'delete-confirm') {
+    const refsLine = (usage.sessions || usage.captures || usage.learning || usage.daily)
+      ? `This will affect ${usageLine}. Sessions for <strong>${esc(name)}</strong> will be deleted. The project tag will be stripped from referenced entries (their text is preserved).`
+      : `Nothing currently references this project — safe to delete.`;
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc" style="color:var(--danger)">${refsLine}</p>
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" style="background:var(--danger)" onclick="confirmProjectDelete()">Delete</button>
+        <button class="btn-ghost" onclick="setProjectActionMode('menu')">Cancel</button>
+      </div>
+    `;
+  }
+}
+
+window.setProjectActionMode = function(mode) {
+  if (!_settingsProjAction) return;
+  _settingsProjAction.mode = mode;
+  renderProjectActionPanel();
+};
+
+window.confirmProjectRename = function() {
+  if (!_settingsProjAction) return;
+  const inp = document.getElementById('proj-rename-input');
+  const next = (inp ? inp.value : '').trim();
+  if (!next) { toast('Name cannot be empty'); return; }
+  const from = _settingsProjAction.name;
+  const res = performProjectRenameOrMerge(from, next);
+  if (!res) { setProjectActionMode('menu'); return; }
+  toast(res.isMerge
+    ? `✓ Merged into ${next} — ${res.sessions} sessions · ${res.captures + res.learning + res.daily} entries`
+    : `✓ Renamed to ${next}`, 4500);
+  if (selectedProject === from) selectedProject = next;
+  openSettingsProjects();
+  if (activeTab === 'projects' || activeTab === 'journal') renderMain(true);
+};
+
+window.confirmProjectMerge = function(target) {
+  if (!_settingsProjAction) return;
+  const from = _settingsProjAction.name;
+  const res = performProjectRenameOrMerge(from, target);
+  if (!res) { setProjectActionMode('menu'); return; }
+  toast(`✓ Merged into ${target} — ${res.sessions} sessions · ${res.captures + res.learning + res.daily} entries`, 4500);
+  if (selectedProject === from) selectedProject = target;
+  openSettingsProjects();
+  if (activeTab === 'projects' || activeTab === 'journal') renderMain(true);
+};
+
+window.confirmProjectDelete = function() {
+  if (!_settingsProjAction) return;
+  const name = _settingsProjAction.name;
+  const res = performProjectDelete(name);
+  if (!res) { setProjectActionMode('menu'); return; }
+  toast(`✓ Deleted ${name} — stripped from ${res.captures + res.learning + res.daily} entries`, 4500);
+  if (selectedProject === name) selectedProject = null;
+  openSettingsProjects();
+  if (activeTab === 'projects' || activeTab === 'journal') renderMain(true);
+};
 
 window.closeSheets = function() {
   // If the Daily Journal editor is currently open, flush a final save before
@@ -10607,6 +10970,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // ── Init ──────────────────────────────────────────────────────
+migrateLegacyProjects();
 autoLogSleep();
 sweepOldDfts();
 render();
