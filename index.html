@@ -680,6 +680,21 @@ html, body {
   color: var(--text3);
 }
 .tag-pick-pill.custom-pill:hover { color: var(--accent); border-color: var(--accent); }
+.tag-pick-pill.more-pill {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-weight: 500;
+}
+.tag-pick-pill.more-pill:hover { color: var(--text); border-color: var(--text3); }
+/* Card tag-pills "+N more" expander — same shape as tag-pill but muted */
+.tag-pill.tag-more {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+  cursor: pointer;
+}
+.tag-pill.tag-more:hover { color: var(--text2); border-color: var(--text3); }
 .tag-pick-pill:active { transform: scale(0.96); }
 .tag-custom-input {
   font-size: 0.78rem;
@@ -4186,11 +4201,23 @@ function renderJournal() {
   </div>`;
 }
 
-function renderTagPills(tags) {
+// Card-level tag pills. Long tag lists collapse to the first N pills + a
+// muted "+X more" pill that holds the rest in its title attribute (so
+// hover/long-press still reveals them). The full list is always available
+// when the card itself is opened — this is a visual-density fix only.
+const CARD_TAG_LIMIT = 4;
+function renderTagPills(tags, opts = {}) {
   if (!tags || !tags.length) return '';
-  return `<div class="tag-pills">${tags.map(t =>
-    `<span class="tag-pill ${tagClassFor(t)}">${esc(t)}</span>`
-  ).join('')}</div>`;
+  const limit   = (opts && opts.limit)   || CARD_TAG_LIMIT;
+  const visible = tags.length > limit ? tags.slice(0, limit) : tags;
+  const hidden  = tags.length - visible.length;
+  const pillsHtml = visible
+    .map(t => `<span class="tag-pill ${tagClassFor(t)}">${esc(t)}</span>`)
+    .join('');
+  const moreHtml = hidden > 0
+    ? `<span class="tag-pill tag-more" title="${tags.slice(limit).map(t => esc(t)).join(' · ')}">+${hidden} more</span>`
+    : '';
+  return `<div class="tag-pills">${pillsHtml}${moreHtml}</div>`;
 }
 
 // Normalise a project name or #tag into a comparable slug. Mirrors the char
@@ -4260,6 +4287,41 @@ function renderPickPill(ctx, t, selected) {
     onclick="toggleTagPick('${ctx}','${esc(t).replace(/'/g, "\\'")}')">${esc(t)}</button>`;
 }
 
+// One-line pill rendering with truncation. Groups longer than the limit
+// show the first N pills + a "▾ more (X)" toggle. Tap to expand the group
+// in place; "▴ less" collapses it back. Per-context expand state lives in
+// _pickerExpanded so re-renders during a session keep the user's choice.
+const PICKER_GROUP_LIMIT = 5;
+let _pickerExpanded = {}; // { 'capture:project': true, ... }
+
+function renderPillGroup(ctx, items, selectedSet, groupKey, opts = {}) {
+  if (!items.length) return '';
+  const expandKey = ctx + ':' + groupKey;
+  const expanded = !!_pickerExpanded[expandKey];
+  const showAll  = expanded || items.length <= PICKER_GROUP_LIMIT;
+  const visible  = showAll ? items : items.slice(0, PICKER_GROUP_LIMIT);
+  const hidden   = items.length - visible.length;
+
+  const pillsHtml = visible
+    .map(t => renderPickPill(ctx, t, selectedSet.has(t)))
+    .join('');
+
+  let trailHtml = '';
+  if (hidden > 0) {
+    trailHtml = `<button type="button" class="tag-pick-pill more-pill" onclick="togglePickerExpand('${ctx}','${groupKey}')">▾ more (${hidden})</button>`;
+  } else if (expanded && items.length > PICKER_GROUP_LIMIT) {
+    trailHtml = `<button type="button" class="tag-pick-pill more-pill" onclick="togglePickerExpand('${ctx}','${groupKey}')">▴ less</button>`;
+  }
+  const dividerHtml = opts.divider ? `<div class="tag-picker-divider"></div>` : '';
+  return `${dividerHtml}<div class="tag-picker-group">${pillsHtml}${trailHtml}</div>`;
+}
+
+window.togglePickerExpand = function(ctx, groupKey) {
+  const k = ctx + ':' + groupKey;
+  _pickerExpanded[k] = !_pickerExpanded[k];
+  renderTagPicker(ctx);
+};
+
 function renderTagPicker(ctx) {
   const { set, open, containerId } = tagPickerState(ctx);
   const container = document.getElementById(containerId);
@@ -4268,16 +4330,18 @@ function renderTagPicker(ctx) {
   const projectTags = projects.map(p => '#' + projectSlug(p));
   const knownSet = new Set([...TAG_CONTENT_BASE, ...projectTags]);
 
-  const contentHtml = TAG_CONTENT_BASE
-    .map(t => renderPickPill(ctx, t, set.has(t)))
-    .join('');
-  const projectHtml = projectTags
-    .map(t => renderPickPill(ctx, t, set.has(t)))
-    .join('');
-
-  // Extras: tags selected on this entry that aren't in the two groups (e.g. custom tags on edit).
-  const extras = [...set].filter(t => !knownSet.has(t));
-  const extrasHtml = extras.map(t => renderPickPill(ctx, t, true)).join('');
+  // Sort extras (custom tags already on this entry) by tagHistory recency
+  // so the most recently used ones surface first inside the visible slice.
+  const extras = [...set]
+    .filter(t => !knownSet.has(t))
+    .sort((a, b) => {
+      const ai = tagHistory.indexOf(a);
+      const bi = tagHistory.indexOf(b);
+      if (ai === -1 && bi === -1) return a.localeCompare(b);
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
 
   const customEl = open
     ? `<input class="tag-custom-input" id="${containerId}-custom"
@@ -4286,17 +4350,10 @@ function renderTagPicker(ctx) {
          onblur="confirmTagCustom('${ctx}')" />`
     : `<button type="button" class="tag-pick-pill custom-pill" onclick="openTagCustom('${ctx}')"># custom</button>`;
 
-  const projectGroupHtml = projectTags.length
-    ? `<div class="tag-picker-divider"></div><div class="tag-picker-group">${projectHtml}</div>`
-    : '';
-  const extrasGroupHtml = extras.length
-    ? `<div class="tag-picker-divider"></div><div class="tag-picker-group">${extrasHtml}</div>`
-    : '';
-
   container.innerHTML = `
-    <div class="tag-picker-group">${contentHtml}</div>
-    ${projectGroupHtml}
-    ${extrasGroupHtml}
+    ${renderPillGroup(ctx, TAG_CONTENT_BASE, set, 'content')}
+    ${renderPillGroup(ctx, projectTags,      set, 'project', { divider: true })}
+    ${renderPillGroup(ctx, extras,           set, 'extras',  { divider: true })}
     <div class="tag-picker-group" style="margin-top:4px">${customEl}</div>
   `;
 }
@@ -4349,20 +4406,24 @@ function normalizeTag(raw) {
   return t.length > 1 ? t : '';
 }
 
-// Add tags that aren't in the base-prepopulated list to persistent history
+// Add tags to persistent history with recency ordering. New + reused tags
+// always bubble to the FRONT of the array — this makes index 0 the most
+// recently touched tag, so pickers can surface "your recent tags" cheaply
+// without an extra timestamp field. Built-in content tags are excluded
+// (they have their own fixed group in the picker).
 function addToTagHistory(tags) {
   const base = new Set(TAG_PREPOPULATED_BASE);
   let changed = false;
   tags.forEach(t => {
     const tag = normalizeTag(t);
     if (!tag || base.has(tag)) return;
-    if (!tagHistory.includes(tag)) {
-      tagHistory.push(tag);
-      changed = true;
-    }
+    const i = tagHistory.indexOf(tag);
+    if (i === 0) return;        // already at the front — no-op
+    if (i > 0) tagHistory.splice(i, 1); // bump to front
+    tagHistory.unshift(tag);
+    changed = true;
   });
   if (changed) {
-    tagHistory.sort();
     saveLocal(SK.TAG_HISTORY, tagHistory);
     syncTagHistory();
   }
@@ -4380,10 +4441,18 @@ async function loadTagHistoryFromCloud(uid) {
     if (snap.exists()) {
       const remote = snap.data().history;
       if (Array.isArray(remote)) {
-        const merged = new Set([...tagHistory, ...remote.map(normalizeTag).filter(Boolean)]);
-        tagHistory = [...merged].sort();
+        // Merge order: local first (preserves this device's recency front-bias),
+        // then remote tags not already seen. NO alphabetical sort — the array
+        // order IS the recency signal post-redesign.
+        const seen = new Set(tagHistory);
+        remote.forEach(r => {
+          const t = normalizeTag(r);
+          if (!t || seen.has(t)) return;
+          tagHistory.push(t);
+          seen.add(t);
+        });
         saveLocal(SK.TAG_HISTORY, tagHistory);
-        // If any new ones, push merged back
+        // If we picked up extras from local, push merged back so cloud catches up.
         if (tagHistory.length !== remote.length) syncTagHistory();
       }
     } else if (tagHistory.length > 0) {
@@ -10173,13 +10242,15 @@ function performTagRename(from, to) {
   const newTag = normalizeTag(to);
   if (!oldTag || !newTag || oldTag === newTag) return null;
   const counts = rewriteTagAcrossAll(oldTag, newTag);
-  // tagHistory cleanup
+  // tagHistory cleanup: drop the old tag, surface the new one at the front
+  // (it was just "used" by this rename — recency belongs at index 0).
   const i = tagHistory.indexOf(oldTag);
   if (i >= 0) tagHistory.splice(i, 1);
-  if (!tagHistory.includes(newTag) && !TAG_BUILT_IN.includes(newTag)) {
-    tagHistory.push(newTag);
+  if (!TAG_BUILT_IN.includes(newTag)) {
+    const j = tagHistory.indexOf(newTag);
+    if (j >= 0) tagHistory.splice(j, 1);
+    tagHistory.unshift(newTag);
   }
-  tagHistory.sort();
   saveLocal(SK.TAG_HISTORY, tagHistory);
   if (typeof syncTagHistory === 'function') syncTagHistory();
   return counts;
