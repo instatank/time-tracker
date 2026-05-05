@@ -314,6 +314,30 @@ html, body {
 .settings-row.placeholder .settings-row-label { color: var(--text2); }
 .settings-row.placeholder .settings-row-sub   { font-style: italic; }
 
+/* Settings sub-screen header (back arrow + section title) */
+.settings-subhdr {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: -0.15rem 0 0.85rem 0;
+}
+.settings-back-btn {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.settings-back-btn:hover { color: var(--text); background: var(--surface2); }
+.settings-subhdr-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* ── Main scroll area ────────────────────────────────────────── */
 #main {
   flex: 1;
@@ -9615,13 +9639,90 @@ window.openSettings = function() {
   openSheet('sheet-settings');
 };
 
-// Stub handler — sections wire real content in later commits. For now each
-// section toasts so users (and Claude) can see the shell is plumbed and the
-// rows are tappable, without pretending they do anything yet.
+// Dispatch to a section's sub-screen. Sections without real content yet
+// fall through to a "coming next" toast so it's clear the shell is plumbed.
 window.openSettingsSection = function(id) {
-  const s = SETTINGS_SECTIONS.find(x => x.id === id);
-  toast(`${s?.label || id} — coming next`, 2000);
+  switch (id) {
+    case 'appearance': return openSettingsAppearance();
+    case 'sync':       return openSettingsSync();
+    default: {
+      const s = SETTINGS_SECTIONS.find(x => x.id === id);
+      toast(`${s?.label || id} — coming next`, 2000);
+    }
+  }
 };
+
+// Sub-screen header: back arrow + section title. Re-rendered into the
+// same #settings-body div as the sections list, so navigation is just
+// "swap innerHTML" — no extra sheets needed.
+function settingsSubhdrHtml(title) {
+  return `
+    <div class="settings-subhdr">
+      <button class="settings-back-btn" onclick="openSettings()" aria-label="Back">‹</button>
+      <span class="settings-subhdr-title">${esc(title)}</span>
+    </div>`;
+}
+
+// ── Settings → Appearance ─────────────────────────────────────
+// Relocated from the Account sheet. Same segmented control, same setTheme
+// handler — only the host has changed.
+function openSettingsAppearance() {
+  const body = document.getElementById('settings-body');
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Appearance')}
+    ${appearancePanelHtml()}
+  `;
+  openSheet('sheet-settings');
+}
+
+// ── Settings → Sync ───────────────────────────────────────────
+// Relocated Push / Pull / sign-out + sync status from the Account sheet.
+// Account now stays focused on identity + sign-in.
+function openSettingsSync() {
+  const body = document.getElementById('settings-body');
+  if (!user) {
+    body.innerHTML = `
+      ${settingsSubhdrHtml('Sync')}
+      <p class="auth-desc">Sign in to back up and sync your data across devices. Your existing entries will be preserved.</p>
+      <button class="btn-google" id="btn-google-signin" onclick="doSignIn()">
+        ${GOOGLE_SVG}
+        Continue with Google
+      </button>
+      <div class="auth-error" id="auth-error" style="display:none"></div>
+    `;
+    openSheet('sheet-settings');
+    return;
+  }
+  const statusLabels = { ok: '✓ Synced', syncing: 'Syncing…', error: 'Error', idle: 'Not synced' };
+  const statusLabel = statusLabels[syncStatus] || syncStatus;
+  const sessCount  = Object.values(sessions || {}).flat().length;
+  const learnCount = (learning || []).length;
+  const dailyCount = (dailyJournals || []).length;
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Sync')}
+    <div class="user-info">
+      <div class="user-name">${esc(user.displayName || 'User')}</div>
+      <div class="user-email">${esc(user.email || '')}</div>
+    </div>
+    <div class="sync-panel">
+      <div class="sync-row">
+        <span class="sync-key">Cloud sync</span>
+        <span class="sync-val ${syncStatus}">${statusLabel}</span>
+      </div>
+      <div class="sync-row">
+        <span class="sync-key">Local data</span>
+        <span class="sync-val">${blocks.length} blocks · ${captures.length} captures · ${sessCount} sessions · ${learnCount} learning · ${dailyCount} daily</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="forcePushToCloud()">↑ Push local → cloud</button>
+      <button class="btn-ghost"    onclick="forcePullFromCloud()">↓ Pull cloud → local</button>
+    </div>
+    <div class="sync-err-msg" id="sync-sheet-err"></div>
+    <button class="btn-signout" style="margin-top:0.25rem" onclick="doSignOut()">Sign out</button>
+  `;
+  openSheet('sheet-settings');
+}
 
 window.closeSheets = function() {
   // If the Daily Journal editor is currently open, flush a final save before
@@ -9736,34 +9837,19 @@ function appearancePanelHtml() {
 }
 
 // ── Auth sheet UI ──────────────────────────────────────────────
+// Account is now focused: identity + sign-in/sign-out only. Push / Pull /
+// theme moved to Settings (gear icon) per the Settings shell rollout.
 window.openAuth = function() {
   const body = document.getElementById('auth-body');
   const pendingRedirect = sessionStorage.getItem('dayos_redirect_pending');
 
   if (user) {
-    const statusLabels = { ok: '✓ Synced', syncing: 'Syncing…', error: 'Error', idle: 'Not synced' };
-    const statusLabel = statusLabels[syncStatus] || syncStatus;
     body.innerHTML = `
       <div class="user-info">
         <div class="user-name">${esc(user.displayName || 'User')}</div>
         <div class="user-email">${esc(user.email || '')}</div>
       </div>
-      <div class="sync-panel">
-        <div class="sync-row">
-          <span class="sync-key">Cloud sync</span>
-          <span class="sync-val ${syncStatus}">${statusLabel}</span>
-        </div>
-        <div class="sync-row">
-          <span class="sync-key">Local data</span>
-          <span class="sync-val">${blocks.length} blocks · ${captures.length} captures</span>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn-primary" onclick="forcePushToCloud()">↑ Push local → cloud</button>
-        <button class="btn-ghost"    onclick="forcePullFromCloud()">↓ Pull cloud → local</button>
-      </div>
-      <div class="sync-err-msg" id="sync-sheet-err"></div>
-      ${appearancePanelHtml()}
+      <p class="auth-desc" style="margin-top:0.6rem">Sync, appearance, and other preferences live in Settings (the gear icon).</p>
       <button class="btn-signout" style="margin-top:0.25rem" onclick="doSignOut()">Sign out</button>
     `;
   } else if (pendingRedirect) {
@@ -9773,7 +9859,6 @@ window.openAuth = function() {
         <p style="color:var(--text2);font-size:0.88rem;margin-bottom:1rem">Completing sign-in…</p>
         <button class="btn-ghost" onclick="cancelRedirect()">Cancel</button>
       </div>
-      ${appearancePanelHtml()}
     `;
   } else {
     body.innerHTML = `
@@ -9783,7 +9868,6 @@ window.openAuth = function() {
         Continue with Google
       </button>
       <div class="auth-error" id="auth-error" style="display:none"></div>
-      ${appearancePanelHtml()}
     `;
   }
   openSheet('sheet-auth');
@@ -9830,7 +9914,7 @@ window.doSignOut = async function() {
 window.forcePushToCloud = async function() {
   if (!user) return;
   setSyncStatus('syncing');
-  openAuth();
+  openSettingsSync();
   console.log('[DayOS] Push → UID:', user.uid, '| blocks:', blocks.length, '| captures:', captures.length);
   try {
     // 1) Batch the things that don't have per-doc sync flows (blocks +
@@ -9875,7 +9959,7 @@ window.forcePushToCloud = async function() {
       'sessions:', sessionDocs.length, 'learning:', learningDocs.length,
       'daily:', dailyDocs.length, 'monthly:', monthlyDocs.length, 'dfts:', dftDates.length);
     toast(`✓ Pushed ${blocks.length} blocks · ${captures.length} captures · ${sessionDocs.length} sessions · ${learningDocs.length} learning · ${dailyDocs.length} daily · ${monthlyDocs.length} monthly · ${dftDates.length} dfts`, 5000);
-    openAuth();
+    openSettingsSync();
   } catch (err) {
     setSyncStatus('error');
     const isRules = err.code === 'permission-denied' || err.message?.includes('not found in Firestore');
@@ -9893,7 +9977,7 @@ window.forcePushToCloud = async function() {
 window.forcePullFromCloud = async function() {
   if (!user) return;
   setSyncStatus('syncing');
-  openAuth();
+  openSettingsSync();
   console.log('[DayOS] Pull → UID:', user.uid);
   try {
     // 1) Pull the five "flat" collections that have no per-doc sync flow.
@@ -9969,7 +10053,7 @@ window.forcePullFromCloud = async function() {
     const sessCount  = Object.values(sessions).flat().length;
     const learnCount = (learning || []).length;
     toast(`✓ Pulled ${blocks.length} blocks · ${captures.length} captures · ${sessCount} sessions · ${learnCount} learning · ${dailyJournals.length} daily`, 5000);
-    openAuth();
+    openSettingsSync();
     render();
   } catch (err) {
     setSyncStatus('error');
@@ -10407,11 +10491,9 @@ window.setTheme = function(pref) {
   _themePref = pref;
   localStorage.setItem(THEME_KEY, pref);
   applyTheme(pref);
-  // Re-render the Account sheet so the segmented control reflects the new state.
-  const sheet = document.getElementById('sheet-auth');
-  if (sheet && sheet.classList.contains('open')) {
-    if (typeof openAuth === 'function') openAuth();
-  }
+  // Re-render whichever sheet hosts the appearance control so it reflects state.
+  const settingsOpen = document.getElementById('sheet-settings')?.classList.contains('open');
+  if (settingsOpen) openSettingsAppearance();
 };
 
 // React to OS theme changes when the user chose "system".
