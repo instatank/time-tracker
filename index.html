@@ -3919,35 +3919,26 @@ function renderToday() {
         </div>`}
 
     ${(() => {
-      // Day Score — config-driven. Each enabled tile renders its own HTML
-      // chunk. Disabled tiles are skipped entirely; if all 5 are disabled,
-      // the section header is dropped too so the page doesn't show an
-      // empty "Day Score" container.
-      const tileHtml = {
-        deepWork: `<div class="score-item">
-          <span class="score-val">${sc.deepWorkHrs.toFixed(1)}h</span>
-          <span class="score-label">Deep Work</span>
-        </div>`,
-        leaks: `<div class="score-item">
-          <span class="score-val ${sc.leakHrs >= 1 ? 'warn' : ''}">${sc.leakHrs.toFixed(1)}h</span>
-          <span class="score-label">Leaks</span>
-        </div>`,
-        practice: `<div class="score-item">
-          <span class="score-val ${sc.practiceDone ? 'good' : ''}">${sc.practiceDone ? '✓' : '–'}</span>
-          <span class="score-label">Practice</span>
-        </div>`,
-        journal: `<div class="score-item">
-          <span class="score-val ${sc.journalDone ? 'good' : ''}">${sc.journalDone ? '✓' : '–'}</span>
-          <span class="score-label">Journal</span>
-        </div>`,
-        entCap: `<div class="score-item" title="Entertainment Cap — yesterday's check">
-          <span class="score-val ${entCap === 'yes' ? 'good' : entCap === 'no' ? 'bad' : ''}">${entCap === 'yes' ? '✓' : entCap === 'no' ? '✕' : '–'}</span>
-          <span class="score-label">Ent Cap</span>
-        </div>`,
+      // Day Score — config-driven via DAYSCORE_TILE_CATALOG. Each tile id
+      // has a hardcoded read of state (computed in `dayCtx` below). The
+      // user controls visibility, label, and which catalog entries are in
+      // their grid. Unknown ids are silently skipped (forward-compat).
+      const dayCtx = {
+        deepWorkHrs:  sc.deepWorkHrs,
+        leakHrs:      sc.leakHrs,
+        totalHrs:     sc.totalHrs,
+        practiceDone: sc.practiceDone,
+        journalDone:  sc.journalDone,
+        entCap,
+        learningHrs: bks.filter(b => b.category === 'learning').reduce((s, b) => s + (b.duration_min || 0), 0) / 60,
+        sleepHrs:    bks.filter(b => b.category === 'sleep').reduce((s, b) => s + (b.duration_min || 0), 0) / 60,
+        dftStatus:   (getDft(d) || {}).status || null,
+        winCount:    (typeof getTodayWins === 'function' ? getTodayWins(d) : []).length,
       };
       const tiles = (dayScoreConfig.tiles || DEFAULT_DAYSCORE_TILES)
-        .filter(t => t.enabled !== false && tileHtml[t.id])
-        .map(t => tileHtml[t.id])
+        .filter(t => t.enabled !== false)
+        .map(t => renderDayScoreTileHtml(t, dayCtx))
+        .filter(Boolean)
         .join('');
       if (!tiles) return '';
       return `<div class="section">
@@ -10618,43 +10609,106 @@ window.confirmTagDelete = function() {
 };
 
 // ── Settings → Day Score ──────────────────────────────────────
-// Each known tile renders an enable/disable row. The render code in
-// renderToday is the single source of truth for what each tile shows;
-// this screen only flips visibility. Saving fires on every toggle so
-// changes propagate immediately to the Today tab.
-const DAYSCORE_TILE_META = {
-  deepWork: { label: 'Deep Work',         sub: 'Hours of deep work logged today'              },
-  leaks:    { label: 'Leaks',             sub: 'Hours of "leaks" category logged today'       },
-  practice: { label: 'Practice',          sub: '✓ if any practice block logged today'         },
-  journal:  { label: 'Journal',           sub: '✓ if today\'s Reflection field is non-empty' },
-  entCap:   { label: 'Entertainment Cap', sub: 'Yesterday\'s entertainment-cap check-in'      },
+// Tile rendering is hardcoded per id (each tile id maps to a known way of
+// reading state from blocks/captures/etc.) — but USERS can rename a tile's
+// label, hide it, remove it from their grid, and re-add tiles from a
+// fixed catalog. This keeps customisation safe (we never invent new
+// derived metrics on the fly) while still personal.
+//
+// Storage shape: dayScoreConfig.tiles = [{ id, label?, enabled }].
+// Missing label = use catalog defaultLabel. Missing id from catalog = skip.
+const DAYSCORE_TILE_CATALOG = {
+  deepWork:    { defaultLabel: 'Deep Work',         description: 'Hours of deep work logged today'                      },
+  leaks:       { defaultLabel: 'Leaks',             description: 'Hours of "leaks" category logged today (warns ≥ 1h)'  },
+  practice:    { defaultLabel: 'Practice',          description: '✓ if any practice block logged today'                  },
+  journal:     { defaultLabel: 'Journal',           description: '✓ if today\'s Reflection field is non-empty'          },
+  entCap:      { defaultLabel: 'Ent Cap',           description: 'Yesterday\'s entertainment-cap check-in'              },
+  learning:    { defaultLabel: 'Learning',          description: 'Hours of learning category logged today'              },
+  sleep:       { defaultLabel: 'Sleep',             description: 'Hours of sleep logged for last night'                 },
+  totalLogged: { defaultLabel: 'Logged',            description: 'Total non-sleep hours logged today'                   },
+  dft:         { defaultLabel: 'DFT',               description: 'Daily Focus Task status (✓ done / ✕ skipped / … pending)' },
+  wins:        { defaultLabel: 'Wins',              description: 'Count of #win-tagged entries today'                   },
 };
 
+// Render a single Day Score tile. Used by renderToday's score-grid block.
+// `ctx` is the precomputed day state (see dayScoreCtx).
+function renderDayScoreTileHtml(t, ctx) {
+  const meta = DAYSCORE_TILE_CATALOG[t.id];
+  if (!meta) return '';
+  const label = (t.label || '').trim() || meta.defaultLabel;
+  let value = '–', cls = '', title = '';
+  switch (t.id) {
+    case 'deepWork':    value = ctx.deepWorkHrs.toFixed(1) + 'h'; break;
+    case 'leaks':
+      value = ctx.leakHrs.toFixed(1) + 'h';
+      cls = ctx.leakHrs >= 1 ? 'warn' : '';
+      break;
+    case 'practice':
+      value = ctx.practiceDone ? '✓' : '–';
+      cls = ctx.practiceDone ? 'good' : '';
+      break;
+    case 'journal':
+      value = ctx.journalDone ? '✓' : '–';
+      cls = ctx.journalDone ? 'good' : '';
+      break;
+    case 'entCap':
+      value = ctx.entCap === 'yes' ? '✓' : ctx.entCap === 'no' ? '✕' : '–';
+      cls = ctx.entCap === 'yes' ? 'good' : ctx.entCap === 'no' ? 'bad' : '';
+      title = 'Entertainment Cap — yesterday\'s check';
+      break;
+    case 'learning':    value = ctx.learningHrs.toFixed(1) + 'h'; break;
+    case 'sleep':       value = ctx.sleepHrs.toFixed(1) + 'h'; break;
+    case 'totalLogged': value = ctx.totalHrs.toFixed(1) + 'h'; break;
+    case 'dft':
+      value = ctx.dftStatus === 'done' ? '✓' : ctx.dftStatus === 'skipped' ? '✕' : ctx.dftStatus === 'pending' ? '…' : '–';
+      cls = ctx.dftStatus === 'done' ? 'good' : ctx.dftStatus === 'skipped' ? 'bad' : '';
+      break;
+    case 'wins':
+      value = String(ctx.winCount);
+      cls = ctx.winCount > 0 ? 'good' : '';
+      break;
+  }
+  return `<div class="score-item"${title ? ` title="${esc(title)}"` : ''}>
+    <span class="score-val ${cls}">${esc(value)}</span>
+    <span class="score-label">${esc(label)}</span>
+  </div>`;
+}
+
+// Per-tile action mode + add picker. State lives at module-scope so the
+// menu / rename / delete-confirm / add screens can re-render in place.
+let _settingsDayScoreAction = null; // { idx, mode: 'menu'|'rename'|'delete-confirm'|'add' }
+
 function openSettingsDayScore() {
+  _settingsDayScoreAction = null;
   const body = document.getElementById('settings-body');
-  // Defensive: if config is missing tiles for a known id (e.g. a future
-  // version added one), append it as enabled-by-default before rendering.
-  const known = Object.keys(DAYSCORE_TILE_META);
-  const have  = new Set((dayScoreConfig.tiles || []).map(t => t.id));
-  known.forEach(id => {
-    if (!have.has(id)) (dayScoreConfig.tiles ||= []).push({ id, enabled: true });
-  });
-  const rows = (dayScoreConfig.tiles || []).map((t, i) => {
-    const meta = DAYSCORE_TILE_META[t.id] || { label: t.id, sub: '' };
+  dayScoreConfig.tiles = dayScoreConfig.tiles || [];
+  const tiles = dayScoreConfig.tiles;
+  const rows = tiles.map((t, i) => {
+    const meta = DAYSCORE_TILE_CATALOG[t.id];
+    if (!meta) return ''; // unknown id — skip, don't crash
     const on = t.enabled !== false;
+    const label = (t.label || '').trim() || meta.defaultLabel;
     return `
-      <button class="settings-row" onclick="toggleDayScoreTile(${i})">
-        <span class="settings-row-icon">${on ? '☑' : '☐'}</span>
-        <div class="settings-row-text">
-          <div class="settings-row-label">${esc(meta.label)}</div>
-          <div class="settings-row-sub">${esc(meta.sub)}</div>
+      <div class="settings-row" style="cursor:default">
+        <button class="hdr-icon-btn" onclick="toggleDayScoreTile(${i})" aria-label="${on ? 'Hide' : 'Show'}" style="padding:2px 6px;font-size:1.1rem">${on ? '☑' : '☐'}</button>
+        <div class="settings-row-text" onclick="openDayScoreAction(${i})">
+          <div class="settings-row-label">${esc(label)}</div>
+          <div class="settings-row-sub">${esc(meta.description)}${on ? '' : ' · hidden'}</div>
         </div>
-      </button>`;
-  }).join('');
+        <button class="hdr-icon-btn" onclick="openDayScoreAction(${i})" aria-label="Edit" style="padding:2px 6px;font-size:1rem">⋯</button>
+      </div>`;
+  }).filter(Boolean).join('');
+
+  const configuredIds = new Set(tiles.map(t => t.id));
+  const availableCount = Object.keys(DAYSCORE_TILE_CATALOG).filter(id => !configuredIds.has(id)).length;
+
   body.innerHTML = `
     ${settingsSubhdrHtml('Day Score')}
-    <p class="auth-desc">Pick which tiles appear in the Today-page score grid. Disabled tiles are hidden; their data is still tracked.</p>
-    <div class="settings-list">${rows}</div>
+    <p class="auth-desc">Tiles in the Today-page score grid. Toggle ☑ to show/hide; tap a row to rename or remove.</p>
+    ${rows ? `<div class="settings-list">${rows}</div>` : `<div class="proj-empty" style="padding:1rem 0.5rem;text-align:center;color:var(--text3);font-size:0.85rem">No tiles configured. Tap "+ Add tile" to start.</div>`}
+    <div class="btn-row" style="margin-top:0.85rem">
+      <button class="btn-primary" onclick="openDayScoreAdd()" ${availableCount === 0 ? 'disabled style="opacity:0.5"' : ''}>+ Add tile${availableCount === 0 ? '' : ` (${availableCount})`}</button>
+    </div>
   `;
   openSheet('sheet-settings');
 }
@@ -10665,6 +10719,156 @@ window.toggleDayScoreTile = function(idx) {
   t.enabled = t.enabled === false ? true : false;
   saveLocal('dayos_dayscore_config_v1', dayScoreConfig);
   if (typeof syncDayScoreConfig === 'function') syncDayScoreConfig();
+  openSettingsDayScore();
+  if (activeTab === 'today') renderMain(true);
+};
+
+window.openDayScoreAction = function(idx) {
+  _settingsDayScoreAction = { idx, mode: 'menu' };
+  renderDayScoreActionPanel();
+};
+
+window.openDayScoreAdd = function() {
+  _settingsDayScoreAction = { idx: -1, mode: 'add' };
+  renderDayScoreActionPanel();
+};
+
+function renderDayScoreActionPanel() {
+  if (!_settingsDayScoreAction) { openSettingsDayScore(); return; }
+  const body = document.getElementById('settings-body');
+  const { idx, mode } = _settingsDayScoreAction;
+  const isAdd = mode === 'add';
+  const t = isAdd ? null : (dayScoreConfig.tiles || [])[idx];
+  const meta = t ? DAYSCORE_TILE_CATALOG[t.id] : null;
+  const title = isAdd ? 'Add tile' : ((t && (t.label || (meta && meta.defaultLabel))) || 'Tile');
+  const back = `
+    <div class="settings-subhdr">
+      <button class="settings-back-btn" onclick="openSettingsDayScore()" aria-label="Back">‹</button>
+      <span class="settings-subhdr-title">${esc(title)}</span>
+    </div>`;
+
+  if (mode === 'menu') {
+    body.innerHTML = `
+      ${back}
+      <div class="settings-row-sub" style="margin:-0.4rem 0 0.85rem 0.1rem">${esc((meta && meta.description) || '')}</div>
+      <div class="settings-list">
+        <button class="settings-row" onclick="setDayScoreActionMode('rename')">
+          <span class="settings-row-icon">✏️</span>
+          <div class="settings-row-text"><div class="settings-row-label">Rename</div><div class="settings-row-sub">Change the tile label. Underlying behaviour stays the same.</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+        <button class="settings-row" onclick="setDayScoreActionMode('delete-confirm')">
+          <span class="settings-row-icon" style="color:var(--danger)">🗑</span>
+          <div class="settings-row-text"><div class="settings-row-label" style="color:var(--danger)">Remove</div><div class="settings-row-sub">Removes from the grid. Re-add anytime from "+ Add tile".</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+      </div>
+    `;
+  } else if (mode === 'rename') {
+    const label = (t.label || '').trim() || meta.defaultLabel;
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc">Rename this tile. Leave blank to revert to default ("${esc(meta.defaultLabel)}").</p>
+      <input type="text" id="dayscore-rename-input" class="mr-input" value="${esc(label)}" autocomplete="off" />
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" onclick="confirmDayScoreRename()">Save</button>
+        <button class="btn-ghost" onclick="setDayScoreActionMode('menu')">Cancel</button>
+      </div>
+    `;
+    setTimeout(() => {
+      const inp = document.getElementById('dayscore-rename-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }, 50);
+  } else if (mode === 'delete-confirm') {
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc">Remove <strong>${esc(t.label || meta.defaultLabel)}</strong> from your Day Score? You can re-add it anytime from "+ Add tile".</p>
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" style="background:var(--danger)" onclick="confirmDayScoreDelete()">Remove</button>
+        <button class="btn-ghost" onclick="setDayScoreActionMode('menu')">Cancel</button>
+      </div>
+    `;
+  } else if (mode === 'add') {
+    const configuredIds = new Set((dayScoreConfig.tiles || []).map(x => x.id));
+    const available = Object.keys(DAYSCORE_TILE_CATALOG).filter(id => !configuredIds.has(id));
+    if (!available.length) {
+      body.innerHTML = `
+        ${back}
+        <p class="auth-desc">All available tiles are already in your Day Score. Hide ones you don't need with the ☑ toggle.</p>
+        <div class="btn-row" style="margin-top:0.6rem">
+          <button class="btn-ghost" onclick="openSettingsDayScore()">Back</button>
+        </div>`;
+      return;
+    }
+    const items = available.map(id => {
+      const m = DAYSCORE_TILE_CATALOG[id];
+      return `
+        <button class="settings-row" onclick="addDayScoreTile('${id}')">
+          <span class="settings-row-icon">⭐</span>
+          <div class="settings-row-text">
+            <div class="settings-row-label">${esc(m.defaultLabel)}</div>
+            <div class="settings-row-sub">${esc(m.description)}</div>
+          </div>
+          <span class="settings-row-chev">›</span>
+        </button>`;
+    }).join('');
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc">Tap a tile to add it to your Day Score grid. Each one is built into the system — its value is computed automatically from your data.</p>
+      <div class="settings-list">${items}</div>
+    `;
+  }
+}
+
+window.setDayScoreActionMode = function(mode) {
+  if (!_settingsDayScoreAction) return;
+  _settingsDayScoreAction.mode = mode;
+  renderDayScoreActionPanel();
+};
+
+window.confirmDayScoreRename = function() {
+  if (!_settingsDayScoreAction) return;
+  const { idx } = _settingsDayScoreAction;
+  const t = (dayScoreConfig.tiles || [])[idx];
+  if (!t) { openSettingsDayScore(); return; }
+  const inp = document.getElementById('dayscore-rename-input');
+  const next = (inp ? inp.value : '').trim();
+  // Empty → revert to default (stored as missing label).
+  if (!next) delete t.label; else t.label = next;
+  saveLocal('dayos_dayscore_config_v1', dayScoreConfig);
+  if (typeof syncDayScoreConfig === 'function') syncDayScoreConfig();
+  toast(next ? `✓ Renamed to ${next}` : `✓ Reset to default`);
+  openSettingsDayScore();
+  if (activeTab === 'today') renderMain(true);
+};
+
+window.confirmDayScoreDelete = function() {
+  if (!_settingsDayScoreAction) return;
+  const { idx } = _settingsDayScoreAction;
+  const tiles = dayScoreConfig.tiles || [];
+  const t = tiles[idx];
+  if (!t) { openSettingsDayScore(); return; }
+  const meta = DAYSCORE_TILE_CATALOG[t.id];
+  const label = t.label || (meta && meta.defaultLabel) || t.id;
+  tiles.splice(idx, 1);
+  saveLocal('dayos_dayscore_config_v1', dayScoreConfig);
+  if (typeof syncDayScoreConfig === 'function') syncDayScoreConfig();
+  toast(`✓ Removed ${label}`);
+  openSettingsDayScore();
+  if (activeTab === 'today') renderMain(true);
+};
+
+window.addDayScoreTile = function(id) {
+  if (!DAYSCORE_TILE_CATALOG[id]) return;
+  dayScoreConfig.tiles = dayScoreConfig.tiles || [];
+  if (dayScoreConfig.tiles.some(t => t.id === id)) {
+    toast('Already in your Day Score');
+    return;
+  }
+  dayScoreConfig.tiles.push({ id, enabled: true });
+  saveLocal('dayos_dayscore_config_v1', dayScoreConfig);
+  if (typeof syncDayScoreConfig === 'function') syncDayScoreConfig();
+  toast(`✓ Added ${DAYSCORE_TILE_CATALOG[id].defaultLabel}`);
   openSettingsDayScore();
   if (activeTab === 'today') renderMain(true);
 };
