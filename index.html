@@ -3317,6 +3317,40 @@ const DEFAULT_ADHERENCE_RULES = [
 ];
 let adherenceConfig = loadLocal('dayos_adherence_config_v1', { rules: DEFAULT_ADHERENCE_RULES.slice() });
 let dailyChecks      = loadLocal('dayos_daily_checks_v1', {}); // { 'YYYY-MM-DD': { ruleId: bool } } — explicit rule data (future)
+
+// ── Day Score config ─────────────────────────────────────────
+// Which tiles appear in the Today-page score grid. Per-user, synced to
+// users/{uid}/meta/dayscore. Tile RENDERING is hardcoded per id (deep-work
+// hours, leaks hours, practice ✓, etc.) — config controls visibility +
+// order only. Custom user-defined tile types are out of scope for v1.
+const DEFAULT_DAYSCORE_TILES = [
+  { id: 'deepWork', enabled: true },
+  { id: 'leaks',    enabled: true },
+  { id: 'practice', enabled: true },
+  { id: 'journal',  enabled: true },
+  { id: 'entCap',   enabled: true },
+];
+let dayScoreConfig = loadLocal('dayos_dayscore_config_v1', { tiles: DEFAULT_DAYSCORE_TILES.slice() });
+
+// ── Daily Check-in config ────────────────────────────────────
+// User-customisable list of star-rated metrics shown in the "Daily Check-in"
+// section. Per-metric { id, label, enabled }. Historical lifeRatings data
+// is keyed by id, so renaming a label preserves history; deleting a metric
+// hides its row but doesn't wipe data on disk (re-adding the same id
+// resurfaces it). Synced to users/{uid}/meta/lifecheck.
+const DEFAULT_LIFECHECK_METRICS = [
+  { id: 'habit_stacking',      label: 'Habit Stacking',      enabled: true },
+  { id: 'exercise_nutrition',  label: 'Exercise & Nutrition', enabled: true },
+  { id: 'mindset',             label: 'Mindset',             enabled: true },
+  { id: 'relationship',        label: 'Relationship',        enabled: true },
+  { id: 'pseudo_productivity', label: 'Pseudo-Productivity', enabled: true },
+];
+let lifeCheckConfig = loadLocal('dayos_lifecheck_config_v1', { metrics: DEFAULT_LIFECHECK_METRICS.slice() });
+
+function metricSlug(s) {
+  return (s || '').toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
 let todayBksExpanded = false;
 let todayCapsExpanded = false;
 const TODAY_PREVIEW = 3;
@@ -3884,31 +3918,43 @@ function renderToday() {
           <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search today">&#128269;</button>
         </div>`}
 
-    <div class="section">
-      <div class="sec-hdr"><span class="sec-title">Day Score</span></div>
-      <div class="score-grid">
-        <div class="score-item">
+    ${(() => {
+      // Day Score — config-driven. Each enabled tile renders its own HTML
+      // chunk. Disabled tiles are skipped entirely; if all 5 are disabled,
+      // the section header is dropped too so the page doesn't show an
+      // empty "Day Score" container.
+      const tileHtml = {
+        deepWork: `<div class="score-item">
           <span class="score-val">${sc.deepWorkHrs.toFixed(1)}h</span>
           <span class="score-label">Deep Work</span>
-        </div>
-        <div class="score-item">
+        </div>`,
+        leaks: `<div class="score-item">
           <span class="score-val ${sc.leakHrs >= 1 ? 'warn' : ''}">${sc.leakHrs.toFixed(1)}h</span>
           <span class="score-label">Leaks</span>
-        </div>
-        <div class="score-item">
+        </div>`,
+        practice: `<div class="score-item">
           <span class="score-val ${sc.practiceDone ? 'good' : ''}">${sc.practiceDone ? '✓' : '–'}</span>
           <span class="score-label">Practice</span>
-        </div>
-        <div class="score-item">
+        </div>`,
+        journal: `<div class="score-item">
           <span class="score-val ${sc.journalDone ? 'good' : ''}">${sc.journalDone ? '✓' : '–'}</span>
           <span class="score-label">Journal</span>
-        </div>
-        <div class="score-item" title="Entertainment Cap — yesterday's check">
+        </div>`,
+        entCap: `<div class="score-item" title="Entertainment Cap — yesterday's check">
           <span class="score-val ${entCap === 'yes' ? 'good' : entCap === 'no' ? 'bad' : ''}">${entCap === 'yes' ? '✓' : entCap === 'no' ? '✕' : '–'}</span>
           <span class="score-label">Ent Cap</span>
-        </div>
-      </div>
-    </div>
+        </div>`,
+      };
+      const tiles = (dayScoreConfig.tiles || DEFAULT_DAYSCORE_TILES)
+        .filter(t => t.enabled !== false && tileHtml[t.id])
+        .map(t => tileHtml[t.id])
+        .join('');
+      if (!tiles) return '';
+      return `<div class="section">
+        <div class="sec-hdr"><span class="sec-title">Day Score</span></div>
+        <div class="score-grid">${tiles}</div>
+      </div>`;
+    })()}
 
     ${renderDftPanel(d)}
 
@@ -3940,27 +3986,29 @@ function renderToday() {
       </div>
     </div>
 
-    <div class="section">
-      <div class="sec-hdr"><span class="sec-title">Daily Check-in</span></div>
-      <div class="life-ratings-grid">
-        ${[
-          ['habit_stacking',      'Habit Stacking'],
-          ['exercise_nutrition',  'Exercise & Nutrition'],
-          ['mindset',             'Mindset'],
-          ['relationship',        'Relationship'],
-          ['pseudo_productivity', 'Pseudo-Productivity'],
-        ].map(([key, label]) => {
-          const val = (lifeRatings[d] || {})[key] || 0;
-          const stars = [1,2,3,4,5].map(i =>
-            `<button class="life-star-btn ${val >= i ? 'filled' : ''}" onclick="setLifeRating('${d}','${key}',${i})">★</button>`
-          ).join('');
-          return `<div class="life-rating-row">
-            <span class="life-rating-label">${label}</span>
-            <div class="life-star-row">${stars}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
+    ${(() => {
+      // Daily Check-in — config-driven. Reads the per-user metric list from
+      // lifeCheckConfig. Each metric's id is the storage key in lifeRatings,
+      // so renaming a label preserves history. Hidden / deleted metrics
+      // simply don't render a row; their data on disk is untouched.
+      const metrics = (lifeCheckConfig.metrics || DEFAULT_LIFECHECK_METRICS)
+        .filter(m => m && m.id && m.enabled !== false);
+      if (!metrics.length) return '';
+      const rows = metrics.map(m => {
+        const val = (lifeRatings[d] || {})[m.id] || 0;
+        const stars = [1,2,3,4,5].map(i =>
+          `<button class="life-star-btn ${val >= i ? 'filled' : ''}" onclick="setLifeRating('${d}','${m.id}',${i})">★</button>`
+        ).join('');
+        return `<div class="life-rating-row">
+          <span class="life-rating-label">${esc(m.label || m.id)}</span>
+          <div class="life-star-row">${stars}</div>
+        </div>`;
+      }).join('');
+      return `<div class="section">
+        <div class="sec-hdr"><span class="sec-title">Daily Check-in</span></div>
+        <div class="life-ratings-grid">${rows}</div>
+      </div>`;
+    })()}
 
     ${renderEodPanel(d)}
   </div>`;
@@ -6140,6 +6188,52 @@ async function loadAdherenceConfigFromCloud(uid) {
   }
 }
 
+// ── Day Score config cloud sync ──────────────────────────────
+async function syncDayScoreConfig() {
+  if (!user) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'meta', 'dayscore'), dayScoreConfig); }
+  catch (err) { console.error('[DayOS] Day Score config sync error:', err); }
+}
+async function loadDayScoreConfigFromCloud(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'meta', 'dayscore'));
+    if (snap.exists()) {
+      const remote = snap.data();
+      if (remote && Array.isArray(remote.tiles)) {
+        dayScoreConfig = { tiles: remote.tiles };
+        saveLocal('dayos_dayscore_config_v1', dayScoreConfig);
+        return;
+      }
+    }
+    syncDayScoreConfig();
+  } catch (err) {
+    console.error('[DayOS] Day Score config load error:', err);
+  }
+}
+
+// ── Daily Check-in config cloud sync ─────────────────────────
+async function syncLifeCheckConfig() {
+  if (!user) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'meta', 'lifecheck'), lifeCheckConfig); }
+  catch (err) { console.error('[DayOS] Daily Check-in config sync error:', err); }
+}
+async function loadLifeCheckConfigFromCloud(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'meta', 'lifecheck'));
+    if (snap.exists()) {
+      const remote = snap.data();
+      if (remote && Array.isArray(remote.metrics)) {
+        lifeCheckConfig = { metrics: remote.metrics };
+        saveLocal('dayos_lifecheck_config_v1', lifeCheckConfig);
+        return;
+      }
+    }
+    syncLifeCheckConfig();
+  } catch (err) {
+    console.error('[DayOS] Daily Check-in config load error:', err);
+  }
+}
+
 // ── Adherence evaluation helper (B1) ────────────────────────
 // Map a rule's `category` label to the canonical block category id.
 function adherenceCategoryId(ruleCategory) {
@@ -6256,26 +6350,29 @@ function renderDayEod(date) {
     </div>`;
 }
 
-// Read-only life-ratings snapshot for a past day
+// Read-only life-ratings snapshot for a past day. Reads the user's current
+// Daily Check-in config so renamed labels show on history too. Any rated
+// id no longer in the active config (e.g. metric deleted after the rating
+// was set) still surfaces with its raw id as the label — preserves history.
 function renderDayLifeRatings(date) {
   const lr = lifeRatings[date];
   if (!lr) return '';
-  const rows = [
-    ['habit_stacking',      'Habit Stacking'],
-    ['exercise_nutrition',  'Exercise & Nutrition'],
-    ['mindset',             'Mindset'],
-    ['relationship',        'Relationship'],
-    ['pseudo_productivity', 'Pseudo-Productivity'],
-  ].filter(([k]) => lr[k] > 0);
+  const cfgMetrics = (lifeCheckConfig.metrics || DEFAULT_LIFECHECK_METRICS).filter(m => m && m.id);
+  const cfgById = Object.fromEntries(cfgMetrics.map(m => [m.id, m]));
+  const ratedIds = Object.keys(lr).filter(k => lr[k] > 0);
+  // Show in config order first, then any orphaned ids at the end.
+  const configured = cfgMetrics.filter(m => ratedIds.includes(m.id));
+  const orphans    = ratedIds.filter(id => !cfgById[id]).map(id => ({ id, label: id }));
+  const rows = [...configured, ...orphans];
   if (!rows.length) return '';
   return `
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Daily Check-in</span></div>
       <div class="life-ratings-grid">
-        ${rows.map(([k, label]) => `
+        ${rows.map(m => `
           <div class="life-rating-row">
-            <span class="life-rating-label">${label}</span>
-            <span style="color:var(--warn);font-size:1rem;letter-spacing:1px">${'★'.repeat(lr[k])}${'<span style="color:var(--text3)">★</span>'.repeat(5 - lr[k])}</span>
+            <span class="life-rating-label">${esc(m.label || m.id)}</span>
+            <span style="color:var(--warn);font-size:1rem;letter-spacing:1px">${'★'.repeat(lr[m.id])}${'<span style="color:var(--text3)">★</span>'.repeat(5 - lr[m.id])}</span>
           </div>`).join('')}
       </div>
     </div>`;
@@ -9802,14 +9899,15 @@ function openSheet(id) {
 // handler; we'll populate sections one at a time in subsequent commits
 // (Projects · Tags · Day Score · Adherence · Sleep & EOD · Appearance · Sync · About).
 const SETTINGS_SECTIONS = [
-  { id: 'projects',   icon: '📁', label: 'Projects',     sub: 'Rename, delete, merge'                  },
-  { id: 'tags',       icon: '🏷️', label: 'Tags',         sub: 'Used tags · rename · merge'             },
-  { id: 'dayscore',   icon: '⭐', label: 'Day Score',     sub: 'Tiles, thresholds, what counts'         },
-  { id: 'adherence',  icon: '✅', label: 'Adherence',    sub: 'Daily systems & rules'                  },
-  { id: 'sleepEod',   icon: '🌙', label: 'Sleep & EOD',   sub: 'Auto-log sleep · end-of-day prompt'     },
-  { id: 'appearance', icon: '🎨', label: 'Appearance',    sub: 'System · Light · Dark'                  },
-  { id: 'sync',       icon: '☁️', label: 'Sync',          sub: 'Push · Pull · sign-out'                 },
-  { id: 'about',      icon: 'ℹ️', label: 'About',         sub: 'DayOS · version · feedback'             },
+  { id: 'projects',   icon: '📁', label: 'Projects',       sub: 'Rename, delete, merge'                  },
+  { id: 'tags',       icon: '🏷️', label: 'Tags',           sub: 'Used tags · rename · merge'             },
+  { id: 'dayscore',   icon: '⭐', label: 'Day Score',       sub: 'Pick which tiles appear on Today'       },
+  { id: 'lifecheck',  icon: '✨', label: 'Daily Check-in',  sub: 'Star-rated metrics · add, rename, hide' },
+  { id: 'adherence',  icon: '✅', label: 'Adherence',      sub: 'Daily systems & rules'                  },
+  { id: 'sleepEod',   icon: '🌙', label: 'Sleep & EOD',     sub: 'Auto-log sleep · end-of-day prompt'     },
+  { id: 'appearance', icon: '🎨', label: 'Appearance',      sub: 'System · Light · Dark'                  },
+  { id: 'sync',       icon: '☁️', label: 'Sync',            sub: 'Push · Pull · sign-out'                 },
+  { id: 'about',      icon: 'ℹ️', label: 'About',           sub: 'DayOS · version · feedback'             },
 ];
 
 window.openSettings = function() {
@@ -9839,6 +9937,8 @@ window.openSettingsSection = function(id) {
     case 'sync':       return openSettingsSync();
     case 'projects':   return openSettingsProjects();
     case 'tags':       return openSettingsTags();
+    case 'dayscore':   return openSettingsDayScore();
+    case 'lifecheck':  return openSettingsLifeCheck();
     default: {
       const s = SETTINGS_SECTIONS.find(x => x.id === id);
       toast(`${s?.label || id} — coming next`, 2000);
@@ -10511,6 +10611,233 @@ window.confirmTagDelete = function() {
   if (activeTab === 'journal' || activeTab === 'projects' || activeTab === 'today') renderMain(true);
 };
 
+// ── Settings → Day Score ──────────────────────────────────────
+// Each known tile renders an enable/disable row. The render code in
+// renderToday is the single source of truth for what each tile shows;
+// this screen only flips visibility. Saving fires on every toggle so
+// changes propagate immediately to the Today tab.
+const DAYSCORE_TILE_META = {
+  deepWork: { label: 'Deep Work',         sub: 'Hours of deep work logged today'              },
+  leaks:    { label: 'Leaks',             sub: 'Hours of "leaks" category logged today'       },
+  practice: { label: 'Practice',          sub: '✓ if any practice block logged today'         },
+  journal:  { label: 'Journal',           sub: '✓ if today\'s Reflection field is non-empty' },
+  entCap:   { label: 'Entertainment Cap', sub: 'Yesterday\'s entertainment-cap check-in'      },
+};
+
+function openSettingsDayScore() {
+  const body = document.getElementById('settings-body');
+  // Defensive: if config is missing tiles for a known id (e.g. a future
+  // version added one), append it as enabled-by-default before rendering.
+  const known = Object.keys(DAYSCORE_TILE_META);
+  const have  = new Set((dayScoreConfig.tiles || []).map(t => t.id));
+  known.forEach(id => {
+    if (!have.has(id)) (dayScoreConfig.tiles ||= []).push({ id, enabled: true });
+  });
+  const rows = (dayScoreConfig.tiles || []).map((t, i) => {
+    const meta = DAYSCORE_TILE_META[t.id] || { label: t.id, sub: '' };
+    const on = t.enabled !== false;
+    return `
+      <button class="settings-row" onclick="toggleDayScoreTile(${i})">
+        <span class="settings-row-icon">${on ? '☑' : '☐'}</span>
+        <div class="settings-row-text">
+          <div class="settings-row-label">${esc(meta.label)}</div>
+          <div class="settings-row-sub">${esc(meta.sub)}</div>
+        </div>
+      </button>`;
+  }).join('');
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Day Score')}
+    <p class="auth-desc">Pick which tiles appear in the Today-page score grid. Disabled tiles are hidden; their data is still tracked.</p>
+    <div class="settings-list">${rows}</div>
+  `;
+  openSheet('sheet-settings');
+}
+
+window.toggleDayScoreTile = function(idx) {
+  const t = (dayScoreConfig.tiles || [])[idx];
+  if (!t) return;
+  t.enabled = t.enabled === false ? true : false;
+  saveLocal('dayos_dayscore_config_v1', dayScoreConfig);
+  if (typeof syncDayScoreConfig === 'function') syncDayScoreConfig();
+  openSettingsDayScore();
+  if (activeTab === 'today') renderMain(true);
+};
+
+// ── Settings → Daily Check-in ────────────────────────────────
+// Full CRUD: enable/disable, rename, add, delete. The metric `id` is the
+// storage key in lifeRatings — historical data is preserved across renames
+// (label changes, id stays) and across delete-then-re-add (orphaned data
+// reappears the moment the same id is configured again).
+let _settingsLifeAction = null; // { idx, mode: 'menu'|'rename'|'delete-confirm' }
+
+function openSettingsLifeCheck() {
+  _settingsLifeAction = null;
+  const body = document.getElementById('settings-body');
+  const metrics = lifeCheckConfig.metrics || [];
+  const rows = metrics.map((m, i) => {
+    const on = m.enabled !== false;
+    return `
+      <div class="settings-row" style="cursor:default">
+        <button class="hdr-icon-btn" onclick="toggleLifeMetric(${i})" aria-label="${on ? 'Hide' : 'Show'}" title="${on ? 'Hide' : 'Show'}" style="padding:2px 6px;font-size:1.1rem">${on ? '☑' : '☐'}</button>
+        <div class="settings-row-text" onclick="openLifeMetricAction(${i})">
+          <div class="settings-row-label">${esc(m.label || m.id)}</div>
+          <div class="settings-row-sub">id: <code style="color:var(--text2)">${esc(m.id)}</code>${on ? '' : ' · hidden'}</div>
+        </div>
+        <button class="hdr-icon-btn" onclick="openLifeMetricAction(${i})" aria-label="Edit" title="Rename or delete" style="padding:2px 6px;font-size:1rem">⋯</button>
+      </div>`;
+  }).join('');
+  const list = metrics.length
+    ? `<div class="settings-list">${rows}</div>`
+    : `<div class="proj-empty" style="padding:1rem 0.5rem;text-align:center;color:var(--text3);font-size:0.85rem">No metrics yet. Tap "+ Add metric" to start.</div>`;
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Daily Check-in')}
+    <p class="auth-desc">The metrics you star-rate at the end of each day. Toggle the ☑ to show/hide. Tap a row to rename or delete.</p>
+    ${list}
+    <div class="btn-row" style="margin-top:0.85rem">
+      <button class="btn-primary" onclick="openLifeMetricAdd()">+ Add metric</button>
+    </div>
+  `;
+  openSheet('sheet-settings');
+}
+
+window.toggleLifeMetric = function(idx) {
+  const m = (lifeCheckConfig.metrics || [])[idx];
+  if (!m) return;
+  m.enabled = m.enabled === false ? true : false;
+  saveLocal('dayos_lifecheck_config_v1', lifeCheckConfig);
+  if (typeof syncLifeCheckConfig === 'function') syncLifeCheckConfig();
+  openSettingsLifeCheck();
+  if (activeTab === 'today') renderMain(true);
+};
+
+window.openLifeMetricAction = function(idx) {
+  _settingsLifeAction = { idx, mode: 'menu' };
+  renderLifeMetricActionPanel();
+};
+
+window.openLifeMetricAdd = function() {
+  _settingsLifeAction = { idx: -1, mode: 'add' };
+  renderLifeMetricActionPanel();
+};
+
+function renderLifeMetricActionPanel() {
+  if (!_settingsLifeAction) { openSettingsLifeCheck(); return; }
+  const body = document.getElementById('settings-body');
+  const { idx, mode } = _settingsLifeAction;
+  const isAdd = mode === 'add';
+  const m = isAdd ? null : (lifeCheckConfig.metrics || [])[idx];
+  const title = isAdd ? 'New metric' : (m && m.label) || 'Metric';
+  const back = `
+    <div class="settings-subhdr">
+      <button class="settings-back-btn" onclick="openSettingsLifeCheck()" aria-label="Back">‹</button>
+      <span class="settings-subhdr-title">${esc(title)}</span>
+    </div>`;
+
+  if (mode === 'menu') {
+    body.innerHTML = `
+      ${back}
+      <div class="settings-list">
+        <button class="settings-row" onclick="setLifeMetricMode('rename')">
+          <span class="settings-row-icon">✏️</span>
+          <div class="settings-row-text"><div class="settings-row-label">Rename</div><div class="settings-row-sub">Change the label. The underlying id stays the same so historical ratings are preserved.</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+        <button class="settings-row" onclick="setLifeMetricMode('delete-confirm')">
+          <span class="settings-row-icon" style="color:var(--danger)">🗑</span>
+          <div class="settings-row-text"><div class="settings-row-label" style="color:var(--danger)">Delete</div><div class="settings-row-sub">Removes the row from your Daily Check-in. Historical ratings stay on disk.</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>
+      </div>
+    `;
+  } else if (mode === 'rename' || mode === 'add') {
+    const label = isAdd ? '' : (m.label || '');
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc">${isAdd ? 'Type a label for the new metric (e.g. "Meditation", "Workout", "Nutrition").' : 'Type a new label. The id stays the same so historical ratings remain attached.'}</p>
+      <input type="text" id="life-metric-input" class="mr-input" value="${esc(label)}" placeholder="${isAdd ? 'New metric label' : ''}" autocomplete="off" />
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" onclick="${isAdd ? 'confirmLifeMetricAdd()' : 'confirmLifeMetricRename()'}">Save</button>
+        <button class="btn-ghost" onclick="openSettingsLifeCheck()">Cancel</button>
+      </div>
+    `;
+    setTimeout(() => {
+      const inp = document.getElementById('life-metric-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }, 50);
+  } else if (mode === 'delete-confirm') {
+    body.innerHTML = `
+      ${back}
+      <p class="auth-desc" style="color:var(--danger)">Remove <strong>${esc(m.label || m.id)}</strong> from your Daily Check-in? Historical ratings keyed under <code>${esc(m.id)}</code> stay on disk and reappear if you add a metric with this id again.</p>
+      <div class="btn-row" style="margin-top:0.6rem">
+        <button class="btn-primary" style="background:var(--danger)" onclick="confirmLifeMetricDelete()">Delete</button>
+        <button class="btn-ghost" onclick="setLifeMetricMode('menu')">Cancel</button>
+      </div>
+    `;
+  }
+}
+
+window.setLifeMetricMode = function(mode) {
+  if (!_settingsLifeAction) return;
+  _settingsLifeAction.mode = mode;
+  renderLifeMetricActionPanel();
+};
+
+window.confirmLifeMetricRename = function() {
+  if (!_settingsLifeAction) return;
+  const { idx } = _settingsLifeAction;
+  const m = (lifeCheckConfig.metrics || [])[idx];
+  if (!m) { openSettingsLifeCheck(); return; }
+  const inp = document.getElementById('life-metric-input');
+  const next = (inp ? inp.value : '').trim();
+  if (!next) { toast('Label cannot be empty'); return; }
+  m.label = next;
+  saveLocal('dayos_lifecheck_config_v1', lifeCheckConfig);
+  if (typeof syncLifeCheckConfig === 'function') syncLifeCheckConfig();
+  toast(`✓ Renamed to ${next}`);
+  openSettingsLifeCheck();
+  if (activeTab === 'today') renderMain(true);
+};
+
+window.confirmLifeMetricAdd = function() {
+  const inp = document.getElementById('life-metric-input');
+  const label = (inp ? inp.value : '').trim();
+  if (!label) { toast('Label cannot be empty'); return; }
+  const id = metricSlug(label);
+  if (!id) { toast('Label must contain at least one letter or digit'); return; }
+  lifeCheckConfig.metrics ||= [];
+  if (lifeCheckConfig.metrics.some(m => m.id === id)) {
+    // Same id already exists — surface it (un-hide if hidden) instead of erroring.
+    const existing = lifeCheckConfig.metrics.find(m => m.id === id);
+    existing.enabled = true;
+    existing.label = label; // honor latest casing
+    saveLocal('dayos_lifecheck_config_v1', lifeCheckConfig);
+    if (typeof syncLifeCheckConfig === 'function') syncLifeCheckConfig();
+    toast(`"${label}" already existed — surfaced it`, 3500);
+    openSettingsLifeCheck();
+    if (activeTab === 'today') renderMain(true);
+    return;
+  }
+  lifeCheckConfig.metrics.push({ id, label, enabled: true });
+  saveLocal('dayos_lifecheck_config_v1', lifeCheckConfig);
+  if (typeof syncLifeCheckConfig === 'function') syncLifeCheckConfig();
+  toast(`✓ Added ${label}`);
+  openSettingsLifeCheck();
+  if (activeTab === 'today') renderMain(true);
+};
+
+window.confirmLifeMetricDelete = function() {
+  if (!_settingsLifeAction) return;
+  const { idx } = _settingsLifeAction;
+  const m = (lifeCheckConfig.metrics || [])[idx];
+  if (!m) { openSettingsLifeCheck(); return; }
+  lifeCheckConfig.metrics.splice(idx, 1);
+  saveLocal('dayos_lifecheck_config_v1', lifeCheckConfig);
+  if (typeof syncLifeCheckConfig === 'function') syncLifeCheckConfig();
+  toast(`✓ Removed ${m.label || m.id}`);
+  openSettingsLifeCheck();
+  if (activeTab === 'today') renderMain(true);
+};
+
 window.closeSheets = function() {
   // If the Daily Journal editor is currently open, flush a final save before
   // tearing down the modal so any unsaved keystrokes (e.g. user typed and
@@ -10834,6 +11161,8 @@ window.forcePullFromCloud = async function() {
       loadAdherenceConfigFromCloud(user.uid),
       loadDismissalsFromCloud(user.uid),
       loadDftsFromCloud(user.uid),
+      loadDayScoreConfigFromCloud(user.uid),
+      loadLifeCheckConfigFromCloud(user.uid),
     ]);
 
     setSyncStatus('ok');
@@ -10982,6 +11311,8 @@ async function initialSync(uid) {
   loadSessionsFromCloud(uid);
   loadLearningFromCloud(uid);
   loadDftsFromCloud(uid);
+  loadDayScoreConfigFromCloud(uid);
+  loadLifeCheckConfigFromCloud(uid);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
   subscribeDailyJournal(uid);
 
