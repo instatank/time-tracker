@@ -844,6 +844,23 @@ html, body {
   word-break: normal;
   cursor: text;
 }
+/* "Previous-Pending" badge — tasks that carried forward from the prior
+   day's incomplete list. Soft amber so it reads as informational, not
+   alarming. Sits inside the task-text grid cell so it inlines cleanly. */
+.dj-task-pp {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #d99543;
+  background: rgba(217, 149, 67, 0.12);
+  border: 1px solid rgba(217, 149, 67, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 0.45rem;
+  vertical-align: 0.05em;
+  cursor: help;
+}
 .dj-task-text.completed {
   color: var(--text3);
   text-decoration: line-through;
@@ -4601,7 +4618,7 @@ function renderDailyExpandedPreview(d) {
     ? `<div class="dj-tasks-readonly">${tasks.map(t => `
         <div class="dj-task-row-readonly">
           <span class="dj-task-checkbox-display ${t.completed ? 'completed' : ''}">${t.completed ? '✓' : '○'}</span>
-          <span class="dj-task-text ${t.completed ? 'completed' : ''}">${esc(t.text || '')}</span>
+          <span class="dj-task-text ${t.completed ? 'completed' : ''}">${t.carriedFromDate ? `<span class="dj-task-pp" title="Carried forward from ${esc(t.carriedFromDate)}">PP</span>` : ''}${esc(t.text || '')}</span>
         </div>`).join('')}</div>`
     : `<div class="dj-section-empty">(no tasks)</div>`;
   const thoughtsBlock = (d.thoughts || '').trim()
@@ -8164,6 +8181,29 @@ window.selCapTypeFn = function(id) {
 // from littering the cloud.
 let dailyDraftEntry = null;
 
+// Build the seed task list for a NEW daily-journal entry. Pulls every
+// uncompleted task from the prior day and carries it forward as a fresh
+// copy (new id, completed=false, carriedFromDate marker for the "PP"
+// badge in the UI). The previous day's tasks are NOT mutated — yesterday
+// is treated as historical record. If the user uncompletes a PP task
+// today, tomorrow's carry-forward picks it up again from today's list,
+// so deferral chains forward naturally.
+function carryForwardTasks(date) {
+  if (!date) return [];
+  const yesterday = addDays(date, -1);
+  const yEntry = getDailyJournalFor(yesterday);
+  if (!yEntry || !Array.isArray(yEntry.tasks)) return [];
+  return yEntry.tasks
+    .filter(t => t && !t.completed && (t.text || '').trim())
+    .map(t => ({
+      id: uid(),
+      text: t.text,
+      completed: false,
+      completedAt: null,
+      carriedFromDate: yesterday,
+    }));
+}
+
 function initDailyJournalEditor(date) {
   editingDailyDate = date;
   const existing = getDailyJournalFor(date);
@@ -8174,7 +8214,7 @@ function initDailyJournalEditor(date) {
         date,
         timestamp: nowISTIso(),
         lastEditedAt: nowISTIso(),
-        tasks: [],
+        tasks: carryForwardTasks(date),
         thoughts: '',
         reflection: '',
         tags: [],
@@ -8310,6 +8350,14 @@ function flushDailyJournalIfOpen() {
 }
 
 // ── Daily Journal tasks ───────────────────────────────────────
+// Carried-forward tasks render an inline "PP" (previous-pending) badge,
+// hover-titled with the source date. Functionality matches a normal task
+// otherwise — checkbox toggles, text edits, × deletes.
+function ppBadgeHtml(t) {
+  return t && t.carriedFromDate
+    ? `<span class="dj-task-pp" title="Carried forward from ${esc(t.carriedFromDate)}">PP</span>`
+    : '';
+}
 function renderDailyTasks() {
   const wrap = document.getElementById('f-daily-tasks');
   if (!wrap || !dailyDraftEntry) return;
@@ -8319,7 +8367,7 @@ function renderDailyTasks() {
       <input type="checkbox" class="dj-task-check" ${t.completed ? 'checked' : ''}
         onchange="toggleDailyTask('${esc(t.id)}')">
       <span class="dj-task-text ${t.completed ? 'completed' : ''}"
-        onclick="editDailyTask('${esc(t.id)}')">${esc(t.text || '')}</span>
+        onclick="editDailyTask('${esc(t.id)}')">${ppBadgeHtml(t)}${esc(t.text || '')}</span>
       <button type="button" class="dj-task-delete" onclick="deleteDailyTask('${esc(t.id)}')" aria-label="Delete">×</button>
     </div>
   `).join('');
@@ -8539,7 +8587,7 @@ function renderDailyTasksInline(date) {
         onclick="event.stopPropagation()"
         onchange="toggleDailyTaskInline('${esc(date)}','${esc(t.id)}')">
       <span class="dj-task-text ${t.completed ? 'completed' : ''}"
-        onclick="event.stopPropagation();editDailyTaskInline('${esc(date)}','${esc(t.id)}')">${esc(t.text || '')}</span>
+        onclick="event.stopPropagation();editDailyTaskInline('${esc(date)}','${esc(t.id)}')">${ppBadgeHtml(t)}${esc(t.text || '')}</span>
       <button type="button" class="dj-task-delete"
         onclick="event.stopPropagation();deleteDailyTaskInline('${esc(date)}','${esc(t.id)}')" aria-label="Delete">×</button>
     </div>
@@ -9033,7 +9081,7 @@ function appendEodToDailyJournal(date, eodText) {
       date,
       timestamp: nowISTIso(),
       lastEditedAt: nowISTIso(),
-      tasks: [],
+      tasks: carryForwardTasks(date),
       thoughts: '',
       reflection: '',
       tags: [],
