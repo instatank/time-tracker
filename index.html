@@ -2437,6 +2437,35 @@ html, body {
 }
 .wr-patterns { display: flex; flex-direction: column; gap: 0.4rem; }
 
+/* Weekly Review tasks block — list of dj-task-rows + "+ Add task" button. */
+.wr-prev-tasks-score {
+  font-size: 0.78rem;
+  color: var(--text2);
+  background: var(--surface2);
+  border-left: 3px solid var(--accent);
+  padding: 0.45rem 0.65rem;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 0.55rem;
+}
+.wr-tasks-empty {
+  font-size: 0.8rem;
+  color: var(--text3);
+  font-style: italic;
+  padding: 0.6rem 0.5rem;
+}
+#wr-tasks-list { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.55rem; }
+.wr-add-task-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border2);
+  color: var(--text3);
+  border-radius: 6px;
+  padding: 0.45rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.wr-add-task-btn:hover { color: var(--accent); border-color: var(--accent); }
+
 .wr-save-btn {
   /* Renders inline at the end of the scrollable content. Earlier this was
      position:fixed but on some devices it sat hidden inside the bottom-nav
@@ -7860,6 +7889,8 @@ function renderWeeklyReview() {
 
     ${planSection}
 
+    ${renderWeeklyTasksSection(weekStart, isPastWeek)}
+
     ${isPastWeek
       ? '<div style="text-align:center;font-size:0.78rem;color:var(--text3);padding:1rem 0">Past weeks are read-only.</div>'
       : `<button class="wr-save-btn" id="wr-save-btn" onclick="saveWeeklyReview()">
@@ -7867,6 +7898,188 @@ function renderWeeklyReview() {
         </button>`}
   </div>`;
 }
+
+// ── Weekly Review tasks ───────────────────────────────────────
+// Same shape as Daily Journal tasks ({id, text, completed, completedAt})
+// but stored on the weekly-review doc under `tasks`. Auto-saves on every
+// mutation so the user never has to remember to tap "Save Review" — the
+// form-button save still works and now preserves tasks instead of
+// overwriting them. Past weeks render read-only.
+function getWeeklyTasks(weekStart) {
+  const r = weeklyReviews[weekStart];
+  return (r && Array.isArray(r.tasks)) ? r.tasks : [];
+}
+
+function persistWeeklyReviewTasks(weekStart, tasks) {
+  const existing = weeklyReviews[weekStart] || {
+    weekStart,
+    weekEnd: addDays(weekStart, 6),
+  };
+  existing.tasks   = tasks;
+  existing.savedAt = nowISTIso();
+  weeklyReviews[weekStart] = existing;
+  saveLocal('dayos_weekly_reviews_v1', weeklyReviews);
+  if (user) {
+    setDoc(doc(db, 'users', user.uid, 'weeklyReviews', weekStart), existing).catch(err => {
+      console.error('[DayOS] Weekly review task save error:', err);
+    });
+  }
+}
+
+function renderWeeklyTasksSection(weekStart, isPastWeek) {
+  const prevWeekStart = addDays(weekStart, -7);
+  const prev = weeklyReviews[prevWeekStart];
+  const prevTasks = (prev && Array.isArray(prev.tasks)) ? prev.tasks : [];
+  let scoreHtml = '';
+  if (prevTasks.length) {
+    const done  = prevTasks.filter(t => t.completed).length;
+    const pct   = Math.round((done / prevTasks.length) * 100);
+    scoreHtml = `<div class="wr-prev-tasks-score">Last week: ${done} of ${prevTasks.length} tasks completed (${pct}%)</div>`;
+  }
+  const tasksWrapId = 'wr-tasks-list';
+  return `
+    <div class="wr-section-title">Tasks</div>
+    ${scoreHtml}
+    <div id="${tasksWrapId}">${renderWeeklyTasksList(weekStart, isPastWeek)}</div>
+    ${isPastWeek
+      ? ''
+      : `<div id="wr-add-task-row">
+          <button class="wr-add-task-btn" onclick="openWeeklyAddTask('${weekStart}')">+ Add task</button>
+        </div>`}
+  `;
+}
+
+function renderWeeklyTasksList(weekStart, isPastWeek) {
+  const tasks = getWeeklyTasks(weekStart);
+  if (!tasks.length) {
+    return `<div class="wr-tasks-empty">No tasks yet${isPastWeek ? '.' : ' — tap "+ Add task" to plan one for this week.'}</div>`;
+  }
+  if (isPastWeek) {
+    return tasks.map(t => `
+      <div class="dj-task-row-readonly">
+        <span class="dj-task-checkbox-display ${t.completed ? 'completed' : ''}">${t.completed ? '✓' : '○'}</span>
+        <span class="dj-task-text ${t.completed ? 'completed' : ''}">${esc(t.text || '')}</span>
+      </div>`).join('');
+  }
+  return tasks.map(t => `
+    <div class="dj-task-row" data-task-id="${esc(t.id)}">
+      <input type="checkbox" class="dj-task-check" ${t.completed ? 'checked' : ''}
+        onchange="toggleWeeklyTask('${weekStart}','${esc(t.id)}')">
+      <span class="dj-task-text ${t.completed ? 'completed' : ''}"
+        onclick="editWeeklyTask('${weekStart}','${esc(t.id)}')">${esc(t.text || '')}</span>
+      <button type="button" class="dj-task-delete"
+        onclick="deleteWeeklyTask('${weekStart}','${esc(t.id)}')" aria-label="Delete">×</button>
+    </div>`).join('');
+}
+
+function repaintWeeklyTasks(weekStart, isPastWeek) {
+  const wrap = document.getElementById('wr-tasks-list');
+  if (!wrap) return;
+  wrap.innerHTML = renderWeeklyTasksList(weekStart, isPastWeek);
+}
+
+window.openWeeklyAddTask = function(weekStart) {
+  const row = document.getElementById('wr-add-task-row');
+  if (!row) return;
+  row.innerHTML = `
+    <input type="text" class="dj-task-input" id="wr-new-task" placeholder="New task for this week…"
+      onkeydown="if(event.key==='Enter'){confirmWeeklyAddTask('${weekStart}')}else if(event.key==='Escape'){cancelWeeklyAddTask('${weekStart}')}"
+      onblur="confirmWeeklyAddTask('${weekStart}')"
+      style="width:100%;padding:0.5rem;border:1px solid var(--accent);border-radius:6px;background:var(--surface2);color:var(--text);outline:none">
+  `;
+  setTimeout(() => {
+    const inp = document.getElementById('wr-new-task');
+    if (inp) inp.focus();
+  }, 0);
+};
+
+let _confirmingWeeklyTask = false;
+window.confirmWeeklyAddTask = function(weekStart) {
+  if (_confirmingWeeklyTask) return;
+  _confirmingWeeklyTask = true;
+  try {
+    const inp = document.getElementById('wr-new-task');
+    const text = inp ? inp.value.trim() : '';
+    // Tear down the input row BEFORE the array push so a Tab/blur cascade
+    // can't re-trigger this. Mirrors the Daily-Journal task-add guard.
+    resetWeeklyAddTaskRow(weekStart);
+    if (!text) return;
+    const tasks = getWeeklyTasks(weekStart).slice();
+    tasks.push({ id: uid(), text, completed: false, completedAt: null });
+    persistWeeklyReviewTasks(weekStart, tasks);
+    repaintWeeklyTasks(weekStart, false);
+  } finally {
+    _confirmingWeeklyTask = false;
+  }
+};
+
+window.cancelWeeklyAddTask = function(weekStart) {
+  resetWeeklyAddTaskRow(weekStart);
+};
+
+function resetWeeklyAddTaskRow(weekStart) {
+  const row = document.getElementById('wr-add-task-row');
+  if (!row) return;
+  row.innerHTML = `<button class="wr-add-task-btn" onclick="openWeeklyAddTask('${weekStart}')">+ Add task</button>`;
+}
+
+window.toggleWeeklyTask = function(weekStart, taskId) {
+  const tasks = getWeeklyTasks(weekStart).slice();
+  const i = tasks.findIndex(t => t.id === taskId);
+  if (i < 0) return;
+  tasks[i] = {
+    ...tasks[i],
+    completed:   !tasks[i].completed,
+    completedAt: !tasks[i].completed ? nowISTIso() : null,
+  };
+  persistWeeklyReviewTasks(weekStart, tasks);
+  repaintWeeklyTasks(weekStart, false);
+};
+
+window.deleteWeeklyTask = function(weekStart, taskId) {
+  const tasks = getWeeklyTasks(weekStart).filter(t => t.id !== taskId);
+  persistWeeklyReviewTasks(weekStart, tasks);
+  repaintWeeklyTasks(weekStart, false);
+};
+
+window.editWeeklyTask = function(weekStart, taskId) {
+  const row = document.querySelector(`#wr-tasks-list .dj-task-row[data-task-id="${CSS.escape(taskId)}"]`);
+  if (!row) return;
+  const span = row.querySelector('.dj-task-text');
+  if (!span) return;
+  const tasks = getWeeklyTasks(weekStart);
+  const t = tasks.find(x => x.id === taskId);
+  if (!t) return;
+  const current = t.text || '';
+  span.outerHTML = `<input type="text" class="dj-task-edit-input" value="${esc(current)}"
+    onkeydown="if(event.key==='Enter'){confirmWeeklyEditTask('${weekStart}','${esc(taskId)}')}else if(event.key==='Escape'){repaintWeeklyTasksFromGlobal('${weekStart}')}"
+    onblur="confirmWeeklyEditTask('${weekStart}','${esc(taskId)}')"
+    style="flex:1;padding:0.3rem 0.5rem;border:1px solid var(--accent);border-radius:6px;background:var(--surface2);color:var(--text);outline:none">`;
+  const inp = row.querySelector('.dj-task-edit-input');
+  if (inp) { inp.focus(); inp.select(); }
+};
+
+window.repaintWeeklyTasksFromGlobal = function(weekStart) {
+  repaintWeeklyTasks(weekStart, false);
+};
+
+window.confirmWeeklyEditTask = function(weekStart, taskId) {
+  const row = document.querySelector(`#wr-tasks-list .dj-task-row[data-task-id="${CSS.escape(taskId)}"]`);
+  if (!row) return;
+  const inp = row.querySelector('.dj-task-edit-input');
+  if (!inp) return;
+  const next = inp.value.trim();
+  const tasks = getWeeklyTasks(weekStart).slice();
+  const i = tasks.findIndex(t => t.id === taskId);
+  if (i < 0) return;
+  if (!next) {
+    tasks.splice(i, 1);
+  } else {
+    tasks[i] = { ...tasks[i], text: next };
+  }
+  persistWeeklyReviewTasks(weekStart, tasks);
+  repaintWeeklyTasks(weekStart, false);
+};
 
 // No-op kept so existing oninput="onWrIntentionChange()" attributes don't
 // error. Save button is always enabled now (no validation gate).
@@ -9888,6 +10101,12 @@ window.saveWeeklyReview = function() {
   const starAverages = {};
   starMetrics.forEach(m => { starAverages[m.key] = +m.avg.toFixed(2); });
 
+  // Preserve any task list the user added/checked off via auto-save —
+  // the form save shouldn't wipe weekly tasks.
+  const existingTasks = (weeklyReviews[weekStart] && Array.isArray(weeklyReviews[weekStart].tasks))
+    ? weeklyReviews[weekStart].tasks
+    : [];
+
   const review = {
     weekStart,
     weekEnd,
@@ -9905,6 +10124,7 @@ window.saveWeeklyReview = function() {
     // Keep the legacy `intention` field too so older code paths reading it
     // (e.g. the saved-banner on Today tab) keep working without a migration.
     intention,
+    tasks: existingTasks,
     savedAt: nowISTIso(),
   };
 
