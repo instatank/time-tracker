@@ -469,6 +469,37 @@ html, body {
 }
 .today-banner-monthly-learn:hover { border-color: var(--border2); }
 .today-banner-monthly-learn .today-banner-text strong { color: var(--text); }
+/* Collective banner collapse — single thin pill replaces the stack when
+   the user prefers a quieter Today page. */
+.banner-collapsed-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text3);
+  font-size: 0.74rem;
+  cursor: pointer;
+  margin-bottom: 0.4rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+.banner-collapsed-pill:hover { color: var(--text2); border-color: var(--border2); }
+/* Tiny "▲ Hide" link at the bottom of the expanded stack — lets users
+   re-collapse without hunting for a setting. */
+.banner-hide-btn {
+  display: block;
+  margin: -0.1rem 0 0.5rem auto;
+  padding: 1px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+.banner-hide-btn:hover { color: var(--text2); }
 
 .action-row {
   display: flex;
@@ -3889,16 +3920,18 @@ function renderToday() {
   const learnText      = learnFocus
     ? [...(learnFocus.tags || []), learnFocus.freeText].filter(Boolean).join(', ')
     : '';
-  const monthlyBuildBanner = buildFocus
+  const monthlyBuildBanner = (buildFocus && !isMonthlyBuildBannerDismissedToday())
     ? `<div class="today-banner today-banner-monthly-build" onclick="openMonthlyReviewAt('${esc(prevYM)}')">
          <span class="today-banner-text"><strong>This month:</strong> ${esc(buildFocus)}</span>
          <span class="today-banner-chevron">›</span>
+         <button class="today-banner-close" onclick="event.stopPropagation();dismissMonthlyBuildBanner()" aria-label="Dismiss">×</button>
        </div>`
     : '';
-  const monthlyLearnBanner = learnText
+  const monthlyLearnBanner = (learnText && !isMonthlyLearnBannerDismissedToday())
     ? `<div class="today-banner today-banner-monthly-learn" onclick="openMonthlyReviewAt('${esc(prevYM)}')">
          <span class="today-banner-text"><strong>Learning:</strong> ${esc(learnText)}</span>
          <span class="today-banner-chevron">›</span>
+         <button class="today-banner-close" onclick="event.stopPropagation();dismissMonthlyLearnBanner()" aria-label="Dismiss">×</button>
        </div>`
     : '';
 
@@ -3922,10 +3955,11 @@ function renderToday() {
   const prevWeekStart    = addDays(currentWeekStart, -7);
   const prevReview       = weeklyReviews[prevWeekStart];
   const activeIntention  = prevReview && (prevReview.nextWeekIntention || prevReview.intention);
-  const intentionBanner  = activeIntention
+  const intentionBanner  = (activeIntention && !isWeeklyIntentionBannerDismissedToday())
     ? `<div class="today-banner today-banner-intention" onclick="openWeeklyReviewAt(-1)">
          <span class="today-banner-text"><strong>This week:</strong> ${esc(activeIntention)}</span>
          <span class="today-banner-chevron">›</span>
+         <button class="today-banner-close" onclick="event.stopPropagation();dismissWeeklyIntentionBanner()" aria-label="Dismiss">×</button>
        </div>`
     : '';
 
@@ -3944,12 +3978,20 @@ function renderToday() {
        </div>`
     : '';
 
+  // Collective collapse: when on, replace the banner stack with a single
+  // thin pill teasing how many are hidden. When off, render the stack +
+  // a small "▲ Hide" link so the user can re-collapse without hunting.
+  const _bannersList = [monthlyBuildBanner, monthlyLearnBanner, monthlySuggestBanner, intentionBanner, suggestBanner].filter(Boolean);
+  const bannersStack = (() => {
+    if (!_bannersList.length) return '';
+    if (areBannersCollapsed()) {
+      return `<div class="banner-collapsed-pill" onclick="toggleBannersCollapsed()">▼ ${_bannersList.length} goal${_bannersList.length === 1 ? '' : 's'} & prompt${_bannersList.length === 1 ? '' : 's'} hidden — tap to show</div>`;
+    }
+    return `${_bannersList.join('')}<button class="banner-hide-btn" onclick="toggleBannersCollapsed()">▲ Hide</button>`;
+  })();
+
   return `<div class="view">
-    ${monthlyBuildBanner}
-    ${monthlyLearnBanner}
-    ${monthlySuggestBanner}
-    ${intentionBanner}
-    ${suggestBanner}
+    ${bannersStack}
     ${homeSearchOpen
       ? `<div class="action-row">
           <div class="proj-search">
@@ -6196,6 +6238,21 @@ function isReviewBannerDismissedToday() {
 function isMonthlyReviewBannerDismissedToday() {
   const d = todayStr();
   return !!(dismissals[d] && dismissals[d].monthlyReviewBanner);
+}
+// Per-day dismiss flags for the three "static" goal/intention banners.
+// Reset each day, same as the auto-suggest banners — keeps the model
+// consistent and avoids "I dismissed it once and never see it again."
+function isMonthlyBuildBannerDismissedToday() {
+  const d = todayStr();
+  return !!(dismissals[d] && dismissals[d].monthlyBuildBanner);
+}
+function isMonthlyLearnBannerDismissedToday() {
+  const d = todayStr();
+  return !!(dismissals[d] && dismissals[d].monthlyLearnBanner);
+}
+function isWeeklyIntentionBannerDismissedToday() {
+  const d = todayStr();
+  return !!(dismissals[d] && dismissals[d].weeklyIntentionBanner);
 }
 
 // ── Adherence config cloud sync (B1) ─────────────────────────
@@ -10084,6 +10141,45 @@ window.dismissMonthlyReviewBanner = function() {
   dismissals[d] = { ...(dismissals[d] || {}), monthlyReviewBanner: true };
   saveLocal('dayos_dismissals_v1', dismissals);
   syncDismissalDoc(d);
+  renderMain(true);
+};
+// Per-banner × handlers for the three static banners. Same per-day
+// reset semantics as the auto-suggest dismisses above.
+window.dismissMonthlyBuildBanner = function() {
+  const d = todayStr();
+  dismissals[d] = { ...(dismissals[d] || {}), monthlyBuildBanner: true };
+  saveLocal('dayos_dismissals_v1', dismissals);
+  syncDismissalDoc(d);
+  renderMain(true);
+};
+window.dismissMonthlyLearnBanner = function() {
+  const d = todayStr();
+  dismissals[d] = { ...(dismissals[d] || {}), monthlyLearnBanner: true };
+  saveLocal('dayos_dismissals_v1', dismissals);
+  syncDismissalDoc(d);
+  renderMain(true);
+};
+window.dismissWeeklyIntentionBanner = function() {
+  const d = todayStr();
+  dismissals[d] = { ...(dismissals[d] || {}), weeklyIntentionBanner: true };
+  saveLocal('dayos_dismissals_v1', dismissals);
+  syncDismissalDoc(d);
+  renderMain(true);
+};
+
+// Collective collapse — sticky localStorage flag, NOT per-day. When
+// collapsed, all five banners hide behind a single thin pill. Pure
+// presentation; per-banner dismissals stay independent of this state.
+const BANNERS_COLLAPSED_KEY = 'dayos_banners_collapsed_v1';
+function areBannersCollapsed() {
+  try { return localStorage.getItem(BANNERS_COLLAPSED_KEY) === '1'; }
+  catch { return false; }
+}
+window.toggleBannersCollapsed = function() {
+  try {
+    const next = !areBannersCollapsed();
+    localStorage.setItem(BANNERS_COLLAPSED_KEY, next ? '1' : '0');
+  } catch {}
   renderMain(true);
 };
 // Save a complete Weekly Review snapshot. Captures the six tile totals,
