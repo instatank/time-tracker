@@ -3214,7 +3214,7 @@ import { getAuth, GoogleAuthProvider,
          onAuthStateChanged }               from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { getFirestore, collection, doc,
          getDocs, getDoc, setDoc, deleteDoc,
-         writeBatch }                       from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+         writeBatch, onSnapshot }           from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 // ── Firebase ──────────────────────────────────────────────────
 const fbApp = initializeApp({
@@ -11909,7 +11909,13 @@ async function initialSync(uid) {
     loadLifeCheckConfigFromCloud(uid),
   ]);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
-  subscribeDailyJournal(uid);
+  // Defensive try/catch: a runtime error here used to throw out of initialSync
+  // BEFORE the critical-read try block was entered, leaving the watchdog to
+  // flip "Synced ✓" green at 12s without any of the awaited reads happening.
+  // (Discovered when `onSnapshot` was missing from the firestore import — the
+  // ReferenceError silently broke every reload-time sync.)
+  try { subscribeDailyJournal(uid); }
+  catch (err) { console.error('[DayOS] subscribeDailyJournal failed:', err); }
 
   try {
     // ── Critical read ──
