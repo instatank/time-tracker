@@ -487,11 +487,11 @@ html, body {
   transition: color 0.15s, border-color 0.15s;
 }
 .banner-collapsed-pill:hover { color: var(--text2); border-color: var(--border2); }
-/* Tiny "▲ Hide" link at the bottom of the expanded stack — lets users
+/* Tiny "▲ Hide" link above the expanded banner stack — lets users
    re-collapse without hunting for a setting. */
 .banner-hide-btn {
   display: block;
-  margin: -0.1rem 0 0.5rem auto;
+  margin: 0 0 0.35rem auto;
   padding: 1px 8px;
   background: transparent;
   border: none;
@@ -3987,7 +3987,7 @@ function renderToday() {
     if (areBannersCollapsed()) {
       return `<div class="banner-collapsed-pill" onclick="toggleBannersCollapsed()">▼ ${_bannersList.length} goal${_bannersList.length === 1 ? '' : 's'} & prompt${_bannersList.length === 1 ? '' : 's'} hidden — tap to show</div>`;
     }
-    return `${_bannersList.join('')}<button class="banner-hide-btn" onclick="toggleBannersCollapsed()">▲ Hide</button>`;
+    return `<button class="banner-hide-btn" onclick="toggleBannersCollapsed()">▲ Hide</button>${_bannersList.join('')}`;
   })();
 
   return `<div class="view">
