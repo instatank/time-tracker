@@ -11369,6 +11369,13 @@ function setAuthError(msg) {
 // mergeWithTombstones already re-pushes any dirty items via syncBlockDoc /
 // syncCaptureDoc fire-and-forget. Re-uploading every block + capture on
 // every sign-in was burning time + write quota for no benefit.
+//
+// IMPORTANT: meta/projects and meta/tag_history were previously in this
+// batch but caused a clobber race — when the loader for either was still
+// in flight, the batch could push the device's stale localStorage copy
+// to cloud, overwriting fresh edits from another device. They each have
+// their own per-write sync paths (syncProjectsDoc / syncTagHistory),
+// which is the correct write surface. Don't re-add them here.
 async function initialSyncBatchWrite(uid, allRatings, allLifeRatings = {}, allEodNotes = {}) {
   const ops = [
     ...Object.entries(allRatings).map(([date, r]) => ({
@@ -11380,8 +11387,6 @@ async function initialSyncBatchWrite(uid, allRatings, allLifeRatings = {}, allEo
     ...Object.entries(allEodNotes).map(([date, text]) => ({
       ref: doc(db, 'users', uid, 'eod', date), data: { text }
     })),
-    { ref: doc(db, 'users', uid, 'meta', 'projects'),     data: { list: projects } },
-    { ref: doc(db, 'users', uid, 'meta', 'tag_history'),  data: { history: tagHistory } },
   ];
   if (!ops.length) return;
   const CHUNK = 400;
@@ -11788,20 +11793,25 @@ async function initialSync(uid) {
   const localCapturesBefore = captures.length;
 
   // ── Background loaders ─────────────────────────────────────
-  // None of these block the visual "Synced ✓" indicator. Each one merges
-  // remote-into-local with tombstone awareness and re-renders if the active
-  // tab is showing data they own. Sessions/learning/monthly/projects/etc. all
-  // resolve in parallel with the critical read below.
-  loadProjectsFromCloud(uid);
-  loadTagHistoryFromCloud(uid);
-  loadAdherenceConfigFromCloud(uid);
-  loadDismissalsFromCloud(uid);
-  loadMonthlyReviewsFromCloud(uid);
-  loadSessionsFromCloud(uid);
-  loadLearningFromCloud(uid);
-  loadDftsFromCloud(uid);
-  loadDayScoreConfigFromCloud(uid);
-  loadLifeCheckConfigFromCloud(uid);
+  // None of these block the visual "Synced ✓" indicator. We capture them
+  // in a Promise.allSettled so we can fire ONE final render() after they
+  // ALL complete — this guarantees every tab reflects fresh remote state
+  // on reload, regardless of which loaders finish before/after the
+  // 5-collection awaited read below. Without that final render, the page
+  // could show stale config / projects / sessions on tabs whose loader
+  // didn't include an activeTab-specific re-render hook.
+  const _bgLoaders = Promise.allSettled([
+    loadProjectsFromCloud(uid),
+    loadTagHistoryFromCloud(uid),
+    loadAdherenceConfigFromCloud(uid),
+    loadDismissalsFromCloud(uid),
+    loadMonthlyReviewsFromCloud(uid),
+    loadSessionsFromCloud(uid),
+    loadLearningFromCloud(uid),
+    loadDftsFromCloud(uid),
+    loadDayScoreConfigFromCloud(uid),
+    loadLifeCheckConfigFromCloud(uid),
+  ]);
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
   subscribeDailyJournal(uid);
 
@@ -11867,12 +11877,27 @@ async function initialSync(uid) {
     sweepOldDfts();
     render();
 
+    // After every background loader settles, re-render so any tab whose
+    // data lives in those collections (Projects, Day-Score config tiles,
+    // Daily Check-in metrics, DFT, etc.) reflects fresh remote state.
+    // Mirrors what forcePullFromCloud already does — without this, reload
+    // would show stale config/sessions on tabs whose loader didn't include
+    // its own activeTab-specific re-render hook.
+    _bgLoaders.then(() => { try { render(); } catch {} });
+
     // ── Background cleanup ──
-    // Pushes any local-only ratings/life/eod/meta that didn't sync via the
+    // Pushes any local-only ratings/life/eod that didn't sync via the
     // per-write paths (e.g. written while offline). Fire-and-forget — the user
     // already sees "Synced ✓" so this slow-but-rare path doesn't block UI.
     // Only runs when there's something local-only to push, to avoid burning
     // write quota on every sign-in.
+    //
+    // NOTE: meta/projects and meta/tag_history are NOT in the cleanup batch
+    // (they were, until we hit a clobber race: when a project/tag-history
+    // loader was still in flight, the batch could push the device's stale
+    // localStorage copy back to cloud, overwriting fresh edits from another
+    // device). They have their own per-write sync paths via syncProjectsDoc
+    // and syncTagHistory — no need to redundantly push them here.
     const hasLocalOnly =
       Object.keys(mergedRatings).length     > Object.keys(remoteRatings).length     ||
       Object.keys(mergedLifeRatings).length > Object.keys(remoteLifeRatings).length ||
