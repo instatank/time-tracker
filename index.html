@@ -487,19 +487,25 @@ html, body {
   transition: color 0.15s, border-color 0.15s;
 }
 .banner-collapsed-pill:hover { color: var(--text2); border-color: var(--border2); }
-/* Tiny "▲ Hide" link above the expanded banner stack — lets users
-   re-collapse without hunting for a setting. */
-.banner-hide-btn {
-  display: block;
-  margin: 0 0 0.35rem auto;
-  padding: 1px 8px;
+/* Tiny "▲" control spliced into the first banner's right edge — collapses
+   the whole banner stack. Lives INSIDE the banner row so it doesn't claim
+   its own line. flex-shrink:0 keeps it sized to its glyph; the slight
+   negative right margin pulls it tight against the banner edge so it
+   doesn't compete with the × close for room. */
+.banner-hide-btn-inline {
+  flex-shrink: 0;
   background: transparent;
   border: none;
   color: var(--text3);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
+  padding: 4px 6px;
+  margin-left: 2px;
+  margin-right: -4px;
+  border-radius: 4px;
   cursor: pointer;
+  line-height: 1;
 }
-.banner-hide-btn:hover { color: var(--text2); }
+.banner-hide-btn-inline:hover { color: var(--text); background: var(--surface2); }
 
 .action-row {
   display: flex;
@@ -3979,15 +3985,22 @@ function renderToday() {
     : '';
 
   // Collective collapse: when on, replace the banner stack with a single
-  // thin pill teasing how many are hidden. When off, render the stack +
-  // a small "▲ Hide" link so the user can re-collapse without hunting.
+  // thin pill teasing how many are hidden. When off, render the stack
+  // and inject a tiny ▲ control INTO the first banner (rightmost position)
+  // so the toggle doesn't claim its own row.
   const _bannersList = [monthlyBuildBanner, monthlyLearnBanner, monthlySuggestBanner, intentionBanner, suggestBanner].filter(Boolean);
   const bannersStack = (() => {
     if (!_bannersList.length) return '';
     if (areBannersCollapsed()) {
       return `<div class="banner-collapsed-pill" onclick="toggleBannersCollapsed()">▼ ${_bannersList.length} goal${_bannersList.length === 1 ? '' : 's'} & prompt${_bannersList.length === 1 ? '' : 's'} hidden — tap to show</div>`;
     }
-    return `<button class="banner-hide-btn" onclick="toggleBannersCollapsed()">▲ Hide</button>${_bannersList.join('')}`;
+    // Splice a Hide-toggle into the FIRST banner (just before its closing
+    // </div>) — keeps the control visible without consuming a separate row.
+    const first = _bannersList[0].replace(
+      /<\/div>\s*$/,
+      `<button class="banner-hide-btn-inline" onclick="event.stopPropagation();toggleBannersCollapsed()" aria-label="Hide all banners" title="Hide all banners">▲</button></div>`
+    );
+    return [first, ..._bannersList.slice(1)].join('');
   })();
 
   return `<div class="view">
