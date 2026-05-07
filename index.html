@@ -487,11 +487,9 @@ html, body {
   transition: color 0.15s, border-color 0.15s;
 }
 .banner-collapsed-pill:hover { color: var(--text2); border-color: var(--border2); }
-/* Tiny "▲" control spliced into the first banner's right edge — collapses
+/* Tiny "▲" control spliced into the first banner's LEFT edge — collapses
    the whole banner stack. Lives INSIDE the banner row so it doesn't claim
-   its own line. flex-shrink:0 keeps it sized to its glyph; the slight
-   negative right margin pulls it tight against the banner edge so it
-   doesn't compete with the × close for room. */
+   its own line, and sits clear of the chevron/× cluster on the right. */
 .banner-hide-btn-inline {
   flex-shrink: 0;
   background: transparent;
@@ -499,8 +497,8 @@ html, body {
   color: var(--text3);
   font-size: 0.7rem;
   padding: 4px 6px;
-  margin-left: 2px;
-  margin-right: -4px;
+  margin-left: -4px;
+  margin-right: 2px;
   border-radius: 4px;
   cursor: pointer;
   line-height: 1;
@@ -3994,11 +3992,13 @@ function renderToday() {
     if (areBannersCollapsed()) {
       return `<div class="banner-collapsed-pill" onclick="toggleBannersCollapsed()">▼ ${_bannersList.length} goal${_bannersList.length === 1 ? '' : 's'} & prompt${_bannersList.length === 1 ? '' : 's'} hidden — tap to show</div>`;
     }
-    // Splice a Hide-toggle into the FIRST banner (just before its closing
-    // </div>) — keeps the control visible without consuming a separate row.
+    // Splice a Hide-toggle into the FIRST banner (just AFTER the opening
+    // <div ...> tag, leftmost position) — keeps the control visible without
+    // consuming a separate row, and sits clear of the chevron/× cluster
+    // on the right.
     const first = _bannersList[0].replace(
-      /<\/div>\s*$/,
-      `<button class="banner-hide-btn-inline" onclick="event.stopPropagation();toggleBannersCollapsed()" aria-label="Hide all banners" title="Hide all banners">▲</button></div>`
+      /(<div class="today-banner[^>]*>)/,
+      `$1<button class="banner-hide-btn-inline" onclick="event.stopPropagation();toggleBannersCollapsed()" aria-label="Hide all banners" title="Hide all banners">▲</button>`
     );
     return [first, ..._bannersList.slice(1)].join('');
   })();
