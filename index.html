@@ -418,7 +418,16 @@ html, body {
   cursor: pointer;
   font-size: 0.82rem;
   margin-bottom: 0.65rem;
-  transition: border-color 0.15s, background 0.15s;
+  /* Soft green glow on every banner — same idea as the Daily Journal pane's
+     blue glow, just keyed to --success (#10b981 / rgb(16,185,129)). The
+     1px inner "ring" + 10px outer haze gives the outline + glow look without
+     fighting the per-variant border-color (so each banner type still keeps
+     its subtle background tint). */
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.22), 0 0 10px rgba(16, 185, 129, 0.14);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.today-banner:hover {
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.34), 0 0 12px rgba(16, 185, 129, 0.18);
 }
 .today-banner-text {
   flex: 1;
