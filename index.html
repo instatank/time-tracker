@@ -1218,6 +1218,33 @@ html, body {
 }
 .proj-pill-lg.more-pill:hover,
 .proj-pill.more-pill:hover { color: var(--text); border-color: var(--text3); }
+
+/* Project-pill picker modal — vertical list, tappable rows. Used by
+   openProjPillPicker() when the "▾ more (N)" pill is tapped on any
+   project-pill row. Keeps the picker out of the inline flow so users
+   don't have to scroll through expanded pills. */
+.projpill-modal-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.projpill-modal-row:hover  { background: var(--surface2); border-color: var(--border2); }
+.projpill-modal-row:active { transform: scale(0.99); }
+.projpill-modal-row.active {
+  background: var(--accent-soft-faint);
+  border-color: var(--accent-soft-strong);
+  color: var(--text);
+  font-weight: 600;
+}
 .proj-new-input {
   flex-shrink: 0;
   font-size: 0.82rem;
@@ -2995,6 +3022,7 @@ select option { background: var(--surface2); }
         <button class="pill dur-pill" data-dur="45">45m</button>
         <button class="pill dur-pill" data-dur="60">60m</button>
         <button class="pill dur-pill" data-dur="90">90m</button>
+        <button class="pill dur-pill" data-dur="120">120m</button>
         <button class="pill dur-pill" data-dur="0">Custom</button>
       </div>
       <input type="number" id="f-dur-custom" placeholder="Minutes" style="display:none;margin-top:0.5rem;width:100px;box-sizing:border-box">
@@ -3202,6 +3230,14 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
   <div class="sheet-handle"></div>
   <div class="sheet-title">Settings</div>
   <div class="sheet-body" id="settings-body"></div>
+</div>
+
+<!-- Sheet: Project-pill picker — opened when the "▾ more (N)" pill is tapped
+     in any project-pill row. Body is populated by openProjPillPicker(). -->
+<div id="sheet-projpill-picker" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="projpill-picker-title">Pick a project</div>
+  <div class="sheet-body" id="projpill-picker-body"></div>
 </div>
 
 <div id="backdrop" class="backdrop" onclick="closeSheets()"></div>
@@ -4774,13 +4810,19 @@ function renderBlockInJournal(b) {
 // currently-selected pill would be hidden by the limit, it's swapped into
 // the visible slice so the user never loses sight of their selection.
 const PROJ_PILL_LIMIT = 5;
-let _projPillExpanded = {}; // { 'main': true, 'block': false, 'journal': true }
+// Cache per-key data so the picker modal can run the original onclick when
+// a pill is tapped from inside the modal. Closures (activeMatch, onclickFn)
+// can't be serialised onto an HTML attribute, so we keep them in memory and
+// reach for them by key.
+let _projPillData = {}; // { key: { items, activeMatch, onclickFn, pillClass, title } }
 
-function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 'proj-pill-lg' }) {
+function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 'proj-pill-lg', title }) {
+  // Cache for the modal — even when nothing's overflowing right now, the row
+  // may grow before the next render and the modal needs the latest data.
+  _projPillData[key] = { items, activeMatch, onclickFn, pillClass, title: title || 'Pick a project' };
   if (!items.length) return '';
-  const expanded = !!_projPillExpanded[key];
-  const showAll  = expanded || items.length <= PROJ_PILL_LIMIT;
 
+  const showAll = items.length <= PROJ_PILL_LIMIT;
   let visible, hidden;
   if (showAll) {
     visible = items.slice();
@@ -4789,7 +4831,7 @@ function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 
     visible = items.slice(0, PROJ_PILL_LIMIT);
     hidden  = items.length - visible.length;
     // Active-aware: if the selected item is beyond the cutoff, swap it in
-    // so it's always visible (replacing the last visible slot).
+    // so the user never loses sight of their current selection.
     const activeIdx = items.findIndex(activeMatch);
     if (activeIdx >= PROJ_PILL_LIMIT) {
       visible[PROJ_PILL_LIMIT - 1] = items[activeIdx];
@@ -4801,21 +4843,30 @@ function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 
     return `<button class="${pillClass} ${activeMatch(p) ? 'active' : ''}" onclick="${onclickFn(safeName)}">${esc(p)}</button>`;
   }).join('');
 
-  let trail = '';
-  if (hidden > 0) {
-    trail = `<button class="${pillClass} more-pill" onclick="toggleProjPillRow('${key}')">▾ more (${hidden})</button>`;
-  } else if (expanded && items.length > PROJ_PILL_LIMIT) {
-    trail = `<button class="${pillClass} more-pill" onclick="toggleProjPillRow('${key}')">▴ less</button>`;
-  }
+  // Tap "more" → opens a vertical-list dropdown modal of all items. User
+  // picks one, the original onclick fires, the modal closes. No inline
+  // expansion / vertical scrolling through pills any more.
+  const trail = hidden > 0
+    ? `<button class="${pillClass} more-pill" onclick="openProjPillPicker('${key}')">▾ more (${hidden})</button>`
+    : '';
   return pills + trail;
 }
 
-window.toggleProjPillRow = function(key) {
-  _projPillExpanded[key] = !_projPillExpanded[key];
-  // Re-render the surfaces that own pill rows. Cheap to call all of them —
-  // each is a no-op if the relevant DOM root isn't currently mounted.
-  if (activeTab === 'projects' || activeTab === 'journal') renderMain(true);
-  if (document.getElementById('f-block-project-row')) renderBlockProjectPills();
+window.openProjPillPicker = function(key) {
+  const data = _projPillData[key];
+  if (!data) return;
+  const { items, activeMatch, onclickFn, title } = data;
+  const titleEl = document.getElementById('projpill-picker-title');
+  if (titleEl) titleEl.textContent = title || 'Pick a project';
+  const body = document.getElementById('projpill-picker-body');
+  if (!body) return;
+  // Each row runs the original onclick handler, then closes the sheet.
+  body.innerHTML = items.map(p => {
+    const safeName = esc(p).replace(/'/g, "\\'");
+    return `<button class="projpill-modal-row ${activeMatch(p) ? 'active' : ''}"
+      onclick="${onclickFn(safeName)};closeSheets();">${esc(p)}</button>`;
+  }).join('');
+  openSheet('sheet-projpill-picker');
 };
 
 function renderProjects() {
@@ -8245,13 +8296,13 @@ function renderDurPills() {
   document.querySelectorAll('.dur-pill').forEach(btn => {
     const v = parseInt(btn.dataset.dur);
     const isCustom = v === 0;
-    const isActive = isCustom ? (![15,30,45,60,90].includes(selDur)) : (v === selDur);
+    const isActive = isCustom ? (![15,30,45,60,90,120].includes(selDur)) : (v === selDur);
     btn.classList.toggle('active', isActive);
     if (isActive) btn.style.background = 'var(--accent)';
     else btn.style.background = '';
   });
   const custom = document.getElementById('f-dur-custom');
-  const showCustom = ![30,45,60,90].includes(selDur);
+  const showCustom = ![15,30,45,60,90,120].includes(selDur);
   custom.style.display = showCustom ? 'block' : 'none';
   if (showCustom) custom.value = selDur || '';
 }
