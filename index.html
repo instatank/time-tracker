@@ -2804,6 +2804,24 @@ select option { background: var(--surface2); }
 }
 .pill.active { border-color: transparent; color: var(--on-accent); }
 .dur-pill { min-width: 48px; text-align: center; }
+/* Duration row holds 7 pills (15 / 30 / 45 / 60 / 90 / 120 / Custom) and
+   needs to fit on one line even on a narrow phone. Tighter padding +
+   smaller min-width than the generic .pill so they all sit side-by-side;
+   the row also flex-wrap:nowrap with horizontal-scroll fallback in case
+   a future addition pushes past the screen width. */
+.pill-row.dur-row {
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.pill-row.dur-row::-webkit-scrollbar { display: none; }
+.pill-row.dur-row .dur-pill {
+  min-width: 36px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.74rem;
+  flex-shrink: 0;
+}
 
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
 .cat-pill {
@@ -3016,7 +3034,7 @@ select option { background: var(--surface2); }
       <input type="hidden" id="f-time">
     </div>
     <div class="field">
-      <div class="pill-row">
+      <div class="pill-row dur-row">
         <button class="pill dur-pill" data-dur="15">15m</button>
         <button class="pill dur-pill" data-dur="30">30m</button>
         <button class="pill dur-pill" data-dur="45">45m</button>
