@@ -4930,13 +4930,39 @@ window.openProjPillPicker = function(key) {
   if (titleEl) titleEl.textContent = title || 'Pick a project';
   const body = document.getElementById('projpill-picker-body');
   if (!body) return;
-  // Each row runs the original onclick handler, then closes the sheet.
+  // Each row runs the original onclick handler, then closes ONLY this picker
+  // (not any sheet underneath it — e.g. the Log Activity block sheet).
   body.innerHTML = items.map(p => {
     const safeName = esc(p).replace(/'/g, "\\'");
     return `<button class="projpill-modal-row ${activeMatch(p) ? 'active' : ''}"
-      onclick="${onclickFn(safeName)};closeSheets();">${esc(p)}</button>`;
+      onclick="${onclickFn(safeName)};closeProjPillPickerOnly();">${esc(p)}</button>`;
   }).join('');
-  openSheet('sheet-projpill-picker');
+  // STACK over any already-open sheet. Don't go through openSheet() — that
+  // function is exclusive (closes every other sheet first), which would
+  // collapse the Log Activity sheet underneath us. Manually add .open and
+  // bump z-index above the default .sheet (101) so we sit on top.
+  const picker = document.getElementById('sheet-projpill-picker');
+  picker.classList.add('open');
+  picker.style.zIndex = '110';
+  const bd = document.getElementById('backdrop');
+  bd.classList.add('visible');
+  // While the picker is open, backdrop tap should close ONLY the picker —
+  // not the sheet underneath. We restore the default closeSheets() handler
+  // when the picker dismisses.
+  bd.onclick = window.closeProjPillPickerOnly;
+};
+
+window.closeProjPillPickerOnly = function() {
+  const picker = document.getElementById('sheet-projpill-picker');
+  picker.classList.remove('open');
+  picker.style.zIndex = '';
+  // Restore the default backdrop handler (closes all sheets — original behaviour).
+  const bd = document.getElementById('backdrop');
+  bd.onclick = window.closeSheets;
+  // Hide backdrop only if no other sheet remains open underneath us.
+  if (!document.querySelector('.sheet.open')) {
+    bd.classList.remove('visible');
+  }
 };
 
 function renderProjects() {
