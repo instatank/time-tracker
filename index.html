@@ -3320,7 +3320,7 @@ const LEGACY_CTYPES = {
   journal: { id: 'journal', label: 'Journal', icon: '📓' },
 };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1', TOMBSTONES_PROJECTS: 'dayos_tombstones_projects_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -3398,6 +3398,13 @@ let tombstonesSessions  = loadLocal(SK.TOMBSTONES_SESSIONS, {}); // { id: ts }
 let tombstonesLearning  = loadLocal(SK.TOMBSTONES_LEARNING, {}); // { id: ts }
 let tombstonesBlocks    = loadLocal(SK.TOMBSTONES_BLOCKS,   {}); // { id: ts }
 let tombstonesCaptures  = loadLocal(SK.TOMBSTONES_CAPTURES, {}); // { id: ts }
+// Projects don't have individual doc ids — meta/projects is one list-doc.
+// Tombstone keys are the project SLUG (lowercased, alphanumerics-only).
+// Set on delete/rename; cleared once the loader confirms the slug is gone
+// from cloud. Without this, loadProjectsFromCloud's [...remote, ...extras]
+// merge silently resurrected anything you deleted while the cloud setDoc
+// from the deletion was still in flight.
+let tombstonesProjects  = loadLocal(SK.TOMBSTONES_PROJECTS, {}); // { slug: ts }
 let projectsSubTab      = (function () {                // persisted: 'projects' | 'learning'
   const saved = localStorage.getItem('dayos_projects_subtab');
   return (saved === 'projects' || saved === 'learning') ? saved : 'projects';
@@ -6302,6 +6309,13 @@ window.createProjectFromInput = function() {
   }
   projects.push(name);
   saveLocal(SK.PROJECTS, projects);
+  // If this slug was previously tombstoned (user is re-creating after a
+  // delete), clear the tombstone so the loader doesn't immediately strip it.
+  const newSlug = projectSlug(name);
+  if (newSlug && tombstonesProjects[newSlug]) {
+    delete tombstonesProjects[newSlug];
+    saveLocal(SK.TOMBSTONES_PROJECTS, tombstonesProjects);
+  }
   selectedProject = name;
   projectCreating = false;
   syncProjectsDoc();
@@ -6568,17 +6582,39 @@ async function loadProjectsFromCloud(uid) {
     if (snap.exists()) {
       const remote = snap.data().list;
       if (Array.isArray(remote) && remote.length > 0) {
-        // Merge: remote first, then any local-only extras
-        const seen = new Set(remote.map(p => p.toLowerCase()));
+        // ── Tombstone reconciliation ──
+        // Drop any cloud entry whose slug is locally tombstoned (i.e. the
+        // user just deleted/renamed it). Without this, stale cloud reads
+        // resurrected deleted projects on every reload.
+        const remoteSlugs = remote.map(p => projectSlug(p));
+        const tombSlugSet = new Set(Object.keys(tombstonesProjects || {}));
+        const remoteFiltered = remote.filter(p => !tombSlugSet.has(projectSlug(p)));
+        // Clear tombstones whose slug is no longer in cloud — confirmed gone.
+        const remoteSlugSet = new Set(remoteSlugs);
+        let tombChanged = false;
+        Object.keys(tombstonesProjects).forEach(slug => {
+          if (!remoteSlugSet.has(slug)) {
+            delete tombstonesProjects[slug];
+            tombChanged = true;
+          }
+        });
+        if (tombChanged) saveLocal(SK.TOMBSTONES_PROJECTS, tombstonesProjects);
+        // If cloud still had tombstoned entries, re-push the cleaned list to
+        // retry the deletion on cloud (idempotent — if cloud already drops
+        // them on the next round-trip, the retry is a no-op).
+        const cloudHadStale = remote.length !== remoteFiltered.length;
+
+        // Merge: filtered-remote first, then any local-only extras.
+        const seen = new Set(remoteFiltered.map(p => p.toLowerCase()));
         const extras = projects.filter(p => !seen.has(p.toLowerCase()));
-        projects = [...remote, ...extras];
+        projects = [...remoteFiltered, ...extras];
         saveLocal(SK.PROJECTS, projects);
         // Only reset if a concrete project was selected but is no longer in the list.
         // `null` now means "All" — leave it alone.
         if (selectedProject && !projects.includes(selectedProject)) {
           selectedProject = null;
         }
-        if (extras.length > 0) syncProjectsDoc();
+        if (extras.length > 0 || cloudHadStale) syncProjectsDoc();
         if (activeTab === 'projects') renderMain();
       } else {
         syncProjectsDoc(); // remote empty — seed with current list
@@ -9148,6 +9184,11 @@ window.saveCapture = function() {
     if (slug && !projects.some(p => projectSlug(p) === slug)) {
       projects.push(projectTag);
       saveLocal(SK.PROJECTS, projects);
+      // Re-creating a tombstoned project: clear so the loader doesn't strip it.
+      if (tombstonesProjects[slug]) {
+        delete tombstonesProjects[slug];
+        saveLocal(SK.TOMBSTONES_PROJECTS, tombstonesProjects);
+      }
       if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
     }
   }
@@ -10726,6 +10767,14 @@ function performProjectRenameOrMerge(from, to) {
     if (idx >= 0) projects[idx] = to;
   }
   saveLocal(SK.PROJECTS, projects);
+  // Tombstone the OLD slug so a stale loader can't resurrect it from cloud
+  // before our setDoc has propagated. Cleared automatically once the loader
+  // confirms cloud no longer has the slug. Also: if the user just renamed
+  // INTO an existing slug (toSlug already had a project), make sure the new
+  // target slug isn't itself tombstoned — re-add intent wins over deletion.
+  tombstonesProjects[fromSlug] = Date.now();
+  delete tombstonesProjects[toSlug];
+  saveLocal(SK.TOMBSTONES_PROJECTS, tombstonesProjects);
   if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
 
   return { isMerge, ...counts };
@@ -10746,6 +10795,10 @@ function performProjectDelete(name) {
   }
   projects = projects.filter(p => projectSlug(p) !== slug);
   saveLocal(SK.PROJECTS, projects);
+  // Tombstone the slug so a stale cloud read can't resurrect it. Cleared
+  // automatically once the loader confirms cloud no longer has it.
+  tombstonesProjects[slug] = Date.now();
+  saveLocal(SK.TOMBSTONES_PROJECTS, tombstonesProjects);
   if (typeof syncProjectsDoc === 'function') syncProjectsDoc();
   return counts;
 }
