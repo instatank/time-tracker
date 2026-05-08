@@ -4212,7 +4212,9 @@ function renderJournal() {
   // Project names — read straight from the canonical `projects` array.
   // Post-unification (migrateLegacyProjects), every project lives there;
   // we no longer derive names from legacy `c.project_tag` values.
-  const projectNames = [...projects].sort();
+  // Project names — recency-ordered so the Project sub-tabs surface the
+  // most-recently-used projects first. See projectsByRecency().
+  const projectNames = projectsByRecency();
   const knownProjectTags = new Set(projectNames.map(p => '#' + projectSlug(p)));
 
   let filtered;
@@ -4526,7 +4528,7 @@ function renderTagPicker(ctx) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  const projectTags = projects.map(p => '#' + projectSlug(p));
+  const projectTags = projectsByRecency().map(p => '#' + projectSlug(p));
   const knownSet = new Set([...TAG_CONTENT_BASE, ...projectTags]);
 
   // Sort extras (custom tags already on this entry) by tagHistory recency
@@ -4809,6 +4811,56 @@ function renderBlockInJournal(b) {
 // Log block sheet's project picker. The helper is active-aware: if the
 // currently-selected pill would be hidden by the limit, it's swapped into
 // the visible slice so the user never loses sight of their selection.
+// ── Project ordering: recency-first ──────────────────────────
+// Returns the canonical `projects` array sorted by most-recent activity
+// across blocks/captures/sessions/learning/dailyJournals. Projects with
+// no activity at all sort to the bottom alphabetically. Pure read of
+// in-memory state — recomputed per render is cheap at personal scale
+// (single-digit ms even at thousands of items). Used wherever project
+// pills/tags are listed: Projects tab, Block-sheet picker, Journal
+// sub-tabs, capture/session/learning tag picker, autosuggest.
+function projectsByRecency() {
+  if (!projects || !projects.length) return [];
+  const lastSeen = {}; // slug → most recent ISO-prefix timestamp string
+  const bump = (slug, ts) => {
+    if (!slug || !ts) return;
+    const cur = lastSeen[slug];
+    if (!cur || ts > cur) lastSeen[slug] = ts;
+  };
+  // Sessions: keyed by projectName, every entry has createdAt or date.
+  Object.entries(sessions || {}).forEach(([name, list]) => {
+    const slug = projectSlug(name);
+    (list || []).forEach(s => bump(slug, s.createdAt || s.date));
+  });
+  // Blocks: tags[] may contain #project. Use date+start_time as the signal.
+  blocks.forEach(b => {
+    const ts = (b.date || '') + 'T' + (b.start_time || '00:00');
+    (b.tags || []).forEach(t => bump(projectSlug(t), ts));
+  });
+  // Captures: tags[] + ISO timestamp.
+  captures.forEach(c => {
+    (c.tags || []).forEach(t => bump(projectSlug(t), c.timestamp));
+  });
+  // Learning: tags[] + createdAt or date.
+  (learning || []).forEach(e => {
+    (e.tags || []).forEach(t => bump(projectSlug(t), e.createdAt || e.date));
+  });
+  // Daily journals: tags[] + lastEditedAt or timestamp.
+  (dailyJournals || []).forEach(d => {
+    const ts = d.lastEditedAt || d.timestamp || d.date;
+    (d.tags || []).forEach(t => bump(projectSlug(t), ts));
+  });
+  // Sort: used projects by recency desc; unused alphabetical at the end.
+  return [...projects].sort((a, b) => {
+    const ta = lastSeen[projectSlug(a)] || '';
+    const tb = lastSeen[projectSlug(b)] || '';
+    if (ta && !tb) return -1;
+    if (!ta && tb) return  1;
+    if (ta && tb)  return tb.localeCompare(ta); // most recent first
+    return a.localeCompare(b);                  // both unused → alpha
+  });
+}
+
 const PROJ_PILL_LIMIT = 5;
 // Cache per-key data so the picker modal can run the original onclick when
 // a pill is tapped from inside the modal. Closures (activeMatch, onclickFn)
@@ -4889,7 +4941,7 @@ function renderProjects() {
 
   const pills = renderProjectPillRow({
     key: 'main',
-    items: projects,
+    items: projectsByRecency(),
     activeMatch: p => p === selectedProject,
     onclickFn: safeName => `selectProject('${safeName}')`,
   });
@@ -8324,7 +8376,7 @@ function renderBlockProjectPills() {
   }
   row.innerHTML = renderProjectPillRow({
     key: 'block',
-    items: projects,
+    items: projectsByRecency(),
     activeMatch: p => p === selBlockProject,
     onclickFn: safeName => `toggleBlockProject('${safeName}')`,
   });
@@ -8430,7 +8482,8 @@ function openCapture(type = 'note') {
   renderCapTypeRow();
   toggleCaptureFieldVisibility();
   // Suggestions sourced from the canonical `projects` array (post-unification).
-  window._projectSuggestions = [...projects].sort();
+  // Recency-ordered so the autosuggest dropdown surfaces likely matches first.
+  window._projectSuggestions = projectsByRecency();
   // Reset tag picker state for a new capture
   captureFormTags = new Set();
   captureTagCustomOpen = false;
