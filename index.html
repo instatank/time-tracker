@@ -3460,8 +3460,7 @@ let lifeRatings = loadLocal(SK.LIFE_RATINGS, {}); // { 'YYYY-MM-DD': { habit_sta
 let eodNotes    = loadLocal(SK.EOD, {});           // { 'YYYY-MM-DD': 'text' }
 let projects        = loadLocal(SK.PROJECTS, DEFAULT_PROJECTS.slice()); // string[]
 let projectCreating = false;
-let projectSessionSearch = '';                       // free-text filter for session list
-let projSearchOpen        = false;                     // Projects sub-tab: search overlay expanded?
+// (projectSessionSearch + projSearchOpen retired — see globalSearch above.)
 let sessions           = loadLocal(SK.SESSIONS, {}); // { [projectName]: Session[] }
 // `null` = "All" (not "empty state"). Default to the project of the most recent session
 // across all projects — so the pill you last worked under auto-selects on load. Falls
@@ -3524,8 +3523,7 @@ let projectsSubTab      = (function () {                // persisted: 'projects'
   return (saved === 'projects' || saved === 'learning') ? saved : 'projects';
 })();
 let learningFilter      = 'all';                       // 'all' | 'type:<X>' | '#tag'
-let learningSearch      = '';                          // free-text filter for learning list
-let learnSearchOpen     = false;                       // Learning sub-tab: search overlay expanded?
+// (learningSearch + learnSearchOpen retired — see globalSearch above.)
 let expandedLearning    = new Set();                   // entryIds currently expanded in list
 let expandedCaptures    = new Set();                   // capture IDs expanded in journal feed
 let expandedDailyDates  = new Set();                   // daily-journal dates expanded inline
@@ -3547,10 +3545,14 @@ let histCalMonth = new Date(); histCalMonth.setDate(1);
 let journalFilter = 'all';
 let journalProjectFilter = null;
 let journalExpanded = false;
-let journalSearch = '';
-let journalSearchOpen = false;                          // Journal tab: search overlay expanded?
-let homeSearchOpen    = false;                          // Today tab: search overlay expanded?
-let homeSearch        = '';                              // Today tab: free-text query
+// Unified global search — one query, same results across every page.
+// Replaces the four per-page pairs (home/journal/proj/learning). Page
+// renders short-circuit to renderSearchResults() when globalSearch is
+// non-empty; otherwise the page shows its normal content. globalSearchOpen
+// drives the search-input row visibility separately from the query value
+// (lets users tap the search icon and see an empty input before typing).
+let globalSearch     = '';
+let globalSearchOpen = false;
 let dashRange = 'week';
 let dashDay = todayStr(); // selected date for Day view
 let showWeeklyReview = false;
@@ -4055,6 +4057,13 @@ window.openWinSource = function(srcType, id, project) {
 };
 
 function renderToday() {
+  // Unified global search: when active, the page reduces to just the search
+  // input row + results across every collection. Day-Score / DFT / Wins
+  // panels are hidden during search so the page reads as a focused result
+  // list instead of a mixed view.
+  if (globalSearchOpen || (globalSearch || '').trim()) {
+    return `<div class="view">${globalSearchRowHtml()}${renderSearchResults()}</div>`;
+  }
   const d = todayStr();
   let bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
   let caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
@@ -4067,7 +4076,7 @@ function renderToday() {
   // blocks are excluded from search results per spec; when a query is
   // active, the Today's Log section is hidden entirely so the page reads
   // as a focused result set instead of a mixed view.
-  const homeQ = (homeSearch || '').trim().toLowerCase();
+  const homeQ = (globalSearch || '').trim().toLowerCase();
   if (homeQ) {
     const capHay   = c => [c.body||'', c.project_tag||'', (c.tags||[]).join(' ')].join(' ').toLowerCase();
     const dailyHay = j => [j.thoughts||'', j.reflection||'', ...(j.tasks||[]).map(t => t.text||''), (j.tags||[]).join(' ')].join(' ').toLowerCase();
@@ -4189,11 +4198,11 @@ function renderToday() {
 
   return `<div class="view">
     ${bannersStack}
-    ${homeSearchOpen
+    ${globalSearchOpen
       ? `<div class="action-row">
           <div class="proj-search">
             <span class="search-icon">&#128269;</span>
-            <input type="text" placeholder="Search today…" value="${esc(homeSearch)}" oninput="setHomeSearch(this.value)" />
+            <input type="text" placeholder="Search today…" value="${esc(globalSearch)}" oninput="setHomeSearch(this.value)" />
             <button class="search-clear visible" onclick="closeHomeSearch()" aria-label="Close search">&times;</button>
           </div>
         </div>`
@@ -4342,6 +4351,11 @@ function renderCapPreview(c) {
 
 // ── Journal ───────────────────────────────────────────────────
 function renderJournal() {
+  // Unified search: short-circuit to the same results view as every page.
+  // Tag-filter pills (#win etc.) stay reachable by closing search first.
+  if (globalSearchOpen || (globalSearch || '').trim()) {
+    return `<div class="view">${globalSearchRowHtml()}${renderSearchResults()}</div>`;
+  }
   const h = new Date().getHours();
   const showMorning = h < 12;
   const showEvening = h >= 18;
@@ -4385,8 +4399,8 @@ function renderJournal() {
     );
   }
 
-  if (journalSearch.trim()) {
-    const q = journalSearch.trim().toLowerCase();
+  if (globalSearch.trim()) {
+    const q = globalSearch.trim().toLowerCase();
     filtered = filtered.filter(c => {
       const hay = [
         c.body || '',
@@ -4423,8 +4437,8 @@ function renderJournal() {
     );
   }
   // Search across the three sections + task texts + tags
-  if (journalSearch.trim()) {
-    const q = journalSearch.trim().toLowerCase();
+  if (globalSearch.trim()) {
+    const q = globalSearch.trim().toLowerCase();
     filteredDaily = filteredDaily.filter(d => {
       const hay = [
         d.thoughts || '',
@@ -4464,7 +4478,7 @@ function renderJournal() {
     ].sort((a, z) => z.sortKey.localeCompare(a.sortKey));
   }
 
-  const hasSearch = journalSearch.length > 0;
+  const hasSearch = globalSearch.length > 0;
   const noResults = allItems.length === 0 && (hasSearch || journalFilter !== 'all');
 
   const projectSubTabs = journalFilter === 'project' && projectNames.length ? `
@@ -4482,11 +4496,11 @@ function renderJournal() {
   // Row 1 — bigger sub-tab-style pills (All / Journal / Quick Note / Project)
   // with the search icon on the left. Tapping the icon expands an input that
   // overlays the entire row; tapping outside or the × dismisses it.
-  const primaryRow = journalSearchOpen
+  const primaryRow = globalSearchOpen
     ? `<div class="proj-actions-row">
         <div class="proj-search">
           <span class="search-icon">&#128269;</span>
-          <input type="text" placeholder="Search entries…" value="${esc(journalSearch)}" oninput="setJSearch(this.value)" />
+          <input type="text" placeholder="Search entries…" value="${esc(globalSearch)}" oninput="setJSearch(this.value)" />
           <button class="search-clear visible" onclick="closeJournalSearch()" aria-label="Close search">&times;</button>
         </div>
       </div>`
@@ -5078,6 +5092,11 @@ window.closeProjPillPickerOnly = function() {
 };
 
 function renderProjects() {
+  // Unified search short-circuit — applies to BOTH Projects + Learning
+  // sub-tabs because the search experience is global, not sub-tab-scoped.
+  if (globalSearchOpen || (globalSearch || '').trim()) {
+    return `<div class="view">${globalSearchRowHtml()}${renderSearchResults()}</div>`;
+  }
   // Sub-tab toggle (Projects | Learning) at the top — always visible
   const toggle = `
     <div class="subtab-toggle">
@@ -5144,7 +5163,7 @@ function renderSessionsList(projectName) {
   list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   // Free-text search across before/during/after, tags, projectName
-  const q = projectSessionSearch.trim().toLowerCase();
+  const q = globalSearch.trim().toLowerCase();
   if (q) {
     list = list.filter(s => {
       const hay = [
@@ -5158,7 +5177,7 @@ function renderSessionsList(projectName) {
   }
 
   const emptyMsg = q
-    ? `No sessions match <strong style="color:var(--text)">"${esc(projectSessionSearch)}"</strong>.`
+    ? `No sessions match <strong style="color:var(--text)">"${esc(globalSearch)}"</strong>.`
     : (projectName === null
         ? 'No sessions yet. Pick a project above, then tap + New Session.'
         : `No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.`);
@@ -5169,11 +5188,11 @@ function renderSessionsList(projectName) {
 
   // Collapsed: + New Session (full flex) + small search icon button.
   // Expanded: input takes the full row, hiding the + button until dismissed.
-  const actionsRow = projSearchOpen
+  const actionsRow = globalSearchOpen
     ? `<div class="proj-actions-row">
         <div class="proj-search">
           <span class="search-icon">&#128269;</span>
-          <input type="text" placeholder="Search sessions…" value="${esc(projectSessionSearch)}" oninput="setProjSearch(this.value)" />
+          <input type="text" placeholder="Search sessions…" value="${esc(globalSearch)}" oninput="setProjSearch(this.value)" />
           <button class="search-clear visible" onclick="closeProjSearch()" aria-label="Close search">&times;</button>
         </div>
       </div>`
@@ -5189,47 +5208,12 @@ function renderSessionsList(projectName) {
   `;
 }
 
-window.setProjSearch = function(q) {
-  projectSessionSearch = q;
-  renderMain(true);                        // preserve scroll
-  // Re-focus the input after re-render so typing feels continuous.
-  const input = document.querySelector('.proj-actions-row .proj-search input');
-  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
-};
-
-// Outside-click → collapse the search overlay. Listener is registered after
-// the opening tap finishes propagating (setTimeout) so the same tap doesn't
-// immediately bubble up and close it.
-function _projSearchOutsideHandler(e) {
-  const wrap = document.querySelector('.proj-actions-row .proj-search');
-  if (wrap && wrap.contains(e.target)) return;
-  // Interactions inside the result-narrowing surface should NOT close the
-  // search overlay: result cards (.card-swipe-wrap), the "X more" pagination
-  // toggle (.more-btn), and any filter / project pill above the list.
-  if (e.target.closest && e.target.closest('.card-swipe-wrap, .more-btn, .fpill, .proj-pill-lg')) return;
-  closeProjSearch();
-}
-
-window.openProjSearch = function() {
-  projSearchOpen = true;
-  renderMain(true);
-  // Focus IMMEDIATELY (within the same user-gesture) so mobile keyboards
-  // pop up without requiring a second tap. Defer only the outside-click
-  // listener so this opening tap doesn't bubble up and dismiss the overlay.
-  const input = document.querySelector('.proj-actions-row .proj-search input');
-  if (input) input.focus();
-  setTimeout(() => {
-    document.addEventListener('click', _projSearchOutsideHandler, true);
-  }, 0);
-};
-
-window.closeProjSearch = function() {
-  if (!projSearchOpen) return;
-  projSearchOpen = false;
-  projectSessionSearch = '';
-  document.removeEventListener('click', _projSearchOutsideHandler, true);
-  renderMain(true);
-};
+// ── Legacy project-search shims (forward to unified handlers) ─────
+// The Projects-tab "search sessions" surface now opens the same unified
+// global search as every other page.
+window.setProjSearch   = setGlobalSearch;
+window.openProjSearch  = openGlobalSearch;
+window.closeProjSearch = closeGlobalSearch;
 
 // Related Captures — Journal captures + Learning entries whose tags[] contains
 // this project's slug. Rendered from local in-memory state (the projectRefs
@@ -5965,7 +5949,7 @@ function renderLearningSub() {
   let filtered = learning.filter(e => learningFilterMatches(learningFilter, e));
 
   // Free-text search across sourceName, sourceType, takeaway, fullNotes, tags
-  const q = learningSearch.trim().toLowerCase();
+  const q = globalSearch.trim().toLowerCase();
   if (q) {
     filtered = filtered.filter(e => {
       const hay = [
@@ -5980,7 +5964,7 @@ function renderLearningSub() {
   filtered = filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   const emptyMsg = q
-    ? `No entries match <strong style="color:var(--text)">"${esc(learningSearch)}"</strong>.`
+    ? `No entries match <strong style="color:var(--text)">"${esc(globalSearch)}"</strong>.`
     : (learning.length
         ? `No entries matching <strong style="color:var(--text)">${esc(learningFilterLabel(learningFilter))}</strong>.`
         : `No learning entries yet.<br>Tap + Log Learning to start capturing takeaways.`);
@@ -5989,11 +5973,11 @@ function renderLearningSub() {
     ? filtered.map(renderLearningCard).join('')
     : `<div class="learning-empty">${emptyMsg}</div>`;
 
-  const actionsRow = learnSearchOpen
+  const actionsRow = globalSearchOpen
     ? `<div class="proj-actions-row">
         <div class="proj-search">
           <span class="search-icon">&#128269;</span>
-          <input type="text" placeholder="Search learning…" value="${esc(learningSearch)}" oninput="setLearningSearch(this.value)" />
+          <input type="text" placeholder="Search learning…" value="${esc(globalSearch)}" oninput="setLearningSearch(this.value)" />
           <button class="search-clear visible" onclick="closeLearnSearch()" aria-label="Close search">&times;</button>
         </div>
       </div>`
@@ -6010,38 +5994,10 @@ function renderLearningSub() {
   `;
 }
 
-window.setLearningSearch = function(q) {
-  learningSearch = q;
-  renderMain(true);
-  // Re-focus the learning sub-tab's search input (only one .proj-search exists per tab).
-  const input = document.querySelector('.proj-actions-row .proj-search input');
-  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
-};
-
-function _learnSearchOutsideHandler(e) {
-  const wrap = document.querySelector('.proj-actions-row .proj-search');
-  if (wrap && wrap.contains(e.target)) return;
-  if (e.target.closest && e.target.closest('.card-swipe-wrap, .more-btn, .fpill, .proj-pill-lg')) return;
-  closeLearnSearch();
-}
-
-window.openLearnSearch = function() {
-  learnSearchOpen = true;
-  renderMain(true);
-  const input = document.querySelector('.proj-actions-row .proj-search input');
-  if (input) input.focus();
-  setTimeout(() => {
-    document.addEventListener('click', _learnSearchOutsideHandler, true);
-  }, 0);
-};
-
-window.closeLearnSearch = function() {
-  if (!learnSearchOpen) return;
-  learnSearchOpen = false;
-  learningSearch = '';
-  document.removeEventListener('click', _learnSearchOutsideHandler, true);
-  renderMain(true);
-};
+// ── Legacy learning-search shims (forward to unified handlers) ─────
+window.setLearningSearch = setGlobalSearch;
+window.openLearnSearch   = openGlobalSearch;
+window.closeLearnSearch  = closeGlobalSearch;
 
 function renderLearningCard(e) {
   const expanded = expandedLearning.has(e.id);
@@ -9721,72 +9677,107 @@ window.toggleTodayCaps = function() { todayCapsExpanded = !todayCapsExpanded; re
 window.setJFilter = function(f) { journalFilter = f.toLowerCase().replace(/\s+/g,''); journalProjectFilter = null; journalExpanded = false; renderMain(); };
 window.setJProjectFilter = function(p) { journalProjectFilter = p; journalExpanded = false; renderMain(); };
 window.toggleJournal = function() { journalExpanded = !journalExpanded; renderMain(); };
-window.setJSearch = function(q) {
-  journalSearch = q;
+// ── Unified global search ────────────────────────────────────────
+// One query, one results view across every page. setGlobalSearch updates
+// the query and re-renders (every page short-circuits to renderSearchResults
+// when the query is non-empty). openGlobalSearch shows the search input
+// without forcing a query. closeGlobalSearch fully exits (clears + collapses).
+window.setGlobalSearch = function(q) {
+  globalSearch = q;
   renderMain(true);
-  // Re-focus the journal-tab search input after re-render so typing stays continuous.
-  const input = document.querySelector('.proj-actions-row .proj-search input');
+  // Re-focus the visible search input so typing stays continuous after re-render.
+  const input = document.querySelector('.global-search-row .proj-search input');
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
 };
+window.openGlobalSearch = function() {
+  globalSearchOpen = true;
+  renderMain(true);
+  const input = document.querySelector('.global-search-row .proj-search input');
+  if (input) input.focus();
+};
+window.closeGlobalSearch = function() {
+  globalSearchOpen = false;
+  globalSearch = '';
+  renderMain(true);
+};
 
-function _journalSearchOutsideHandler(e) {
-  const wrap = document.querySelector('.proj-actions-row .proj-search');
-  if (wrap && wrap.contains(e.target)) return;
-  // Don't close on interactions within the result list:
-  //   .card-swipe-wrap — tap to expand / double-tap to edit
-  //   .more-btn        — "X more" pagination toggle
-  //   .fpill, .proj-pill-lg — filter pills above the result list
-  if (e.target.closest && e.target.closest('.card-swipe-wrap, .more-btn, .fpill, .proj-pill-lg')) return;
-  closeJournalSearch();
+// Search results across every entry type EXCEPT activity-log blocks
+// (per spec — blocks excluded from free-text search). Captures, daily
+// journals, sessions, and learning entries each contribute matches;
+// the merged list sorts by timestamp descending and renders using each
+// type's native card so users can tell at a glance what kind of entry
+// they're looking at.
+function renderSearchResults() {
+  const q = (globalSearch || '').trim().toLowerCase();
+  if (!q) return ''; // caller should short-circuit; defensive.
+
+  const matches = []; // { kind, item, sortKey }
+  const norm = s => (s == null ? '' : String(s)).toLowerCase();
+  const matchAny = (parts) => parts.some(p => norm(p).includes(q));
+
+  captures.forEach(c => {
+    if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' ')])) return;
+    matches.push({ kind: 'cap', item: c, sortKey: c.timestamp || '' });
+  });
+  (dailyJournals || []).forEach(d => {
+    if (isDailyEntryEmpty(d)) return;
+    const taskText = (d.tasks || []).map(t => t.text || '').join(' ');
+    if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' ')])) return;
+    matches.push({ kind: 'daily', item: d, sortKey: d.lastEditedAt || d.timestamp || d.date || '' });
+  });
+  Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
+    const reviewText = [...(s.done || []), ...(s.pending || []), ...(s.learned || [])].join(' ');
+    if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' ')])) return;
+    matches.push({ kind: 'session', item: s, sortKey: s.createdAt || s.date || '' });
+  }));
+  (learning || []).forEach(e => {
+    if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' ')])) return;
+    matches.push({ kind: 'learning', item: e, sortKey: e.createdAt || e.date || '' });
+  });
+  matches.sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
+
+  if (!matches.length) {
+    return `<div class="empty" style="padding:2rem 0.5rem;text-align:center">No matches found for "${esc(globalSearch)}".</div>`;
+  }
+  return matches.map(m => {
+    if (m.kind === 'cap')      return renderCapPreview(m.item);
+    if (m.kind === 'daily')    return renderDailyJournalCard(m.item);
+    if (m.kind === 'session')  return renderSessionCard(m.item);
+    if (m.kind === 'learning') return renderLearningCard(m.item);
+    return '';
+  }).join('');
 }
+
+// Reusable search input row — same look across every page. Reads/writes
+// globalSearch via the unified handlers above.
+function globalSearchRowHtml() {
+  return `<div class="action-row global-search-row">
+    <div class="proj-search">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" placeholder="Search everything…" value="${esc(globalSearch)}" oninput="setGlobalSearch(this.value)" />
+      <button class="search-clear visible" onclick="closeGlobalSearch()" aria-label="Close search">&times;</button>
+    </div>
+  </div>`;
+}
+
+// (Legacy journal-search handlers below retained as thin shims that
+// forward to the unified ones — kept while we migrate inline onclicks.)
+window.setJSearch = window.setGlobalSearch;
 
 window.openJournalSearch = function() {
-  journalSearchOpen = true;
+  globalSearchOpen = true;
   renderMain(true);
-  const input = document.querySelector('.proj-actions-row .proj-search input');
+  const input = document.querySelector('.global-search-row .proj-search input');
   if (input) input.focus();
-  setTimeout(() => {
-    document.addEventListener('click', _journalSearchOutsideHandler, true);
-  }, 0);
 };
 
-window.closeJournalSearch = function() {
-  if (!journalSearchOpen) return;
-  journalSearchOpen = false;
-  journalSearch = '';
-  document.removeEventListener('click', _journalSearchOutsideHandler, true);
-  renderMain(true);
-};
+window.closeJournalSearch = closeGlobalSearch;
 
-// ── Home-page (Today tab) search ────────────────────────────────
-function _homeSearchOutsideHandler(e) {
-  const wrap = document.querySelector('.action-row .proj-search');
-  if (wrap && wrap.contains(e.target)) return;
-  if (e.target.closest && e.target.closest('.card-swipe-wrap, .more-btn, .fpill, .proj-pill-lg')) return;
-  closeHomeSearch();
-}
-window.openHomeSearch = function() {
-  homeSearchOpen = true;
-  renderMain(true);
-  const input = document.querySelector('.action-row .proj-search input');
-  if (input) input.focus();
-  setTimeout(() => {
-    document.addEventListener('click', _homeSearchOutsideHandler, true);
-  }, 0);
-};
-window.closeHomeSearch = function() {
-  if (!homeSearchOpen) return;
-  homeSearchOpen = false;
-  homeSearch = '';
-  document.removeEventListener('click', _homeSearchOutsideHandler, true);
-  renderMain(true);
-};
-window.setHomeSearch = function(q) {
-  homeSearch = q;
-  renderMain(true);
-  const input = document.querySelector('.action-row .proj-search input');
-  if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
-};
+// ── Legacy home-search shims (forward to unified handlers) ──────
+// Kept while we migrate any straggler onclick="openHomeSearch()" markup.
+window.openHomeSearch  = openGlobalSearch;
+window.closeHomeSearch = closeGlobalSearch;
+window.setHomeSearch   = setGlobalSearch;
 window.setDashRange = function(r) { dashRange = r; if (r === 'day') dashDay = todayStr(); renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
 window.setDashSubTab = function(t) { dashSubTab = t; renderMain(); };
