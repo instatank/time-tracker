@@ -4553,9 +4553,9 @@ function renderJournal() {
   // for the search input; × restores it.
   const row1 = `<div class="proj-scroller">
       <button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
-      ${['all','journal','note','project'].map(f => `
+      ${[['all','All'],['journal','Journal'],['note','Note'],['project','Project']].map(([f,lbl]) => `
         <button class="proj-pill-lg ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
-          ${f === 'all' ? 'All' : (typeLabel[f] || f)}
+          ${lbl}
         </button>`).join('')}
     </div>`;
 
