@@ -9736,7 +9736,14 @@ window.setTab = function(tab) {
 };
 window.toggleTodayBks  = function() { todayBksExpanded  = !todayBksExpanded;  renderMain(); };
 window.toggleTodayCaps = function() { todayCapsExpanded = !todayCapsExpanded; renderMain(); };
-window.setJFilter = function(f) { journalFilter = f.toLowerCase().replace(/\s+/g,''); journalProjectFilter = null; journalExpanded = false; renderMain(); };
+window.setJFilter = function(f) {
+  const next = f.toLowerCase().replace(/\s+/g,'');
+  // Toggle off when tapping the already-active filter → back to 'all'.
+  journalFilter = (journalFilter === next) ? 'all' : next;
+  journalProjectFilter = null;
+  journalExpanded = false;
+  renderMain();
+};
 window.setJProjectFilter = function(p) { journalProjectFilter = p; journalExpanded = false; renderMain(); };
 window.toggleJournal = function() { journalExpanded = !journalExpanded; renderMain(); };
 // ── Unified global search ────────────────────────────────────────
