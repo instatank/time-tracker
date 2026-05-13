@@ -3425,7 +3425,7 @@ const SKIPPED_CAT = { id: 'skipped', label: 'Skipped', icon: '⬜', color: 'var(
 const CTYPES = [
   { id: 'note',    label: 'Quick Note',    icon: '💭' },
   { id: 'daily',   label: 'Daily Journal', icon: '📓' },
-  { id: 'project', label: 'Project',       icon: '📁' },
+  { id: 'project', label: 'Project Note',  icon: '📁' },
 ];
 // Legacy: capture types removed from the selector but old entries still render gracefully.
 // The historical 'journal' free-form type is preserved so pre-Daily-Journal data keeps its label.
@@ -4345,7 +4345,7 @@ function renderJournal() {
   const h = new Date().getHours();
   const showMorning = h < 12;
   const showEvening = h >= 18;
-  const typeLabel = { note: 'Quick Note', journal: 'Daily Journal', daily: 'Daily Journal', project: 'Project', insight: 'Insight' };
+  const typeLabel = { note: 'Quick Note', journal: 'Daily Journal', daily: 'Daily Journal', project: 'Project Note', insight: 'Insight' };
   const tagFilters = { '#win': '#win', '#insight': '#insight', '#dft': '#dft' };
   const isTagFilter = journalFilter.startsWith('#');
 
@@ -5396,10 +5396,12 @@ function renderSessionCard(s) {
       <div class="session-card" data-session-id="${s.id}" onclick="sessionCardTap('${s.id}','${projEsc}')">
         <div class="session-card-hdr">
           <div class="session-hdr-left">
-            <span class="session-date">${dateLabel}</span>
-            ${selectedProject === null ? `<span class="session-proj-badge">${esc(s.projectName || '')}</span>` : ''}
+            <span>▶️</span>
+            <span class="cap-type">Project Session</span>
+            ${s.projectName ? `<span class="session-proj-badge">${esc(s.projectName)}</span>` : ''}
             ${tagPills}
           </div>
+          <span class="session-date">${dateLabel}</span>
         </div>
         ${bodyParts.join('')}
         <div class="session-footer">
@@ -6064,7 +6066,11 @@ function renderLearningCard(e) {
       </div>
       <div class="learning-card ${expanded ? 'expanded' : ''}" data-learning-id="${e.id}" onclick="learningCardTap('${e.id}')">
         <div class="learning-card-hdr">
-          <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
+          <div class="learning-source-group">
+            <span>📚</span>
+            <span class="cap-type">Learning</span>
+            <span class="learning-source-name">${esc(e.sourceName || '(untitled)')}</span>
+          </div>
           <span class="learning-date">${dateLabel}</span>
         </div>
         <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
