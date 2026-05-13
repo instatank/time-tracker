@@ -1926,8 +1926,8 @@ html, body {
   align-items: center;
   justify-content: center;
 }
-.dft-inline-tick { background: var(--accent); color: var(--on-accent); }
-.dft-inline-skip { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+.dft-inline-tick { background: var(--success); color: #fff; }
+.dft-inline-skip { background: var(--danger);  color: #fff; }
 .dft-inline-tick:active, .dft-inline-skip:active { transform: scale(0.94); }
 
 /* Projects tab top row — search (left), toggle (centre), + add (right). */
@@ -9544,7 +9544,7 @@ function getDft(d) {
 function renderDftInline(d) {
   const dft = getDft(d);
   if (!dft) {
-    return `<input class="dft-inline-input" placeholder="🎯 Daily focus…" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
+    return `<input class="dft-inline-input" placeholder="🎯 Daily Focus Task" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
   }
   if (dft.status === 'pending') {
     return `<div class="dft-inline pending">
