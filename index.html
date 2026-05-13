@@ -1214,6 +1214,16 @@ html, body {
 .add-pick-label { color: var(--text);  font-weight: 600; font-size: 0.92rem; }
 .add-pick-sub   { color: var(--text3); font-size: 0.72rem; margin-top: 2px; }
 .add-pick-chev  { color: var(--text3); font-size: 1.1rem; flex-shrink: 0; }
+/* Compact "headings only" variation — shorter row height, no sub-text.
+   Use alone (no .add-pick-sub) for a slicker, denser picker. Toggleable
+   by adding/removing the .compact class on each .add-pick-row in the
+   sheet body. */
+.add-pick-row.compact {
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 4px;
+}
+.add-pick-row.compact .add-pick-icon  { font-size: 1.15rem; width: 24px; }
+.add-pick-row.compact .add-pick-label { font-size: 0.9rem; font-weight: 500; }
 .fpill {
   font-size: 0.75rem;
   padding: 0.3rem 0.7rem;
@@ -3316,56 +3326,52 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 
 <!-- Sheet: Add picker — single + button on Journal (initial test surface)
      opens this. Six options route to existing Log Activity / Capture /
-     Session / Learning paths. -->
+     Session / Learning paths. Compact "headings only" variation —
+     descriptors removed for slicker UX; the sub-text CSS class stays
+     defined so we can revert in one edit if the longer form is preferred. -->
 <div id="sheet-add-picker" class="sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title">Add new entry</div>
   <div class="sheet-body">
-    <button class="add-pick-row" onclick="dispatchAdd('activity')">
+    <button class="add-pick-row compact" onclick="dispatchAdd('activity')">
       <span class="add-pick-icon">⏱</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Log Activity</div>
-        <div class="add-pick-sub">Time block with category, label, note</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('daily')">
+    <button class="add-pick-row compact" onclick="dispatchAdd('daily')">
       <span class="add-pick-icon">📓</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Daily Journal</div>
-        <div class="add-pick-sub">Today's tasks, thoughts, reflection</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('note')">
+    <button class="add-pick-row compact" onclick="dispatchAdd('note')">
       <span class="add-pick-icon">📝</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Quick Note</div>
-        <div class="add-pick-sub">A fast capture, any tags</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('projectNote')">
+    <button class="add-pick-row compact" onclick="dispatchAdd('projectNote')">
       <span class="add-pick-icon">📁</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Project Note</div>
-        <div class="add-pick-sub">Tagged to a specific project</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('session')">
+    <button class="add-pick-row compact" onclick="dispatchAdd('session')">
       <span class="add-pick-icon">▶️</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Project Session</div>
-        <div class="add-pick-sub">Before / During / After session log</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('learning')">
+    <button class="add-pick-row compact" onclick="dispatchAdd('learning')">
       <span class="add-pick-icon">📚</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Learning Session</div>
-        <div class="add-pick-sub">Source + key takeaway + tags</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
