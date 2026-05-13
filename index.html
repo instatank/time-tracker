@@ -1899,7 +1899,9 @@ html, body {
 .dft-inline-input {
   flex: 1;
   min-width: 0;
-  height: 38px;
+  height: 30px;                /* tighter than the search button so the
+                                  smaller placeholder text doesn't sit in a
+                                  visually oversized box */
   border-radius: var(--r);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1908,7 +1910,7 @@ html, body {
   font-size: 0.68rem;          /* ~20% smaller than the previous 0.85rem */
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   box-sizing: border-box;
   text-overflow: ellipsis;     /* placeholder/value truncates with "…" */
   white-space: nowrap;
@@ -1934,12 +1936,12 @@ html, body {
    from the original full DFT panel (and the Daily Journal task ticks). */
 .dft-inline-tick, .dft-inline-skip {
   flex-shrink: 0;
-  width: 26px; height: 26px;
+  width: 22px; height: 22px;
   border-radius: 50%;
   border: 1.5px solid;
   background: none;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
