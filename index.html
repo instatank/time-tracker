@@ -2084,10 +2084,15 @@ html, body {
 .cal-dot { width: 4px; height: 4px; border-radius: 50%; }
 .cal-day.empty { cursor: default; }
 .hist-day-hdr {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 0.75rem;
+  /* Bumped ~200% (0.9rem → 1.8rem) so the picked date dominates the
+     Trends → Calendar view and there's zero ambiguity about which day's
+     data is being displayed below. The smaller "today" badge in the
+     app header stays as-is — that label always means "right now". */
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-bottom: 0.9rem;
   color: var(--text);
+  line-height: 1.2;
 }
 
 /* ── Dashboard view ─────────────────────────────────────────── */
