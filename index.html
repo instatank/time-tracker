@@ -5211,9 +5211,9 @@ function renderSessionsList(projectName) {
 // ── Legacy project-search shims (forward to unified handlers) ─────
 // The Projects-tab "search sessions" surface now opens the same unified
 // global search as every other page.
-window.setProjSearch   = setGlobalSearch;
-window.openProjSearch  = openGlobalSearch;
-window.closeProjSearch = closeGlobalSearch;
+window.setProjSearch   = window.setGlobalSearch;
+window.openProjSearch  = window.openGlobalSearch;
+window.closeProjSearch = window.closeGlobalSearch;
 
 // Related Captures — Journal captures + Learning entries whose tags[] contains
 // this project's slug. Rendered from local in-memory state (the projectRefs
@@ -5995,9 +5995,9 @@ function renderLearningSub() {
 }
 
 // ── Legacy learning-search shims (forward to unified handlers) ─────
-window.setLearningSearch = setGlobalSearch;
-window.openLearnSearch   = openGlobalSearch;
-window.closeLearnSearch  = closeGlobalSearch;
+window.setLearningSearch = window.setGlobalSearch;
+window.openLearnSearch   = window.openGlobalSearch;
+window.closeLearnSearch  = window.closeGlobalSearch;
 
 function renderLearningCard(e) {
   const expanded = expandedLearning.has(e.id);
@@ -9771,13 +9771,13 @@ window.openJournalSearch = function() {
   if (input) input.focus();
 };
 
-window.closeJournalSearch = closeGlobalSearch;
+window.closeJournalSearch = window.closeGlobalSearch;
 
 // ── Legacy home-search shims (forward to unified handlers) ──────
 // Kept while we migrate any straggler onclick="openHomeSearch()" markup.
-window.openHomeSearch  = openGlobalSearch;
-window.closeHomeSearch = closeGlobalSearch;
-window.setHomeSearch   = setGlobalSearch;
+window.openHomeSearch  = window.openGlobalSearch;
+window.closeHomeSearch = window.closeGlobalSearch;
+window.setHomeSearch   = window.setGlobalSearch;
 window.setDashRange = function(r) { dashRange = r; if (r === 'day') dashDay = todayStr(); renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
 window.setDashSubTab = function(t) { dashSubTab = t; renderMain(); };
