@@ -5670,8 +5670,7 @@ window.openNewSession = function() {
   sessionTagCustomOpen = false;
   renderTagPicker('session');
   document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
-  document.getElementById('sheet-session').classList.add('open');
-  document.getElementById('backdrop').classList.add('visible');
+  openSheet('sheet-session');
 };
 
 window.openEditSession = function(sessionId, projectName) {
@@ -5700,8 +5699,7 @@ window.openEditSession = function(sessionId, projectName) {
   sessionTagCustomOpen = false;
   renderTagPicker('session');
   document.getElementById('session-sheet-title').textContent = `Edit Session · ${projectName}`;
-  document.getElementById('sheet-session').classList.add('open');
-  document.getElementById('backdrop').classList.add('visible');
+  openSheet('sheet-session');
 };
 
 function renderSessionDurPills() {
