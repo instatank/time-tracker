@@ -5261,23 +5261,9 @@ function renderSessionsList(projectName) {
     ? list.map(renderSessionCard).join('')
     : `<div class="proj-empty" style="padding:1.5rem 1rem">${emptyMsg}</div>`;
 
-  // Collapsed: + New Session (full flex) + small search icon button.
-  // Expanded: input takes the full row, hiding the + button until dismissed.
-  const actionsRow = globalSearchOpen
-    ? `<div class="proj-actions-row">
-        <div class="proj-search">
-          <span class="search-icon">&#128269;</span>
-          <input type="text" placeholder="Search sessions…" value="${esc(globalSearch)}" oninput="setProjSearch(this.value)" />
-          <button class="search-clear visible" onclick="closeProjSearch()" aria-label="Close search">&times;</button>
-        </div>
-      </div>`
-    : `<div class="proj-actions-row">
-        <button class="proj-search-icon-btn" onclick="openProjSearch()" aria-label="Search sessions">&#128269;</button>
-        <button class="new-session-btn" onclick="openNewSession()">+ New Session</button>
-      </div>`;
-
+  // Search + new-entry now live on the top row (search icon + unified
+  // "+" add button alongside the Projects/Learning toggle).
   return `
-    ${actionsRow}
     ${cards}
     ${renderRelatedCaptures(projectName)}
   `;
@@ -6048,23 +6034,11 @@ function renderLearningSub() {
     ? filtered.map(renderLearningCard).join('')
     : `<div class="learning-empty">${emptyMsg}</div>`;
 
-  const actionsRow = globalSearchOpen
-    ? `<div class="proj-actions-row">
-        <div class="proj-search">
-          <span class="search-icon">&#128269;</span>
-          <input type="text" placeholder="Search learning…" value="${esc(globalSearch)}" oninput="setLearningSearch(this.value)" />
-          <button class="search-clear visible" onclick="closeLearnSearch()" aria-label="Close search">&times;</button>
-        </div>
-      </div>`
-    : `<div class="proj-actions-row">
-        <button class="proj-search-icon-btn" onclick="openLearnSearch()" aria-label="Search learning">&#128269;</button>
-        <button class="new-session-btn" onclick="openNewLearning()">+ Log Learning</button>
-      </div>`;
-
+  // Search + new-entry now live on the top row (search icon + unified
+  // "+" add button alongside the Projects/Learning toggle).
   return `
     <div class="proj-scroller">${sourceTypeRow}</div>
     <div class="filter-row" style="margin-top:-0.25rem">${tagRow}</div>
-    ${actionsRow}
     ${cards}
   `;
 }
