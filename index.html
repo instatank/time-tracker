@@ -213,6 +213,16 @@ html, body {
   max-width: 100vw;
 }
 
+/* iOS Safari auto-zooms when a focused input has font-size < 16px. Once
+   zoomed, the visual viewport stays scaled and the fixed bottom nav gets
+   pushed off-screen until a hard reload. Forcing 16px on touch devices
+   prevents the auto-zoom without affecting desktop sizing. */
+@media (hover: none) and (pointer: coarse) {
+  input, textarea, select {
+    font-size: 16px;
+  }
+}
+
 #root {
   display: flex;
   flex-direction: column;
