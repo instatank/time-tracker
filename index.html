@@ -248,7 +248,15 @@ html, body {
   font-weight: 700;
   color: var(--text2);
   white-space: nowrap;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
 }
+.hdr-date:hover  { color: var(--text); background: var(--surface2); }
+.hdr-date:active { transform: scale(0.97); }
 .sync-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -2035,9 +2043,15 @@ html, body {
 }
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* minmax(0, 1fr) instead of plain 1fr — without it, any cell whose
+     min-content width exceeds (container - gaps) / 7 forces the column
+     wider, pushing the 7th column (Saturday) past the screen edge.
+     Combined with min-width: 0 on .cal-day, this guarantees seven
+     columns always fit the available width. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 2px;
   margin-bottom: 1.25rem;
+  width: 100%;
 }
 .cal-day-label {
   text-align: center;
@@ -2045,9 +2059,11 @@ html, body {
   color: var(--text3);
   padding: 0.2rem 0;
   font-weight: 600;
+  min-width: 0;
 }
 .cal-day {
   aspect-ratio: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3314,6 +3330,15 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
   <div class="sheet-body" id="projpill-picker-body"></div>
 </div>
 
+<!-- Sheet: Home-page calendar popup — opened by tapping the header date.
+     Reuses renderCalendar() with a custom onclick that navigates the user
+     to Trends → Calendar with the chosen date pre-selected. -->
+<div id="sheet-home-calendar" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">Pick a date</div>
+  <div class="sheet-body" id="home-calendar-body"></div>
+</div>
+
 <!-- Sheet: Add picker — single + button on Journal (initial test surface)
      opens this. Six options route to existing Log Activity / Capture /
      Session / Learning paths. -->
@@ -3877,7 +3902,7 @@ function renderHdr() {
   document.getElementById('hdr').innerHTML = `
     <span class="logo">DayOS</span>
     <div class="hdr-right">
-      <span class="hdr-date">${fmtDayHeaderShort()}</span>
+      <button class="hdr-date" onclick="openHomeCalendar()" title="Pick a date">${fmtDayHeaderShort()}</button>
       <span class="sync-dot ${syncStatus}" title="${syncStatus}"></span>
       <button class="hdr-icon-btn" onclick="openSettings()" aria-label="Settings" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -6744,7 +6769,12 @@ function renderDayLifeRatings(date) {
     </div>`;
 }
 
-function renderCalendar() {
+function renderCalendar(opts) {
+  // opts.dateOnclick(dateStr) → onclick attribute value for each day cell.
+  // Default: setHistDate(...) which drives the Trends-tab Calendar view.
+  // The home-page mini-calendar popup overrides with pickDateAndOpenTrends
+  // to navigate the user from Today → Trends → Calendar in one tap.
+  const dateOnclick = (opts && opts.dateOnclick) || (d => `setHistDate('${d}')`);
   const y = histCalMonth.getFullYear();
   const m = histCalMonth.getMonth();
   // Use UTC arithmetic (matches getWeekStart, addDays, monthRange) so the
@@ -6782,7 +6812,7 @@ function renderCalendar() {
     const hasData = datesWithData.has(dateStr);
     cells += `
       <div class="cal-day ${isToday?'today-cell':''} ${isSelected?'selected':''} ${hasData?'has-data':''}"
-           onclick="setHistDate('${dateStr}')">
+           onclick="${dateOnclick(dateStr)}">
         ${d}
         <div class="cal-dots">${hasData ? '<span class="cal-dot" style="background:var(--accent)"></span>' : ''}</div>
       </div>`;
@@ -10552,8 +10582,44 @@ window.saveWeeklyReview = function() {
 // Backwards-compatibility alias — older HTML still wired to saveWeeklyIntention.
 window.saveWeeklyIntention = window.saveWeeklyReview;
 window.setHistDate = function(d) { histDate = d; renderMain(); };
-window.calPrevMonth = function() { histCalMonth.setMonth(histCalMonth.getMonth() - 1); renderMain(); };
-window.calNextMonth = function() { histCalMonth.setMonth(histCalMonth.getMonth() + 1); renderMain(); };
+window.calPrevMonth = function() { histCalMonth.setMonth(histCalMonth.getMonth() - 1); refreshCalendarSurfaces(); };
+window.calNextMonth = function() { histCalMonth.setMonth(histCalMonth.getMonth() + 1); refreshCalendarSurfaces(); };
+
+// Re-render every surface that currently shows a calendar grid. Used by
+// the prev/next month nav so the home-page popup AND the Trends Calendar
+// tab both reflect the new month (otherwise tapping ‹/› inside the popup
+// would only update Trends, leaving the popup stale).
+function refreshCalendarSurfaces() {
+  const popup = document.getElementById('sheet-home-calendar');
+  if (popup && popup.classList.contains('open')) {
+    const body = document.getElementById('home-calendar-body');
+    if (body) body.innerHTML = renderCalendar({ dateOnclick: d => `pickDateAndOpenTrends('${d}')` });
+  }
+  renderMain();
+}
+
+// Tap the header date on the home page → open this popup. Reuses
+// renderCalendar() with a custom onclick so picking a date does the
+// "switch to Trends → Calendar with that date selected" navigation.
+window.openHomeCalendar = function() {
+  // Default the visible month to the date currently shown in the header.
+  histCalMonth = new Date();
+  const body = document.getElementById('home-calendar-body');
+  if (body) body.innerHTML = renderCalendar({ dateOnclick: d => `pickDateAndOpenTrends('${d}')` });
+  openSheet('sheet-home-calendar');
+};
+
+// Date picked from the home-calendar popup → switch to Trends tab, force
+// the Calendar sub-tab, set the selected date, close the popup, render.
+// One tap, three context changes — exactly what the user asked for.
+window.pickDateAndOpenTrends = function(date) {
+  histDate    = date;
+  activeTab   = 'dashboard';
+  dashSubTab  = 'calendar';
+  try { localStorage.setItem('dayos_active_tab', 'dashboard'); } catch {}
+  closeSheets();
+  render();
+};
 
 // ── Sheet control ─────────────────────────────────────────────
 function openSheet(id) {
