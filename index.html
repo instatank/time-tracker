@@ -4260,21 +4260,35 @@ function renderToday() {
     return [first, ..._bannersList.slice(1)].join('');
   })();
 
+  const actionRowHtml = globalSearchOpen
+    ? `<div class="action-row">
+        <div class="proj-search">
+          <span class="search-icon">&#128269;</span>
+          <input type="text" placeholder="Search everything…" value="${esc(globalSearch)}" oninput="setHomeSearch(this.value)" />
+          <button class="search-clear visible" onclick="closeHomeSearch()" aria-label="Close search">&times;</button>
+        </div>
+      </div>`
+    : `<div class="action-row">
+        <button class="btn-log" onclick="openLogBlock()">+ Log Activity</button>
+        <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
+        <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search today">&#128269;</button>
+      </div>`;
+
+  // Active search query → keep the page's top context (banners + action-row)
+  // but swap the body for unified results that span every collection. Empty
+  // query (search open with no text) falls through to the normal page so it
+  // doesn't go blank while the user is deciding what to type.
+  if (homeQ) {
+    return `<div class="view">
+      ${bannersStack}
+      ${actionRowHtml}
+      ${renderSearchResults()}
+    </div>`;
+  }
+
   return `<div class="view">
     ${bannersStack}
-    ${globalSearchOpen
-      ? `<div class="action-row">
-          <div class="proj-search">
-            <span class="search-icon">&#128269;</span>
-            <input type="text" placeholder="Search today…" value="${esc(globalSearch)}" oninput="setHomeSearch(this.value)" />
-            <button class="search-clear visible" onclick="closeHomeSearch()" aria-label="Close search">&times;</button>
-          </div>
-        </div>`
-      : `<div class="action-row">
-          <button class="btn-log" onclick="openLogBlock()">+ Log Activity</button>
-          <button class="btn-cap" onclick="openCapture()">+ Journal/Note</button>
-          <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search today">&#128269;</button>
-        </div>`}
+    ${actionRowHtml}
 
     ${(() => {
       // Day Score — config-driven via DAYSCORE_TILE_CATALOG. Each tile id
@@ -4582,6 +4596,16 @@ function renderJournal() {
           ${f}
         </button>`).join('')}
     </div>`;
+
+  // Active search query → keep row1 (input) and unified results across every
+  // collection. Empty query (search open, no text) falls through to the
+  // normal page so it doesn't go blank.
+  if ((globalSearch || '').trim()) {
+    return `<div class="view">
+      ${row1}
+      ${renderSearchResults()}
+    </div>`;
+  }
 
   return `<div class="view">
     ${row1}
@@ -5178,6 +5202,13 @@ function renderProjects() {
         </div>
         <button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
       </div>`;
+
+  // Active search query → top row stays, body becomes unified results across
+  // every collection (captures + dailies + sessions + learning). Empty query
+  // falls through to the normal sub-tab content.
+  if ((globalSearch || '').trim()) {
+    return `<div class="view">${toggle}${renderSearchResults()}</div>`;
+  }
 
   if (projectsSubTab === 'learning') {
     return `<div class="view">${toggle}${renderLearningSub()}</div>`;
