@@ -1881,6 +1881,55 @@ html, body {
 .link-block-label { color: var(--text); font-size: 0.88rem; font-weight: 500; }
 .link-block-meta { color: var(--text3); font-size: 0.72rem; }
 
+/* Inline Daily Focus Task — lives in the Today top row between the search
+   icon and the + add button. Compact, flex:1 so it absorbs the space. */
+.dft-inline,
+.dft-inline-input {
+  flex: 1;
+  min-width: 0;            /* allow text to truncate inside flex */
+  height: 38px;            /* match search-icon-btn so the row is even */
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 0.6rem;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  box-sizing: border-box;
+}
+.dft-inline-input::placeholder { color: var(--text3); }
+.dft-inline-input:focus { outline: none; border-color: var(--accent); }
+.dft-inline-icon { flex-shrink: 0; font-size: 0.9rem; }
+.dft-inline-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.dft-inline.pending { border-color: var(--accent); }
+.dft-inline.done    { color: var(--text2); }
+.dft-inline.done .dft-inline-icon    { color: var(--accent); }
+.dft-inline.skipped { color: var(--text3); }
+.dft-inline.skipped .dft-inline-text { text-decoration: line-through; }
+.dft-inline-tick, .dft-inline-skip {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dft-inline-tick { background: var(--accent); color: var(--on-accent); }
+.dft-inline-skip { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+.dft-inline-tick:active, .dft-inline-skip:active { transform: scale(0.94); }
+
 /* Projects tab top row — search (left), toggle (centre), + add (right). */
 .proj-top-row {
   display: flex;
@@ -4270,6 +4319,7 @@ function renderToday() {
       </div>`
     : `<div class="proj-top-row">
         <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search">&#128269;</button>
+        ${renderDftInline(d)}
         <button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
       </div>`;
 
@@ -4317,8 +4367,6 @@ function renderToday() {
         <div class="score-grid">${tiles}</div>
       </div>`;
     })()}
-
-    ${renderDftPanel(d)}
 
     ${renderWinsPanel(d)}
 
@@ -9487,6 +9535,35 @@ function getDft(d) {
   if (!v) return null;
   if (typeof v === 'string') return { text: v, status: 'pending' };
   return v;
+}
+
+// Compact DFT control that lives inline in the Today top row between the
+// search icon and the + add button. Handles all four states (empty,
+// pending, done, skipped). The ✓ / ✕ buttons reuse doneDft / skipDft so
+// behaviour matches the older full panel.
+function renderDftInline(d) {
+  const dft = getDft(d);
+  if (!dft) {
+    return `<input class="dft-inline-input" placeholder="🎯 Daily focus…" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
+  }
+  if (dft.status === 'pending') {
+    return `<div class="dft-inline pending">
+      <span class="dft-inline-icon">🎯</span>
+      <span class="dft-inline-text" onclick="editDft()" title="Tap to edit">${esc(dft.text)}</span>
+      <button class="dft-inline-tick" onclick="doneDft()" title="Mark done">✓</button>
+      <button class="dft-inline-skip" onclick="skipDft()" title="Skip">✕</button>
+    </div>`;
+  }
+  if (dft.status === 'done') {
+    return `<div class="dft-inline done" onclick="clearDft()" title="Tap to set a new focus">
+      <span class="dft-inline-icon">✓</span>
+      <span class="dft-inline-text">${esc(dft.text)}</span>
+    </div>`;
+  }
+  return `<div class="dft-inline skipped" onclick="clearDft()" title="Tap to set a new focus">
+    <span class="dft-inline-icon">↺</span>
+    <span class="dft-inline-text">${esc(dft.text)}</span>
+  </div>`;
 }
 
 function renderDftPanel(d) {
