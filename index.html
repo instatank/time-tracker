@@ -10610,8 +10610,11 @@ window.openHomeCalendar = function() {
 };
 
 // Date picked from the home-calendar popup → switch to Trends tab, force
-// the Calendar sub-tab, set the selected date, close the popup, render.
-// One tap, three context changes — exactly what the user asked for.
+// the Calendar sub-tab, set the selected date, close the popup, render,
+// then auto-scroll #main so the picked date's data lands near the top of
+// the viewport with the last 1-2 calendar rows still visible above it.
+// Without that scroll, the user would land at the top of Trends seeing
+// only the calendar — feels like nothing happened.
 window.pickDateAndOpenTrends = function(date) {
   histDate    = date;
   activeTab   = 'dashboard';
@@ -10619,6 +10622,16 @@ window.pickDateAndOpenTrends = function(date) {
   try { localStorage.setItem('dayos_active_tab', 'dashboard'); } catch {}
   closeSheets();
   render();
+  requestAnimationFrame(() => {
+    const main = document.getElementById('main');
+    const hdr  = document.querySelector('.hist-day-hdr');
+    if (main && hdr) {
+      // ~140px ≈ two calendar rows + small breathing space — picked-date
+      // header lands just below those bottom rows for natural context.
+      const top = Math.max(0, hdr.offsetTop - 140);
+      main.scrollTo({ top, behavior: 'smooth' });
+    }
+  });
 };
 
 // ── Sheet control ─────────────────────────────────────────────
