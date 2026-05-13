@@ -5272,9 +5272,9 @@ function renderSessionsList(projectName) {
 // ── Legacy project-search shims (forward to unified handlers) ─────
 // The Projects-tab "search sessions" surface now opens the same unified
 // global search as every other page.
-window.setProjSearch   = window.setGlobalSearch;
-window.openProjSearch  = window.openGlobalSearch;
-window.closeProjSearch = window.closeGlobalSearch;
+window.setProjSearch   = function(q) { window.setGlobalSearch(q); };
+window.openProjSearch  = function() { window.openGlobalSearch(); };
+window.closeProjSearch = function() { window.closeGlobalSearch(); };
 
 // Related Captures — Journal captures + Learning entries whose tags[] contains
 // this project's slug. Rendered from local in-memory state (the projectRefs
@@ -6044,9 +6044,9 @@ function renderLearningSub() {
 }
 
 // ── Legacy learning-search shims (forward to unified handlers) ─────
-window.setLearningSearch = window.setGlobalSearch;
-window.openLearnSearch   = window.openGlobalSearch;
-window.closeLearnSearch  = window.closeGlobalSearch;
+window.setLearningSearch = function(q) { window.setGlobalSearch(q); };
+window.openLearnSearch   = function() { window.openGlobalSearch(); };
+window.closeLearnSearch  = function() { window.closeGlobalSearch(); };
 
 function renderLearningCard(e) {
   const expanded = expandedLearning.has(e.id);
