@@ -216,10 +216,12 @@ html, body {
 /* iOS Safari auto-zooms when a focused input has font-size < 16px. Once
    zoomed, the visual viewport stays scaled and the fixed bottom nav gets
    pushed off-screen until a hard reload. Forcing 16px on touch devices
-   prevents the auto-zoom without affecting desktop sizing. */
+   prevents the auto-zoom — !important is required because class-scoped
+   rules elsewhere (.dft-inline-input, .proj-search input, etc.) win on
+   specificity without it. Desktop sizing is unaffected. */
 @media (hover: none) and (pointer: coarse) {
   input, textarea, select {
-    font-size: 16px;
+    font-size: 16px !important;
   }
 }
 
