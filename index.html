@@ -4063,14 +4063,14 @@ function renderToday() {
   // lives in a separate collection from `captures`).
   let todayDaily = (dailyJournals || []).filter(j => j && j.date === d && !isDailyEntryEmpty(j));
 
-  // Home-page search — narrows the lists in place. Other panels (DFT,
-  // Day Score, Wins, Rate Your Day, etc.) are unaffected.
+  // Home-page search — narrows ONLY notes / daily journals. Activity-log
+  // blocks are excluded from search results per spec; when a query is
+  // active, the Today's Log section is hidden entirely so the page reads
+  // as a focused result set instead of a mixed view.
   const homeQ = (homeSearch || '').trim().toLowerCase();
   if (homeQ) {
-    const blockHay = b => [b.label||'', b.note||'', b.projectTag||'', (b.tags||[]).join(' ')].join(' ').toLowerCase();
     const capHay   = c => [c.body||'', c.project_tag||'', (c.tags||[]).join(' ')].join(' ').toLowerCase();
     const dailyHay = j => [j.thoughts||'', j.reflection||'', ...(j.tasks||[]).map(t => t.text||''), (j.tags||[]).join(' ')].join(' ').toLowerCase();
-    bks        = bks.filter(b => blockHay(b).includes(homeQ));
     caps       = caps.filter(c => capHay(c).includes(homeQ));
     todayDaily = todayDaily.filter(j => dailyHay(j).includes(homeQ));
   }
@@ -4236,6 +4236,7 @@ function renderToday() {
 
     ${renderWinsPanel(d)}
 
+    ${homeQ ? '' : `
     <div class="section">
       <div class="sec-hdr">
         <span class="sec-title">Today's Log</span>
@@ -4244,7 +4245,7 @@ function renderToday() {
       ${bks.length
         ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
         : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
-    </div>
+    </div>`}
 
     ${allCapItems.length ? `
     <div class="section">
@@ -4442,21 +4443,11 @@ function renderJournal() {
 
   // For tag filters, pull in activity blocks that contain the tag.
   // For free-text search, also surface blocks whose label / note / tags /
-  // projectTag match — so searching "dayos" finds time blocks tagged
-  // #dayos as well as captures and daily-journal entries.
+  // SEARCH excludes activity logs by spec — captures + daily journals
+  // only. Tag filtering (#win / #insight / #dft / #1%) still surfaces
+  // matching blocks because that's a different intent (a quick pivot
+  // on hashtags, not a free-text search).
   let allItems; // unified list: { item, kind: 'cap'|'block'|'daily', sortKey }
-  let searchBlocks = [];
-  if (journalSearch.trim()) {
-    const q = journalSearch.trim().toLowerCase();
-    searchBlocks = blocks.filter(b => {
-      const hay = [
-        b.label || '', b.note || '',
-        b.projectTag || '',
-        (b.tags || []).join(' '),
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
-    });
-  }
   if (isTagFilter) {
     const taggedBlocks = blocks.filter(b =>
       extractTags((b.label || '') + ' ' + (b.note || '')).includes(journalFilter)
@@ -4470,7 +4461,6 @@ function renderJournal() {
     allItems = [
       ...filtered.map(c => ({ item: c, kind: 'cap', sortKey: c.timestamp })),
       ...filteredDaily.map(d => ({ item: d, kind: 'daily', sortKey: d.lastEditedAt || d.timestamp || d.date })),
-      ...searchBlocks.map(b => ({ item: b, kind: 'block', sortKey: b.date + 'T' + (b.start_time || '00:00') })),
     ].sort((a, z) => z.sortKey.localeCompare(a.sortKey));
   }
 
