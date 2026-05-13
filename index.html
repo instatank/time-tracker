@@ -1935,6 +1935,11 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
+  /* Suppress iOS double-tap-to-zoom on this element so ondblclick fires
+     immediately as an edit trigger (and there's no 300ms tap delay). */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .dft-inline.pending { border-color: var(--accent); }
 .dft-inline.done    { color: var(--text2); }
@@ -9585,7 +9590,7 @@ function renderDftInline(d) {
   if (dft.status === 'pending') {
     return `<div class="dft-inline pending">
       <span class="dft-inline-icon">🎯</span>
-      <span class="dft-inline-text" onclick="editDft()" title="Tap to edit">${esc(dft.text)}</span>
+      <span class="dft-inline-text" ondblclick="editDft()" title="Double-tap to edit">${esc(dft.text)}</span>
       <button class="dft-inline-tick" onclick="doneDft()" title="Mark done">✓</button>
       <button class="dft-inline-skip" onclick="skipDft()" title="Skip">✕</button>
     </div>`;
@@ -9654,12 +9659,15 @@ window.editDft = function() {
   const d = todayStr();
   const dft = getDft(d);
   if (!dft || dft.status !== 'pending') return;
-  const panel = document.querySelector('.dft-panel');
-  if (!panel) return;
-  const bodyEl = panel.querySelector('.dft-body');
-  if (!bodyEl) return;
-  bodyEl.outerHTML = `<input class="dft-panel-input" value="${esc(dft.text)}" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" onblur="saveDft(this.value)" autofocus />`;
-  panel.querySelector('.dft-panel-input').focus();
+  // Replace the pending inline strip with a prefilled input. Blur saves
+  // whatever's in the field; Enter does the same and triggers a render.
+  const host = document.querySelector('.dft-inline.pending');
+  if (!host) return;
+  host.outerHTML = `<input class="dft-inline-input" value="${esc(dft.text)}"
+    onkeydown="if(event.key==='Enter'){saveDft(this.value)}"
+    onblur="saveDft(this.value)" />`;
+  const input = document.querySelector('.dft-inline-input');
+  if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
 };
 
 window.doneDft = function() {
