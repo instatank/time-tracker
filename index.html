@@ -4124,13 +4124,10 @@ window.openWinSource = function(srcType, id, project) {
 };
 
 function renderToday() {
-  // Unified global search: when active, the page reduces to just the search
-  // input row + results across every collection. Day-Score / DFT / Wins
-  // panels are hidden during search so the page reads as a focused result
-  // list instead of a mixed view.
-  if (globalSearchOpen || (globalSearch || '').trim()) {
-    return `<div class="view">${globalSearchRowHtml()}${renderSearchResults()}</div>`;
-  }
+  // Global search now filters inline — caps + dailies are narrowed below;
+  // blocks are excluded from search per spec. Day-Score / DFT / Wins stay
+  // visible so the page reads as the user's current day with results
+  // surfacing in-place rather than replacing the view.
   const d = todayStr();
   let bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
   let caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
@@ -4418,11 +4415,9 @@ function renderCapPreview(c) {
 
 // ── Journal ───────────────────────────────────────────────────
 function renderJournal() {
-  // Unified search: short-circuit to the same results view as every page.
-  // Tag-filter pills (#win etc.) stay reachable by closing search first.
-  if (globalSearchOpen || (globalSearch || '').trim()) {
-    return `<div class="view">${globalSearchRowHtml()}${renderSearchResults()}</div>`;
-  }
+  // Search narrows captures + dailies inline (see filters further below);
+  // the full Journal page stays rendered so tag-filter pills, prompts, etc.
+  // remain visible while the user types.
   const h = new Date().getHours();
   const showMorning = h < 12;
   const showEvening = h >= 18;
@@ -5161,23 +5156,28 @@ window.closeProjPillPickerOnly = function() {
 };
 
 function renderProjects() {
-  // Unified search short-circuit — applies to BOTH Projects + Learning
-  // sub-tabs because the search experience is global, not sub-tab-scoped.
-  if (globalSearchOpen || (globalSearch || '').trim()) {
-    return `<div class="view">${globalSearchRowHtml()}${renderSearchResults()}</div>`;
-  }
+  // Search filters the current sub-tab inline (renderSessionsList and
+  // renderLearningSub each narrow their own list by globalSearch).
   // Top row — search icon (left), Projects/Learning toggle (centred), and
-  // the unified "+" add button (right). Tapping search short-circuits the
-  // whole view to the unified-search results (handled above).
-  const toggle = `
-    <div class="proj-top-row">
-      <button class="proj-search-icon-btn" onclick="openProjSearch()" aria-label="Search">&#128269;</button>
-      <div class="subtab-toggle">
-        <button class="subtab-btn ${projectsSubTab === 'projects' ? 'active' : ''}" onclick="setProjectsSubTab('projects')">Projects</button>
-        <button class="subtab-btn ${projectsSubTab === 'learning' ? 'active' : ''}" onclick="setProjectsSubTab('learning')">Learning</button>
-      </div>
-      <button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
-    </div>`;
+  // the unified "+" add button (right). When search is open, the whole row
+  // swaps to a single inline search input; rest of the page keeps rendering
+  // and filters in place.
+  const toggle = globalSearchOpen
+    ? `<div class="proj-top-row">
+        <div class="proj-search" style="flex:1">
+          <span class="search-icon">&#128269;</span>
+          <input type="text" placeholder="Search…" value="${esc(globalSearch)}" oninput="setProjSearch(this.value)" />
+          <button class="search-clear visible" onclick="closeProjSearch()" aria-label="Close search">&times;</button>
+        </div>
+      </div>`
+    : `<div class="proj-top-row">
+        <button class="proj-search-icon-btn" onclick="openProjSearch()" aria-label="Search">&#128269;</button>
+        <div class="subtab-toggle">
+          <button class="subtab-btn ${projectsSubTab === 'projects' ? 'active' : ''}" onclick="setProjectsSubTab('projects')">Projects</button>
+          <button class="subtab-btn ${projectsSubTab === 'learning' ? 'active' : ''}" onclick="setProjectsSubTab('learning')">Learning</button>
+        </div>
+        <button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
+      </div>`;
 
   if (projectsSubTab === 'learning') {
     return `<div class="view">${toggle}${renderLearningSub()}</div>`;
@@ -9743,17 +9743,23 @@ window.toggleJournal = function() { journalExpanded = !journalExpanded; renderMa
 // the query and re-renders (every page short-circuits to renderSearchResults
 // when the query is non-empty). openGlobalSearch shows the search input
 // without forcing a query. closeGlobalSearch fully exits (clears + collapses).
+// Find the currently-mounted inline search input. Each page renders its
+// own .proj-search container (inside .action-row / .proj-actions-row /
+// .proj-top-row), so a broad selector works across all of them.
+function _findActiveSearchInput() {
+  return document.querySelector('.proj-search input[type="text"]');
+}
 window.setGlobalSearch = function(q) {
   globalSearch = q;
   renderMain(true);
   // Re-focus the visible search input so typing stays continuous after re-render.
-  const input = document.querySelector('.global-search-row .proj-search input');
+  const input = _findActiveSearchInput();
   if (input) { input.focus(); input.setSelectionRange(q.length, q.length); }
 };
 window.openGlobalSearch = function() {
   globalSearchOpen = true;
   renderMain(true);
-  const input = document.querySelector('.global-search-row .proj-search input');
+  const input = _findActiveSearchInput();
   if (input) input.focus();
 };
 window.closeGlobalSearch = function() {
