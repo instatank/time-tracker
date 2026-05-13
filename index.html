@@ -1898,18 +1898,21 @@ html, body {
 .dft-inline,
 .dft-inline-input {
   flex: 1;
-  min-width: 0;            /* allow text to truncate inside flex */
-  height: 38px;            /* match search-icon-btn so the row is even */
+  min-width: 0;
+  height: 38px;
   border-radius: var(--r);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   padding: 0 0.6rem;
-  font-size: 0.85rem;
+  font-size: 0.68rem;          /* ~20% smaller than the previous 0.85rem */
   display: flex;
   align-items: center;
   gap: 0.45rem;
   box-sizing: border-box;
+  text-overflow: ellipsis;     /* placeholder/value truncates with "…" */
+  white-space: nowrap;
+  overflow: hidden;
 }
 .dft-inline-input::placeholder { color: var(--text3); }
 .dft-inline-input:focus { outline: none; border-color: var(--accent); }
@@ -1924,22 +1927,30 @@ html, body {
 }
 .dft-inline.pending { border-color: var(--accent); }
 .dft-inline.done    { color: var(--text2); }
-.dft-inline.done .dft-inline-icon    { color: var(--accent); }
+.dft-inline.done .dft-inline-icon    { color: var(--tick-color); }
 .dft-inline.skipped { color: var(--text3); }
 .dft-inline.skipped .dft-inline-text { text-decoration: line-through; }
+/* Tick / skip — round outline buttons, matches .dft-tick-btn / .dft-skip-btn
+   from the original full DFT panel (and the Daily Journal task ticks). */
 .dft-inline-tick, .dft-inline-skip {
   flex-shrink: 0;
   width: 26px; height: 26px;
-  border-radius: 6px;
-  border: none;
+  border-radius: 50%;
+  border: 1.5px solid;
+  background: none;
   cursor: pointer;
   font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s, color 0.15s;
 }
-.dft-inline-tick { background: var(--success); color: #fff; }
-.dft-inline-skip { background: var(--danger);  color: #fff; }
+.dft-inline-tick { border-color: var(--tick-color); color: var(--tick-color); }
+.dft-inline-tick:hover  { background: var(--tick-soft); }
+.dft-inline-skip { border-color: var(--danger); color: var(--danger); }
+.dft-inline-skip:hover  { background: var(--danger-soft); }
 .dft-inline-tick:active, .dft-inline-skip:active { transform: scale(0.94); }
 
 /* Projects tab top row — search (left), toggle (centre), + add (right). */
@@ -9554,7 +9565,14 @@ function getDft(d) {
 function renderDftInline(d) {
   const dft = getDft(d);
   if (!dft) {
-    return `<input class="dft-inline-input" placeholder="🎯 Daily Focus Task" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
+    // Render as a div so the smaller font (0.68rem) survives the iOS
+    // touch-device 16px input override. Tap → swap to a real input via
+    // startDftEdit() so the user can type. The input will hit 16px during
+    // editing (required to avoid iOS auto-zoom), then revert on save.
+    return `<div class="dft-inline empty" onclick="startDftEdit()">
+      <span class="dft-inline-icon">🎯</span>
+      <span class="dft-inline-text">Daily Focus Task</span>
+    </div>`;
   }
   if (dft.status === 'pending') {
     return `<div class="dft-inline pending">
@@ -9622,6 +9640,19 @@ window.saveDft = function(val) {
   saveLocal('dayos_dfts_v1', dfts);
   syncDftDoc(d);
   renderMain();
+};
+
+// Replace the empty-state placeholder div with a real input so the user
+// can type a new DFT. Blur with empty value re-renders back to the
+// placeholder (no leftover empty input in the row).
+window.startDftEdit = function() {
+  const host = document.querySelector('.dft-inline.empty');
+  if (!host) return;
+  host.outerHTML = `<input class="dft-inline-input" placeholder="🎯 Daily Focus Task"
+    onkeydown="if(event.key==='Enter'){saveDft(this.value)}"
+    onblur="if(!this.value.trim()){renderMain()}" />`;
+  const input = document.querySelector('.dft-inline-input');
+  if (input) input.focus();
 };
 
 window.editDft = function() {
