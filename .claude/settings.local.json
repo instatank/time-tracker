@@ -1,19 +1,4 @@
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "if": "Bash(npm run build*)",
-            "command": "git pull --rebase origin \"$(git branch --show-current)\" 2>&1",
-            "statusMessage": "Pulling latest changes before build..."
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Bash(git init)",
@@ -39,7 +24,24 @@
       "Bash(git config:*)",
       "Bash(git -C \"/Users/ankitanand/Time Management\" config --list)",
       "Bash(git -C \"/Users/ankitanand/Time Management\" remote -v)",
-      "Bash(firebase --version)"
+      "Bash(firebase --version)",
+      "mcp__990c104f-2f7d-4151-a9cf-9865d54d12fb__list_teams",
+      "mcp__990c104f-2f7d-4151-a9cf-9865d54d12fb__list_projects"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git pull --rebase origin \"$(git branch --show-current)\" 2>&1",
+            "if": "Bash(npm run build*)",
+            "statusMessage": "Pulling latest changes before build..."
+          }
+        ]
+      }
     ]
   }
 }
