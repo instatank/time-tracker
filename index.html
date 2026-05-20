@@ -12622,7 +12622,6 @@ async function initialSync(uid) {
       toast(`✓ Signed in`);
     }
 
-    autoLogSleep();
     sweepOldDfts();
     render();
 
@@ -12785,58 +12784,6 @@ function navIconDashboard() {
   </svg>`;
 }
 
-// ── Auto-log Sleep ────────────────────────────────────────────
-// Migrate old sleep blocks from 'routine' to 'sleep' category
-function migrateSleepCategory() {
-  let changed = false;
-  blocks.forEach(b => {
-    if (b.category === 'routine' && b.label === 'Sleep') {
-      b.category = 'sleep';
-      syncBlockDoc(b);
-      changed = true;
-    }
-  });
-  if (changed) saveLocal(SK.BLOCKS, blocks);
-}
-
-// Automatically logs 8h sleep (02:00–10:00) as a separate sleep category for each day.
-// Runs on init and after any sync. Skips if a sleep block already exists for that date.
-function autoLogSleep() {
-  migrateSleepCategory();
-
-  const td = todayStr();
-  const h = new Date().getHours();
-
-  // Backfill the last 7 days; add today if past 10am.
-  const dates = [];
-  for (let i = 7; i >= 1; i--) dates.push(addDays(td, -i));
-  if (h >= 10) dates.push(td);
-
-  let changed = false;
-  for (const sleepDate of dates) {
-    const alreadyLogged = blocks.some(b =>
-      b.date === sleepDate && b.category === 'sleep' && b.label === 'Sleep'
-    );
-    if (alreadyLogged) continue;
-
-    const b = {
-      id: uid(),
-      date: sleepDate,
-      start_time: '02:00',
-      duration_min: 480,
-      category: 'sleep',
-      label: 'Sleep',
-      note: '',
-      energy_level: '',
-      _auto: true,
-    };
-    blocks.push(b);
-    syncBlockDoc(b);
-    changed = true;
-  }
-  if (changed) saveLocal(SK.BLOCKS, blocks);
-}
-
 // ── Theme (Appearance) ────────────────────────────────────────
 // Values: "dark" | "light" | "system" (default dark).
 const THEME_KEY = 'dayos_theme';
@@ -12989,7 +12936,6 @@ if ('serviceWorker' in navigator) {
 
 // ── Init ──────────────────────────────────────────────────────
 migrateLegacyProjects();
-autoLogSleep();
 sweepOldDfts();
 render();
 </script>
