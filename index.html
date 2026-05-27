@@ -9609,16 +9609,18 @@ function renderDftInline(d) {
       onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
   }
   if (dft.status === 'pending') {
-    // Pending row: small "DFT:" prefix, then the task text. The ✓ / ✕
-    // actions are hidden by default — tap the row to reveal them, tap a
-    // button (or anywhere again) to act / collapse. Double-tap edits.
+    // Pending row: small "DFT:" prefix, then the task text. Single tap
+    // anywhere on the row toggles the ✓ / ✕ actions. Double tap goes back
+    // into edit mode. handleDftTap() distinguishes single vs double via a
+    // short timer — necessary because single-tap re-renders the DOM and
+    // would otherwise eat the second tap before ondblclick could fire.
     const actions = dftActionsVisible ? `
       <button class="dft-inline-tick" onclick="event.stopPropagation();doneDft()" title="Mark done">✓</button>
       <button class="dft-inline-skip" onclick="event.stopPropagation();skipDft()" title="Skip">✕</button>
     ` : '';
-    return `<div class="dft-inline pending" onclick="toggleDftActions(event)">
+    return `<div class="dft-inline pending" onclick="handleDftTap(event)">
       <span class="dft-inline-prefix">DFT:</span>
-      <span class="dft-inline-text" ondblclick="editDft()" title="Double-tap to edit">${esc(dft.text)}</span>
+      <span class="dft-inline-text" title="Double-tap to edit">${esc(dft.text)}</span>
       ${actions}
     </div>`;
   }
@@ -9686,13 +9688,25 @@ window.saveDft = function(val) {
   renderMain();
 };
 
-// Tap on the pending DFT row toggles the ✓ / ✕ action buttons. Clicks
-// originating inside a button are ignored here (the button handler runs
-// instead via stopPropagation).
-window.toggleDftActions = function(e) {
+// Single vs double-tap dispatcher on the pending DFT row. Native ondblclick
+// can't be used here because the single-tap handler re-renders the DOM and
+// destroys the element before the second tap can fire on it. So we hold
+// the single-tap action for ~280ms; if a second tap arrives in that window
+// it's a double-tap (→ edit), otherwise it's a single tap (→ toggle ✓/✕).
+let _dftTapTimer = null;
+window.handleDftTap = function(e) {
   if (e && e.target && e.target.closest('button')) return;
-  dftActionsVisible = !dftActionsVisible;
-  renderMain();
+  if (_dftTapTimer) {
+    clearTimeout(_dftTapTimer);
+    _dftTapTimer = null;
+    window.editDft();
+    return;
+  }
+  _dftTapTimer = setTimeout(() => {
+    _dftTapTimer = null;
+    dftActionsVisible = !dftActionsVisible;
+    renderMain();
+  }, 280);
 };
 
 window.editDft = function() {
