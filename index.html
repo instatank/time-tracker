@@ -1941,13 +1941,24 @@ html, body {
   -webkit-user-select: none;
   user-select: none;
 }
-.dft-inline.pending { border-color: var(--accent); }
+.dft-inline.pending { border-color: var(--accent); cursor: pointer; }
 /* Pending text is the prominent reading state — larger + semibold so it
    reads cleanly inside the row instead of looking like a placeholder. */
 .dft-inline.pending .dft-inline-text {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text);
+}
+/* Small "DFT:" label on the left of the pending row — uses the same tiny
+   font the placeholder originally used (~0.68rem) so it reads as a quiet
+   reference, not part of the task text itself. */
+.dft-inline-prefix {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .dft-inline.done    { color: var(--text2); }
 .dft-inline.done .dft-inline-icon    { color: var(--tick-color); }
@@ -3784,6 +3795,9 @@ let todayBksExpanded = false;
 let todayCapsExpanded = false;
 const TODAY_PREVIEW = 3;
 let dfts = loadLocal('dayos_dfts_v1', {}); // { 'YYYY-MM-DD': 'focus task text' }
+// Pending DFT actions (✓ / ✕) are hidden by default; tapping the inline
+// row toggles their visibility. Resets on every state change.
+let dftActionsVisible = false;
 // Today-tab banner dismissals (B3). One date-keyed flag per banner kind.
 //   shape: { 'YYYY-MM-DD': { reviewBanner: true } }
 let dismissals = loadLocal('dayos_dismissals_v1', {});
@@ -9595,12 +9609,17 @@ function renderDftInline(d) {
       onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
   }
   if (dft.status === 'pending') {
-    // No icon in the pending state — the ✓ / ✕ already imply the action,
-    // and dropping it gives the task text more horizontal room.
-    return `<div class="dft-inline pending">
+    // Pending row: small "DFT:" prefix, then the task text. The ✓ / ✕
+    // actions are hidden by default — tap the row to reveal them, tap a
+    // button (or anywhere again) to act / collapse. Double-tap edits.
+    const actions = dftActionsVisible ? `
+      <button class="dft-inline-tick" onclick="event.stopPropagation();doneDft()" title="Mark done">✓</button>
+      <button class="dft-inline-skip" onclick="event.stopPropagation();skipDft()" title="Skip">✕</button>
+    ` : '';
+    return `<div class="dft-inline pending" onclick="toggleDftActions(event)">
+      <span class="dft-inline-prefix">DFT:</span>
       <span class="dft-inline-text" ondblclick="editDft()" title="Double-tap to edit">${esc(dft.text)}</span>
-      <button class="dft-inline-tick" onclick="doneDft()" title="Mark done">✓</button>
-      <button class="dft-inline-skip" onclick="skipDft()" title="Skip">✕</button>
+      ${actions}
     </div>`;
   }
   if (dft.status === 'done') {
@@ -9653,6 +9672,10 @@ function renderDftPanel(d) {
 }
 
 window.saveDft = function(val) {
+  // Each new pending DFT should start with actions hidden — user reveals
+  // them with a tap on the row. Reset here so a fresh entry isn't carrying
+  // over a leftover "expanded" state from a previous one.
+  dftActionsVisible = false;
   const text = val.trim();
   const d = todayStr();
   if (!text) { clearDft(); return; }
@@ -9660,6 +9683,15 @@ window.saveDft = function(val) {
   dfts[d] = { text, status: existing && existing.status !== 'pending' ? existing.status : 'pending' };
   saveLocal('dayos_dfts_v1', dfts);
   syncDftDoc(d);
+  renderMain();
+};
+
+// Tap on the pending DFT row toggles the ✓ / ✕ action buttons. Clicks
+// originating inside a button are ignored here (the button handler runs
+// instead via stopPropagation).
+window.toggleDftActions = function(e) {
+  if (e && e.target && e.target.closest('button')) return;
+  dftActionsVisible = !dftActionsVisible;
   renderMain();
 };
 
