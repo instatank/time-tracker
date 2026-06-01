@@ -3435,6 +3435,12 @@ select option { background: var(--surface2); }
             onclick="setDailyEntertainmentCap('no')" title="No — not capped" aria-label="No">✗</button>
         </div>
       </div>
+      <div class="dj-section">
+        <label class="dj-section-label">VOICE NOTES</label>
+        <div class="voice-list" id="f-daily-voice-list"></div>
+        <button type="button" class="voice-add-btn" id="f-daily-voice-add-btn"
+          onclick="toggleDailyVoiceRecording()">🎤 Add voice note</button>
+      </div>
     </div>
     <div class="field">
       <label class="field-label">Tags</label>
@@ -3488,6 +3494,11 @@ select option { background: var(--surface2); }
       <div class="tag-picker" id="learning-tag-picker"></div>
       <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> inside your text are captured automatically.</div>
     </div>
+    <div class="field">
+      <div class="voice-list" id="f-learn-voice-list"></div>
+      <button type="button" class="voice-add-btn" id="f-learn-voice-add-btn"
+        onclick="toggleLearningVoiceRecording()">🎤 Add voice note</button>
+    </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
       <button class="btn-primary" onclick="saveLearning()">Save Entry</button>
@@ -3534,6 +3545,11 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       <label class="session-field-label neutral">Tags</label>
       <div class="tag-picker" id="session-tag-picker"></div>
       <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> inside your notes are captured automatically.</div>
+    </div>
+    <div class="field">
+      <div class="voice-list" id="f-sess-voice-list"></div>
+      <button type="button" class="voice-add-btn" id="f-sess-voice-add-btn"
+        onclick="toggleSessionVoiceRecording()">🎤 Add voice note</button>
     </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
@@ -3893,8 +3909,11 @@ let dftActionsVisible = false;
 // In-flight recording state + the array of voice notes attached to the
 // capture currently being composed. Persisted on the capture doc as
 // voiceNotes:[{ id, url, storagePath, title, durationSec, createdAt }].
-let captureFormVoiceNotes = [];
-let _voiceRec = null;          // { recorder, stream, chunks, startedAt, mime, ext, timerHandle }
+let captureFormVoiceNotes  = [];
+let sessionFormVoiceNotes  = [];
+let learningFormVoiceNotes = [];
+let dailyFormVoiceNotes    = [];   // mirror dailyDraftEntry.voiceNotes for the open daily editor
+let _voiceRec = null;          // { recorder, stream, chunks, startedAt, mime, ext, timerHandle, onStop, onTick }
 let _voiceUploading = false;
 let _currentlyPlayingVoice = null;
 const _voiceAudioCache = new Map(); // url → Audio() instance (resume-friendly)
@@ -4539,6 +4558,12 @@ function renderToday() {
       ${bks.length
         ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
         : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
+    </div>`}
+
+    ${homeQ ? '' : `
+    <div class="section">
+      <button type="button" class="voice-add-btn" id="home-voice-add-btn"
+        onclick="toggleHomeVoiceRecording()">🎤 Add voice note</button>
     </div>`}
 
     ${allCapItems.length ? `
@@ -5190,6 +5215,7 @@ function renderDailyJournalCard(d) {
           <span class="cap-time">${dateLabel}</span>
         </div>
         ${body}
+        ${renderVoiceNotesReadonly(d.voiceNotes)}
       </div>
     </div>`;
 }
@@ -5703,6 +5729,7 @@ function renderSessionCard(s) {
           <span class="session-date">${dateLabel}</span>
         </div>
         ${bodyParts.join('')}
+        ${renderVoiceNotesReadonly(s.voiceNotes)}
         <div class="session-footer">
           ${hintHtml}
           <span class="session-footer-right">${rightHtml}</span>
@@ -5774,6 +5801,7 @@ window.deleteSession = function(sessionId, projectName) {
     const idx = list.findIndex(x => x.id === sessionId);
     if (idx === -1) { console.warn('[DEL-SESS] session not found!'); toast('Session not found'); return; }
     const removed = list[idx];
+    if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
     list.splice(idx, 1);
     sessions[projectName] = list;
     saveLocal(SK.SESSIONS, sessions);
@@ -5833,6 +5861,8 @@ window.openNewSession = function() {
   sessionFormTags = new Set();
   sessionTagCustomOpen = false;
   renderTagPicker('session');
+  sessionFormVoiceNotes = [];
+  renderSessionVoiceList();
   document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
   openSheet('sheet-session');
 };
@@ -5862,6 +5892,8 @@ window.openEditSession = function(sessionId, projectName) {
   sessionFormTags = new Set((s.tags || []).map(normalizeTag).filter(Boolean));
   sessionTagCustomOpen = false;
   renderTagPicker('session');
+  sessionFormVoiceNotes = (s.voiceNotes || []).map(v => ({ ...v }));
+  renderSessionVoiceList();
   document.getElementById('session-sheet-title').textContent = `Edit Session · ${projectName}`;
   openSheet('sheet-session');
 };
@@ -5947,6 +5979,9 @@ window.saveSession = async function() {
     const idx = list.findIndex(x => x.id === editingSessionId);
     if (idx === -1) { toast('Session not found'); closeSheets(); return; }
     const existing = list[idx];
+    // Clean up any voice-note blobs removed during this edit.
+    const newIds = new Set(sessionFormVoiceNotes.map(v => v.id));
+    (existing.voiceNotes || []).forEach(v => { if (!newIds.has(v.id)) deleteVoiceBlob(v.storagePath); });
     const updated = {
       ...existing,
       before, during, after,
@@ -5955,6 +5990,7 @@ window.saveSession = async function() {
       pending: review.pending,
       learned: review.learned,
       tags,
+      voiceNotes: sessionFormVoiceNotes.slice(),
       // linkedBlockId, projectName, date, createdAt all preserved from `existing`
       _synced: false,  // mark dirty — cleared once cloud write verifies
     };
@@ -5990,6 +6026,7 @@ window.saveSession = async function() {
     pending: review.pending,
     learned: review.learned,
     tags,
+    voiceNotes: sessionFormVoiceNotes.slice(),
     linkedBlockId: null,
     createdAt: nowISTIso(),
     _synced: false,  // explicit — flipped to true after cloud verifies
@@ -6335,6 +6372,7 @@ function renderLearningCard(e) {
         ${e.fullNotes && expanded
           ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
           : ''}
+        ${renderVoiceNotesReadonly(e.voiceNotes)}
       </div>
     </div>
   `;
@@ -6354,6 +6392,7 @@ window.deleteLearning = function(entryId) {
     const idx = learning.findIndex(e => e.id === entryId);
     if (idx === -1) { console.warn('[DEL-LEARN] entry not found in learning array!'); toast('Entry not found'); return; }
     const removed = learning[idx];
+    if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
     learning.splice(idx, 1);
     saveLocal(SK.LEARNING, learning);
     tombstonesLearning[entryId] = Date.now();
@@ -6404,6 +6443,8 @@ window.openNewLearning = function() {
   learningTagCustomOpen = false;
   renderLearningTypeRow();
   renderTagPicker('learning');
+  learningFormVoiceNotes = [];
+  renderLearningVoiceList();
   document.getElementById('learning-sheet-title').textContent = 'Log Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -6432,6 +6473,8 @@ window.openEditLearning = function(entryId) {
   learningTagCustomOpen = false;
   renderLearningTypeRow();
   renderTagPicker('learning');
+  learningFormVoiceNotes = (e.voiceNotes || []).map(v => ({ ...v }));
+  renderLearningVoiceList();
   document.getElementById('learning-sheet-title').textContent = 'Edit Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -6483,6 +6526,7 @@ window.saveLearning = function() {
     takeaway,
     fullNotes: fullNotes || null,
     tags,
+    voiceNotes: learningFormVoiceNotes.slice(),
     date: todayStr(),
     createdAt: editingLearningId
       ? (learning.find(e => e.id === editingLearningId)?.createdAt || nowISTIso())
@@ -6496,6 +6540,9 @@ window.saveLearning = function() {
     const idx = learning.findIndex(e => e.id === editingLearningId);
     if (idx > -1) {
       prevTags = learning[idx].tags || [];
+      // Clean up voice blobs the user removed during this edit.
+      const newIds = new Set(entry.voiceNotes.map(v => v.id));
+      (learning[idx].voiceNotes || []).forEach(v => { if (!newIds.has(v.id)) deleteVoiceBlob(v.storagePath); });
       learning[idx] = entry;
     }
   } else {
@@ -9011,14 +9058,14 @@ function renderCapTypeRow() {
 function toggleCaptureFieldVisibility() {
   const isDaily   = selCapType === 'daily';
   const isProject = selCapType === 'project';
-  const isNote    = selCapType === 'note';
   document.getElementById('f-cap-body-field').style.display = isDaily ? 'none' : '';
   document.getElementById('f-project-field').style.display = isProject ? 'block' : 'none';
   document.getElementById('f-daily-fields').style.display = isDaily ? '' : 'none';
-  // Voice notes pilot: only on Quick Note for now. Other types will get the
-  // same affordance once this is verified end-to-end.
+  // Voice notes section sits inside the capture sheet for note + project +
+  // insight types (the ones that share the body textarea). Daily journal
+  // has its own voice section inside the daily-fields block.
   const voiceField = document.getElementById('f-cap-voice-field');
-  if (voiceField) voiceField.style.display = isNote ? '' : 'none';
+  if (voiceField) voiceField.style.display = isDaily ? 'none' : '';
   // Hide the manual Save button in daily mode (auto-save covers it). Keep it
   // visible for note/project, where the user explicitly commits with Save.
   document.getElementById('cap-save-btn').style.display = isDaily ? 'none' : '';
@@ -9097,6 +9144,11 @@ function initDailyJournalEditor(date) {
   if (t) t.value = dailyDraftEntry.thoughts || '';
   if (r) r.value = dailyDraftEntry.reflection || '';
   captureFormTags = new Set((dailyDraftEntry.tags || []).map(normalizeTag).filter(Boolean));
+  // Mirror the draft's voice-notes array into the form-draft variable so
+  // the UI list + recorder callbacks operate on the same data shape used
+  // by the other entry types.
+  dailyFormVoiceNotes = (dailyDraftEntry.voiceNotes || []).map(v => ({ ...v }));
+  renderDailyVoiceList();
   renderDailyTasks();
   renderDailyEntertainmentCap();
   setDailyAutoSavedLabel(dailyDraftEntry.lastEditedAt && existing ? 'Auto-saved' : '');
@@ -9130,7 +9182,8 @@ function isDailyEntryEmpty(e) {
     !(e.thoughts || '').trim() &&
     !(e.reflection || '').trim() &&
     (!Array.isArray(e.tasks) || e.tasks.length === 0) &&
-    !e.entertainmentCap
+    !e.entertainmentCap &&
+    (!Array.isArray(e.voiceNotes) || e.voiceNotes.length === 0)
   );
 }
 
@@ -9165,6 +9218,7 @@ window.saveDailyJournalSilent = function() {
   dailyDraftEntry.thoughts = thoughts;
   dailyDraftEntry.reflection = reflection;
   dailyDraftEntry.tags = tags;
+  dailyDraftEntry.voiceNotes = dailyFormVoiceNotes.slice();
   dailyDraftEntry.lastEditedAt = nowISTIso();
   dailyDraftEntry._synced = false;
 
@@ -9189,6 +9243,8 @@ window.saveDailyJournalSilent = function() {
 // within the window actually deletes. Mirrors deleteSession / deleteLearning.
 window.deleteDailyJournal = function(date) {
   armOrConfirmDelete('daily-' + date, () => {
+    const removed = dailyJournals.find(d => d.date === date);
+    if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
     dailyJournals = dailyJournals.filter(d => d.date !== date);
     saveLocal(SK.DAILY_JOURNAL, dailyJournals);
     if (user) {
@@ -9862,7 +9918,7 @@ function fmtVoiceDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-async function startCaptureVoiceRecording() {
+async function startVoiceRecording({ onTick, onStop } = {}) {
   if (_voiceRec) return;
   const mime = pickAudioMime();
   if (!mime) { toast('Recording not supported in this browser'); return; }
@@ -9873,16 +9929,15 @@ async function startCaptureVoiceRecording() {
   const recorder = new MediaRecorder(stream, { mimeType: mime });
   const chunks = [];
   recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-  _voiceRec = { recorder, stream, chunks, startedAt: Date.now(), mime, ext };
+  _voiceRec = { recorder, stream, chunks, startedAt: Date.now(), mime, ext, onStop, onTick };
   recorder.start();
-  renderCaptureVoiceList();
-  _voiceRec.timerHandle = setInterval(renderCaptureVoiceList, 500);
+  if (onTick) { try { onTick(); } catch {} _voiceRec.timerHandle = setInterval(onTick, 500); }
 }
 
-async function stopCaptureVoiceRecording() {
+async function stopVoiceRecording() {
   const rec = _voiceRec;
   if (!rec) return;
-  clearInterval(rec.timerHandle);
+  if (rec.timerHandle) clearInterval(rec.timerHandle);
   await new Promise(resolve => {
     rec.recorder.onstop = resolve;
     rec.recorder.stop();
@@ -9892,26 +9947,77 @@ async function stopCaptureVoiceRecording() {
   const durationSec = Math.max(1, Math.round((Date.now() - rec.startedAt) / 1000));
   const blob = new Blob(rec.chunks, { type: rec.mime });
   _voiceUploading = true;
-  renderCaptureVoiceList();
+  if (rec.onTick) { try { rec.onTick(); } catch {} } // re-render "Uploading…"
   try {
     const uploaded = await uploadVoiceBlob(blob, rec.ext);
-    captureFormVoiceNotes.push({
-      ...uploaded,
-      title: `Voice note ${captureFormVoiceNotes.length + 1}`,
-      durationSec,
-      createdAt: nowISTIso(),
-    });
+    if (rec.onStop) await rec.onStop({ ...uploaded, durationSec, createdAt: nowISTIso() });
   } catch (e) {
     console.error('voice upload failed', e);
     toast('Voice upload failed — try again');
   }
   _voiceUploading = false;
-  renderCaptureVoiceList();
+  if (rec.onTick) { try { rec.onTick(); } catch {} }
+}
+
+// ── Capture-sheet voice handlers ─────────────────────────────
+async function startCaptureVoiceRecording() {
+  await startVoiceRecording({
+    onTick: renderCaptureVoiceList,
+    onStop: (note) => {
+      captureFormVoiceNotes.push({
+        ...note,
+        title: `Voice note ${captureFormVoiceNotes.length + 1}`,
+      });
+    },
+  });
+}
+
+async function stopCaptureVoiceRecording() {
+  await stopVoiceRecording();
 }
 
 window.toggleCaptureVoiceRecording = async function() {
   if (_voiceRec) await stopCaptureVoiceRecording();
   else await startCaptureVoiceRecording();
+};
+
+// Today-page quick voice-note button. Single tap → start recording, tap
+// again → stop + upload + save as a brand-new Quick Note capture (no body
+// text). Lets the user offload a thought with one tap from the home page.
+function renderHomeVoiceBtn() {
+  const btn = document.getElementById('home-voice-add-btn');
+  if (!btn) return;
+  if (_voiceRec) {
+    const sec = Math.round((Date.now() - _voiceRec.startedAt) / 1000);
+    btn.textContent = `■ Stop recording · ${fmtVoiceDuration(sec)}`;
+    btn.classList.add('recording');
+  } else if (_voiceUploading) {
+    btn.textContent = '⏳ Uploading…';
+    btn.classList.remove('recording');
+  } else {
+    btn.textContent = '🎤 Add voice note';
+    btn.classList.remove('recording');
+  }
+}
+
+window.toggleHomeVoiceRecording = async function() {
+  if (_voiceRec) { await stopVoiceRecording(); return; }
+  await startVoiceRecording({
+    onTick: renderHomeVoiceBtn,
+    onStop: async (note) => {
+      const c = {
+        id: uid(), timestamp: nowISTIso(), type: 'note',
+        body: '', project_tag: '', tags: [],
+        voiceNotes: [{ ...note, title: 'Voice note' }],
+        _synced: false,
+      };
+      captures.push(c);
+      saveLocal(SK.CAPTURES, captures);
+      syncCaptureDoc(c);
+      toast('Voice note saved');
+      render();
+    },
+  });
 };
 
 // Render the voice-notes list inside the open capture sheet. Imperative
@@ -9949,6 +10055,123 @@ function renderCaptureVoiceList() {
     btn.classList.toggle('recording', !!_voiceRec);
   }
 }
+
+// ── Session / Learning / Daily voice handlers ────────────────
+// Same shape as the capture handlers above; each owns its own draft
+// array + DOM list id + add-button id.
+function renderSessionVoiceList()  { renderVoiceListEditable('f-sess-voice-list',  'f-sess-voice-add-btn',  sessionFormVoiceNotes,  'session');  }
+function renderLearningVoiceList() { renderVoiceListEditable('f-learn-voice-list', 'f-learn-voice-add-btn', learningFormVoiceNotes, 'learning'); }
+function renderDailyVoiceList()    { renderVoiceListEditable('f-daily-voice-list', 'f-daily-voice-add-btn', dailyFormVoiceNotes,    'daily');    }
+
+function renderVoiceListEditable(listId, addBtnId, draftArr, ctx) {
+  const el = document.getElementById(listId);
+  if (!el) return;
+  const savedRows = draftArr.map(n => `
+    <div class="voice-row" id="vn-${ctx}-${esc(n.id)}" onclick="playVoiceNote('${esc(n.url)}', this)">
+      <span class="voice-icon">🎤</span>
+      <span class="voice-title" ondblclick="editVoiceTitleIn('${ctx}', event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
+      <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
+      <button class="voice-del" onclick="event.stopPropagation();deleteVoiceNoteIn('${ctx}', '${esc(n.id)}')" title="Delete">×</button>
+    </div>
+  `).join('');
+  let extra = '';
+  if (_voiceRec) {
+    const sec = Math.round((Date.now() - _voiceRec.startedAt) / 1000);
+    extra = `<div class="voice-row recording">
+      <span class="voice-icon pulsing">●</span>
+      <span class="voice-title">Recording…</span>
+      <span class="voice-dur">${fmtVoiceDuration(sec)}</span>
+    </div>`;
+  } else if (_voiceUploading) {
+    extra = `<div class="voice-row uploading"><span class="voice-icon">⏳</span><span class="voice-title">Uploading…</span></div>`;
+  }
+  el.innerHTML = savedRows + extra;
+  const btn = document.getElementById(addBtnId);
+  if (btn) {
+    btn.textContent = _voiceRec ? '■ Stop recording' : '🎤 Add voice note';
+    btn.classList.toggle('recording', !!_voiceRec);
+  }
+}
+
+function _voiceDraftFor(ctx) {
+  if (ctx === 'capture')  return captureFormVoiceNotes;
+  if (ctx === 'session')  return sessionFormVoiceNotes;
+  if (ctx === 'learning') return learningFormVoiceNotes;
+  if (ctx === 'daily')    return dailyFormVoiceNotes;
+  return [];
+}
+function _voiceRenderFor(ctx) {
+  if (ctx === 'capture')  return renderCaptureVoiceList;
+  if (ctx === 'session')  return renderSessionVoiceList;
+  if (ctx === 'learning') return renderLearningVoiceList;
+  if (ctx === 'daily')    return renderDailyVoiceList;
+  return () => {};
+}
+
+window.toggleSessionVoiceRecording = async function() {
+  if (_voiceRec) { await stopVoiceRecording(); return; }
+  await startVoiceRecording({
+    onTick: renderSessionVoiceList,
+    onStop: (note) => { sessionFormVoiceNotes.push({ ...note, title: `Voice note ${sessionFormVoiceNotes.length + 1}` }); },
+  });
+};
+window.toggleLearningVoiceRecording = async function() {
+  if (_voiceRec) { await stopVoiceRecording(); return; }
+  await startVoiceRecording({
+    onTick: renderLearningVoiceList,
+    onStop: (note) => { learningFormVoiceNotes.push({ ...note, title: `Voice note ${learningFormVoiceNotes.length + 1}` }); },
+  });
+};
+window.toggleDailyVoiceRecording = async function() {
+  if (_voiceRec) { await stopVoiceRecording(); return; }
+  await startVoiceRecording({
+    onTick: renderDailyVoiceList,
+    onStop: async (note) => {
+      dailyFormVoiceNotes.push({ ...note, title: `Voice note ${dailyFormVoiceNotes.length + 1}` });
+      // Daily journal is autosaved — flush so the new voice note persists
+      // even if the user closes the sheet without typing anything else.
+      try { saveDailyJournalSilent(); } catch {}
+    },
+  });
+};
+
+window.editVoiceTitleIn = function(ctx, ev, noteId) {
+  ev.stopPropagation();
+  const draft = _voiceDraftFor(ctx);
+  const note = draft.find(v => v.id === noteId);
+  if (!note) return;
+  const row = document.getElementById(`vn-${ctx}-${noteId}`);
+  if (!row) return;
+  const title = row.querySelector('.voice-title');
+  if (!title) return;
+  title.outerHTML = `<input class="voice-title-input" value="${esc(note.title)}"
+    onclick="event.stopPropagation()"
+    onblur="saveVoiceTitleIn('${ctx}', '${esc(noteId)}', this.value)"
+    onkeydown="if(event.key==='Enter'){this.blur()} else if(event.key==='Escape'){this.value='__cancel__';this.blur()}" />`;
+  const input = row.querySelector('.voice-title-input');
+  if (input) { input.focus(); input.select(); }
+};
+window.saveVoiceTitleIn = function(ctx, noteId, val) {
+  const note = _voiceDraftFor(ctx).find(v => v.id === noteId);
+  if (!note) return;
+  if (val !== '__cancel__') {
+    const trimmed = (val || '').trim();
+    if (trimmed) note.title = trimmed;
+  }
+  _voiceRenderFor(ctx)();
+  // Daily journal is autosaved — flush rename immediately.
+  if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
+};
+window.deleteVoiceNoteIn = function(ctx, noteId) {
+  const draft = _voiceDraftFor(ctx);
+  const idx = draft.findIndex(v => v.id === noteId);
+  if (idx < 0) return;
+  const note = draft[idx];
+  draft.splice(idx, 1);
+  deleteVoiceBlob(note.storagePath);
+  _voiceRenderFor(ctx)();
+  if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
+};
 
 window.editCaptureVoiceTitle = function(ev, noteId) {
   ev.stopPropagation();
