@@ -1,78 +1,76 @@
-# DayOS — Build SOP
+# DayOS — what I learned building it
 
-A 1-page operational reference. Read top-to-bottom in 5 minutes. Use as the template once you've built 4-5 projects.
-
----
-
-## What it is, in one line
-Personal time-intelligence PWA. Single `index.html`, vanilla JS modules, Firebase (Auth + Firestore + Storage), deployed on Vercel.
-
-## Stack at a glance
-- **No build step, no package manager, no framework.** One HTML file is the app.
-- **Firebase web SDK** loaded via CDN (`gstatic.com`). Auth (Google sign-in) + Firestore (data) + Storage (voice notes).
-- **Chart.js** via CDN, lazy.
-- **Service Worker** is a cache-buster only — not for offline.
-- **Branches:** work on `claude/*`, auto-merges to `main`, `main` deploys to Vercel. Every commit ships; no draft state.
-
-## Architecture rules (don't break)
-1. **One file = the app.** All CSS, HTML shell, and JS module live in `index.html`. Sheets are static `<div class="sheet">`s in the body, toggled with `.open`.
-2. **Full re-render on every state change.** No diffing, no virtual DOM. `render() → renderMain() → switch(activeTab) → innerHTML`.
-3. **IST helpers only.** Never `new Date()` directly. Use `nowIST()`, `todayStr()`, `capDateIST()`, `addDays()`.
-4. **State lives in three places, in this order of truth:** module-level `let` vars → `localStorage` → Firestore mirror. Read from the first, write to all three.
-5. **`onclick="x()"` needs `window.x = …`.** Module-scope functions are invisible to inline HTML handlers.
-
-## The sync gospel (apply to every persistent collection)
-1. **Tombstones on delete.** Without them, the loader's "remote first, then local extras" merge silently resurrects what you just deleted.
-2. **`_synced: false` flag on write.** Flip to `true` only when the cloud confirms. Loader respects the flag during conflict.
-3. **`onSnapshot` for live updates.** Reload-driven sync is fine single-user/multi-device; multi-user needs live subs.
-
-When adding a new collection: per-write sync function + `initialSync` + `forcePushToCloud` + `forcePullFromCloud`. Miss any one → silent data loss.
-
-## Pre-push gate (skipped three times this session, paid for it each time)
-1. Inline-script syntax check (the `node -e` snippet in `docs/session-handoff.md`).
-2. Run `/tmp/dayos-check/*.mjs` sim tests (~280 cases over pure helpers).
-3. **Load `index.html` in a browser and click the changed surface.** Static checks pass ≠ sync works ≠ feature works.
-4. Bump `dayos-vN` in `sw.js`. Open tabs serve stale `index.html` otherwise.
-5. When in doubt, the browser console is the diagnostic source of truth. Watchdogs hide bugs, they don't fix them.
-
-## iOS Safari / PWA traps (high-cost, easy to forget)
-- **Inputs with `font-size < 16px` auto-zoom on focus.** Once zoomed, the bottom nav vanishes and only a reload fixes it. Force 16px on touch via `@media (hover: none) and (pointer: coarse) { input, textarea, select { font-size: 16px !important; } }`.
-- **`MediaRecorder` codec differs:** Safari = `audio/mp4`, Chrome = `audio/webm;codecs=opus`. Detect with `MediaRecorder.isTypeSupported()`.
-- **`ondblclick` is eaten if single-tap handler does `renderMain()` — the original element is gone by tap two.** Use a ~280ms timer dispatcher to differentiate single vs double tap.
-- **Mic / audio permission must come from a direct user gesture.** PWA standalone mode sometimes re-prompts; don't auto-start.
-
-## Security model
-- **Firebase web `apiKey` in client is public by design.** Don't try to hide it. Security is enforced by Auth domain allowlist + Firestore/Storage rules, not by secrecy.
-- **Firestore rules:** owner-only via `match /users/{userId}/{document=**} { allow read, write: if request.auth != null && request.auth.uid == userId; }`. Any new top-level collection (e.g. `projectRefs/{userId}/...`) needs its own matching block — wildcards don't reach outside `users/`.
-- **Storage rules are separate** from Firestore. Enabling Storage = a separate setup + a separate rule block (same owner-only pattern).
-- **Default-deny is your friend.** Missing rules = blocked writes, not leaked data.
-
-## Commit & shipping discipline
-- One logical change per commit. No "while I'm here" cleanups bundled in.
-- Commit messages: WHY first, WHAT second. Past tense.
-- Branch flow is `claude/* → auto-merge → main → Vercel`. Don't push to `main` directly unless asked.
-
-## Pitfalls catalog (the actual bugs)
-- **Missing import → ReferenceError throws out of `initialSync` → watchdog flips green at 12s → nothing actually merged.** Imports are the first thing to check when sync looks weird.
-- **`window.X = window.Y` declared before `Y` is assigned → captures `undefined` → click handler is a silent no-op.** Use function wrappers (`window.X = function() { window.Y(); }`) so the lookup happens at call time.
-- **Auto-logging that re-runs on every init → duplicate rows.** If the job can fire more than once per day, gate it with an idempotency check or remove it.
-- **Inline-handler reachability:** every `window.X = …` only lives at the line it runs. Adding a new onclick → add the `window.` assignment.
-- **Don't conflate destructive cleanup with "stop creating new ones."** When removing a feature, confirm the existing data's fate explicitly — keep / sweep / migrate.
-
-## How to add a feature (template)
-1. **Decide where state lives:** module `let` + localStorage key. Define the shape upfront.
-2. **Sync wiring (if it persists):** per-write fn + initialSync + force push/pull + tombstones + `_synced`.
-3. **UI:** sheet markup + render fn + inline handler → `window.X` assignment.
-4. **Reset state** in close/cancel handler so it doesn't bleed between modal sessions.
-5. **SW cache bump.**
-6. **Cross-device verify before "done."** Phone + Mac.
-
-## "Done" means
-- Pre-push gate green.
-- Tested in a real browser, on both phone and mac, in the actual flow a user would hit.
-- Synced data still synced after the change.
-- One commit per logical change. SW bumped. No leftover comments / dead code.
+A 1-page note to my future self. No jargon. What I'd tell myself starting the next project.
 
 ---
 
-*Living doc. Update when a new bug class appears or a pattern proves itself.*
+## What this was
+A personal time + journaling app I use every day. Single web file, runs in a browser, syncs between my phone and Mac. Built with Claude over several sessions.
+
+---
+
+## The 6 things I'd tell myself on day one
+
+**1. The phone is the source of truth.**
+"It works on my Mac" means nothing. Most of my hardest bugs only showed up on iPhone — the keyboard pushed things around, inputs got too tall, buttons disappeared. Test on the device I actually use, first. Same for sync — refreshing the same tab tells me nothing; I have to check the OTHER device.
+
+**2. Small changes, one at a time.**
+Every time Claude bundled "while we're here, also fix X" into a feature, something broke. Two bugs in one commit = double the time to figure out which is which. Make one thing different, look at it, then make the next thing different.
+
+**3. Ship the ugly version first.**
+I kept trying to design things in my head before seeing them on screen. Wrong move. The right move was: tell Claude the rough idea, ship it, open it on my phone, then say "make this smaller, move that left." 80% of my decisions only made sense AFTER I could see the first cut live.
+
+**4. Describe symptoms, not causes.**
+When I said "I think this is the iOS zoom thing causing it," I led Claude in a direction. Sometimes wrong. The fastest debugging happened when I just said "the box gets taller when I tap the search" and let Claude diagnose. Don't lead the witness.
+
+**5. Push back the moment Claude misreads me.**
+Twice this session, Claude solved the wrong problem because it heard me differently than I meant. Both times I said "no, I meant THIS" and we moved on in 30 seconds. If I'd let it slide, we'd have built the wrong thing.
+
+**6. "Done" means tested on the actual flow.**
+Code compiling ≠ feature working. The "I picked it up on the couch and tried it" test is the real test.
+
+---
+
+## Working with Claude — what stuck
+
+- **Ask plain-English questions when unsure.** "Is this necessary?" saved me from publishing security rules I didn't actually need.
+- **Pause for clarifications when scope balloons.** When voice notes needed to land on 5 surfaces, Claude asked "one at a time, or all at once?" That pause prevented an hour of wasted work.
+- **Trade-offs are MY decisions, not Claude's.** Claude can list 3 options + their costs. I pick. Every time I caught myself thinking "just pick whatever's best," I was outsourcing something I should own.
+- **The session-opening context line matters.** "Read these three files first" turned chaotic resumes into clean ones. Without it, Claude rediscovers everything badly.
+
+---
+
+## My pre-ship checklist
+
+Before I say "done," I confirm:
+- [ ] Tested on my phone (not the laptop)
+- [ ] Tested on a second device — OR closed and reopened in a fresh tab
+- [ ] State doesn't leak between sessions (close the modal, reopen — still right?)
+- [ ] No "while I'm here" cleanups bundled in
+- [ ] Things that were broken before are still broken the same way (no surprise side-effects)
+- [ ] Hard refresh forces the new version to actually load (cache busting is real)
+
+---
+
+## What surprised me
+
+- **Most "bugs" were tiny.** Forgot a cache bump. Forgot to reset a variable between modal openings. Missed a single CSS rule. The big architecture stuff was rarely the problem.
+- **Iteration speed beats planning.** I wanted to design the perfect DFT box up front. We redesigned it 5 times in 30 minutes once I just looked at it on my phone after each change. Way faster.
+- **What looks like a security hole often isn't.** The Firebase API key in the code looked alarming. Not actually a problem — it's a public identifier, the real protection is elsewhere. Always check before panicking.
+- **Removing a feature is harder than adding one.** Killing auto-sleep meant 3 separate decisions: stop creating new ones, what about existing data, what about today's already-created ones. "Just remove it" became a 3-question conversation.
+- **Voice notes (the basic version) was a day, not a week.** I expected more complexity. A simple record-and-attach approach got me 99% of what I wanted.
+
+---
+
+## Starter rules for my next project
+
+1. Start with the smallest version that's actually useful. Not the elegant one. The crude one.
+2. Get it onto my phone within day one. Even if it looks bad.
+3. Then USE it. Not "test it." Find what's annoying. Fix that next.
+4. Tiny commits. If a single change touches more than 2-3 surfaces, split it.
+5. Write down the surprises as they happen. Future me will hit them again.
+6. Don't outsource design decisions to Claude. Outsource the *implementation*, keep the *taste*.
+
+---
+
+*This is what I'd hand a friend before they started building something like this.*
