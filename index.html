@@ -967,6 +967,82 @@ html, body {
   transition: color 0.15s, border-color 0.15s;
 }
 .dj-add-task-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── Voice notes ───────────────────────────────────────────────
+   Row shape mirrors .dj-task-row so attached voice notes feel like
+   first-class siblings of tasks. Used both inside the capture sheet
+   (editable) and on the rendered card (read-only — same row, no
+   delete/title-edit). */
+.voice-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.voice-list.readonly { margin-top: 0.4rem; }
+.voice-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  background: var(--surface2);
+  cursor: pointer;
+}
+.voice-row.recording { border: 1px solid var(--danger); }
+.voice-row.uploading { color: var(--text3); }
+.voice-icon { font-size: 0.95rem; }
+.voice-icon.pulsing { color: var(--danger); animation: voicePulse 1s ease-in-out infinite; }
+@keyframes voicePulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+.voice-title {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+.voice-title-input {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: inherit;
+  padding: 0;
+}
+.voice-dur {
+  font-size: 0.72rem;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+.voice-del {
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  line-height: 1;
+}
+.voice-del:hover { color: var(--danger); }
+.voice-add-btn {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.45rem;
+  background: transparent;
+  border: 1px dashed var(--border2);
+  border-radius: 6px;
+  color: var(--text3);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.voice-add-btn:hover { color: var(--accent); border-color: var(--accent); }
+.voice-add-btn.recording {
+  color: var(--danger);
+  border-color: var(--danger);
+  border-style: solid;
+  background: var(--danger-soft);
+}
+
 #f-daily-fields textarea {
   width: 100%;
   background: var(--surface2);
@@ -3315,6 +3391,16 @@ select option { background: var(--surface2); }
     <div class="field" id="f-cap-body-field">
       <textarea id="f-cap-body" placeholder="What's on your mind…" style="min-height:120px"></textarea>
     </div>
+    <!-- Voice notes — pilot on Quick Note (selCapType==='note'). Each row
+         single-tap plays, double-tap on title renames. Recordings upload to
+         Firebase Storage on stop and persist as { id, url, title, … } on the
+         capture doc's voiceNotes array. -->
+    <div class="field" id="f-cap-voice-field" style="display:none">
+      <label class="field-label">Voice notes</label>
+      <div class="voice-list" id="f-cap-voice-list"></div>
+      <button type="button" class="voice-add-btn" id="f-cap-voice-add-btn"
+        onclick="toggleCaptureVoiceRecording()">🎤 Add voice note</button>
+    </div>
     <div class="field" id="f-project-field" style="display:none;position:relative">
       <label class="field-label">Project Tag</label>
       <input type="text" id="f-project-tag" placeholder="project name" autocomplete="off" oninput="filterProjectSuggestions(this.value)" onblur="setTimeout(hideProjectSuggestions,150)">
@@ -3570,6 +3656,9 @@ import { getAuth, GoogleAuthProvider,
 import { getFirestore, collection, doc,
          getDocs, getDoc, setDoc, deleteDoc,
          writeBatch, onSnapshot }           from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { getStorage, ref as storageRef,
+         uploadBytes, deleteObject,
+         getDownloadURL }                   from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js';
 
 // ── Firebase ──────────────────────────────────────────────────
 const fbApp = initializeApp({
@@ -3582,6 +3671,7 @@ const fbApp = initializeApp({
 });
 const auth = getAuth(fbApp);
 const db   = getFirestore(fbApp);
+const storage = getStorage(fbApp);
 let unsubs = [];
 
 // ── Constants ─────────────────────────────────────────────────
@@ -3799,6 +3889,16 @@ let dfts = loadLocal('dayos_dfts_v1', {}); // { 'YYYY-MM-DD': 'focus task text' 
 // Pending DFT actions (✓ / ✕) are hidden by default; tapping the inline
 // row toggles their visibility. Resets on every state change.
 let dftActionsVisible = false;
+
+// ── Voice notes (capture pilot) ─────────────────────────────
+// In-flight recording state + the array of voice notes attached to the
+// capture currently being composed. Persisted on the capture doc as
+// voiceNotes:[{ id, url, storagePath, title, durationSec, createdAt }].
+let captureFormVoiceNotes = [];
+let _voiceRec = null;          // { recorder, stream, chunks, startedAt, mime, ext, timerHandle }
+let _voiceUploading = false;
+let _currentlyPlayingVoice = null;
+const _voiceAudioCache = new Map(); // url → Audio() instance (resume-friendly)
 // Today-tab banner dismissals (B3). One date-keyed flag per banner kind.
 //   shape: { 'YYYY-MM-DD': { reviewBanner: true } }
 let dismissals = loadLocal('dayos_dismissals_v1', {});
@@ -4515,6 +4615,20 @@ function renderBlock(b) {
     </div>`;
 }
 
+// Compact read-only rendering of the voice notes attached to a capture
+// card. Single-tap row → play / pause (handled by window.playVoiceNote).
+// Card-level click handlers stop propagation here so tapping a row doesn't
+// also expand or open the parent capture card.
+function renderVoiceNotesReadonly(voiceNotes) {
+  if (!voiceNotes || !voiceNotes.length) return '';
+  return `<div class="voice-list readonly">${voiceNotes.map(n => `
+    <div class="voice-row" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
+      <span class="voice-icon">🎤</span>
+      <span class="voice-title">${esc(n.title)}</span>
+      <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
+    </div>`).join('')}</div>`;
+}
+
 function renderCapPreview(c) {
   const ct = ctypeById(c.type);
   const delKey = 'cap-' + c.id;
@@ -4530,7 +4644,8 @@ function renderCapPreview(c) {
           <span class="cap-type">${ct.label}</span>
           <span class="cap-time">${fmtTime(c.timestamp)}</span>
         </div>
-        <div class="cap-body-preview">${esc(c.body)}</div>
+        ${c.body ? `<div class="cap-body-preview">${esc(c.body)}</div>` : ''}
+        ${renderVoiceNotesReadonly(c.voiceNotes)}
       </div>
     </div>`;
 }
@@ -5022,7 +5137,8 @@ function renderCapFull(c) {
           <span class="cap-type">${ct.label}</span>
           <span class="cap-time">${dateLabel}</span>
         </div>
-        <div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>
+        ${c.body ? `<div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>` : ''}
+        ${renderVoiceNotesReadonly(c.voiceNotes)}
         ${renderTagPills(c.tags)}
       </div>
     </div>`;
@@ -8836,6 +8952,9 @@ function openCapture(type = 'note') {
   // Reset tag picker state for a new capture
   captureFormTags = new Set();
   captureTagCustomOpen = false;
+  // Reset voice-note draft for a brand-new capture.
+  captureFormVoiceNotes = [];
+  renderCaptureVoiceList();
   // For daily journal mode, prefill from today's entry (if any) or start a draft.
   if (type === 'daily') {
     initDailyJournalEditor(todayStr());
@@ -8867,6 +8986,9 @@ function openCaptureEdit(captureId) {
   // Pre-select any tags the capture already has (from either pills or inline hashtags)
   captureFormTags = new Set((c.tags || []).map(normalizeTag).filter(Boolean));
   captureTagCustomOpen = false;
+  // Load existing voice notes into the form draft.
+  captureFormVoiceNotes = (c.voiceNotes || []).map(v => ({ ...v }));
+  renderCaptureVoiceList();
   editingDailyDate = null;
   dailyDraftEntry = null;
   renderTagPicker('capture');
@@ -8890,9 +9012,14 @@ function renderCapTypeRow() {
 function toggleCaptureFieldVisibility() {
   const isDaily   = selCapType === 'daily';
   const isProject = selCapType === 'project';
+  const isNote    = selCapType === 'note';
   document.getElementById('f-cap-body-field').style.display = isDaily ? 'none' : '';
   document.getElementById('f-project-field').style.display = isProject ? 'block' : 'none';
   document.getElementById('f-daily-fields').style.display = isDaily ? '' : 'none';
+  // Voice notes pilot: only on Quick Note for now. Other types will get the
+  // same affordance once this is verified end-to-end.
+  const voiceField = document.getElementById('f-cap-voice-field');
+  if (voiceField) voiceField.style.display = isNote ? '' : 'none';
   // Hide the manual Save button in daily mode (auto-save covers it). Keep it
   // visible for note/project, where the user explicitly commits with Save.
   document.getElementById('cap-save-btn').style.display = isDaily ? 'none' : '';
@@ -9444,7 +9571,7 @@ window.saveCapture = function() {
     return;
   }
   const body = document.getElementById('f-cap-body').value.trim();
-  if (!body) { toast('Capture cannot be empty'); return; }
+  if (!body && captureFormVoiceNotes.length === 0) { toast('Capture cannot be empty'); return; }
   const projectTag = document.getElementById('f-project-tag').value.trim();
   // Auto-add freshly typed project name into the canonical list so we never
   // create stranded "legacy" entries again. Case-insensitive de-dupe via slug.
@@ -9473,12 +9600,18 @@ window.saveCapture = function() {
   )];
   addToTagHistory(tags);
 
+  const voiceNotesSnap = captureFormVoiceNotes.slice();
   if (editingCaptureId) {
     const idx = captures.findIndex(c => c.id === editingCaptureId);
     if (idx > -1) {
       const prev = captures[idx];
       const prevTags = prev.tags || [];
-      captures[idx] = { ...prev, type: selCapType, body, project_tag: projectTag, tags, _synced: false };
+      // Diff voice notes against the previous version so blobs the user
+      // removed during this edit get cleaned out of Storage.
+      const prevIds = new Set((prev.voiceNotes || []).map(v => v.id));
+      const newIds = new Set(voiceNotesSnap.map(v => v.id));
+      (prev.voiceNotes || []).forEach(v => { if (!newIds.has(v.id)) deleteVoiceBlob(v.storagePath); });
+      captures[idx] = { ...prev, type: selCapType, body, project_tag: projectTag, tags, voiceNotes: voiceNotesSnap, _synced: false };
       syncCaptureDoc(captures[idx]);
       syncProjectRefsForEntry({
         sourceType: 'journal', sourceId: captures[idx].id, tags, prev: prevTags,
@@ -9487,7 +9620,7 @@ window.saveCapture = function() {
       toast('Entry updated');
     }
   } else {
-    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags, _synced: false };
+    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags, voiceNotes: voiceNotesSnap, _synced: false };
     captures.push(c);
     syncCaptureDoc(c);
     syncProjectRefsForEntry({
@@ -9560,6 +9693,9 @@ window.deleteBlock = function(id) {
 
 window.deleteCapture = function(id) {
   const removed = captures.find(c => c.id === id);
+  // Clean up any voice-note blobs that were attached to this capture so
+  // deleted entries don't leave Storage orphans behind.
+  if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
   captures = captures.filter(c => c.id !== id);
   saveLocal(SK.CAPTURES, captures);
   tombstonesCaptures[id] = Date.now();
@@ -9684,6 +9820,195 @@ function renderDftPanel(d) {
       ${body}
     </div>`;
 }
+
+// ── Voice notes ──────────────────────────────────────────────
+// MediaRecorder + Firebase Storage helpers. iOS Safari records `audio/mp4`
+// (AAC) while everything else does `audio/webm` (Opus); we pick whatever
+// the browser supports, save the file extension to match, and rely on the
+// <audio> element to play either back on any device.
+function pickAudioMime() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+    'audio/aac',
+  ];
+  for (const m of candidates) {
+    try { if (MediaRecorder.isTypeSupported(m)) return m; } catch {}
+  }
+  return null;
+}
+
+async function uploadVoiceBlob(blob, ext) {
+  if (!user) throw new Error('not signed in');
+  const id = uid();
+  const path = `users/${user.uid}/voice/${id}.${ext}`;
+  const r = storageRef(storage, path);
+  await uploadBytes(r, blob);
+  const url = await getDownloadURL(r);
+  return { id, url, storagePath: path };
+}
+
+async function deleteVoiceBlob(storagePath) {
+  if (!storagePath) return;
+  try { await deleteObject(storageRef(storage, storagePath)); }
+  catch (e) { console.warn('Voice blob delete failed', e); }
+}
+
+function fmtVoiceDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.max(0, Math.floor(sec % 60));
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+async function startCaptureVoiceRecording() {
+  if (_voiceRec) return;
+  const mime = pickAudioMime();
+  if (!mime) { toast('Recording not supported in this browser'); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { toast('Mic permission denied'); return; }
+  const ext = (mime.includes('mp4') || mime.includes('aac')) ? 'm4a' : 'webm';
+  const recorder = new MediaRecorder(stream, { mimeType: mime });
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  _voiceRec = { recorder, stream, chunks, startedAt: Date.now(), mime, ext };
+  recorder.start();
+  renderCaptureVoiceList();
+  _voiceRec.timerHandle = setInterval(renderCaptureVoiceList, 500);
+}
+
+async function stopCaptureVoiceRecording() {
+  const rec = _voiceRec;
+  if (!rec) return;
+  clearInterval(rec.timerHandle);
+  await new Promise(resolve => {
+    rec.recorder.onstop = resolve;
+    rec.recorder.stop();
+  });
+  rec.stream.getTracks().forEach(t => t.stop());
+  _voiceRec = null;
+  const durationSec = Math.max(1, Math.round((Date.now() - rec.startedAt) / 1000));
+  const blob = new Blob(rec.chunks, { type: rec.mime });
+  _voiceUploading = true;
+  renderCaptureVoiceList();
+  try {
+    const uploaded = await uploadVoiceBlob(blob, rec.ext);
+    captureFormVoiceNotes.push({
+      ...uploaded,
+      title: `Voice note ${captureFormVoiceNotes.length + 1}`,
+      durationSec,
+      createdAt: nowISTIso(),
+    });
+  } catch (e) {
+    console.error('voice upload failed', e);
+    toast('Voice upload failed — try again');
+  }
+  _voiceUploading = false;
+  renderCaptureVoiceList();
+}
+
+window.toggleCaptureVoiceRecording = async function() {
+  if (_voiceRec) await stopCaptureVoiceRecording();
+  else await startCaptureVoiceRecording();
+};
+
+// Render the voice-notes list inside the open capture sheet. Imperative
+// (no innerHTML on a parent that owns inputs the user might be typing in)
+// because this fires every 500ms during a recording.
+function renderCaptureVoiceList() {
+  const el = document.getElementById('f-cap-voice-list');
+  if (!el) return;
+  const savedRows = captureFormVoiceNotes.map(n => `
+    <div class="voice-row" id="vn-${esc(n.id)}" onclick="playVoiceNote('${esc(n.url)}', this)">
+      <span class="voice-icon">🎤</span>
+      <span class="voice-title" ondblclick="editCaptureVoiceTitle(event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
+      <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
+      <button class="voice-del" onclick="event.stopPropagation();deleteCaptureVoiceNote('${esc(n.id)}')" title="Delete">×</button>
+    </div>
+  `).join('');
+  let extra = '';
+  if (_voiceRec) {
+    const sec = Math.round((Date.now() - _voiceRec.startedAt) / 1000);
+    extra = `<div class="voice-row recording">
+      <span class="voice-icon pulsing">●</span>
+      <span class="voice-title">Recording…</span>
+      <span class="voice-dur">${fmtVoiceDuration(sec)}</span>
+    </div>`;
+  } else if (_voiceUploading) {
+    extra = `<div class="voice-row uploading">
+      <span class="voice-icon">⏳</span>
+      <span class="voice-title">Uploading…</span>
+    </div>`;
+  }
+  el.innerHTML = savedRows + extra;
+  const btn = document.getElementById('f-cap-voice-add-btn');
+  if (btn) {
+    btn.textContent = _voiceRec ? '■ Stop recording' : '🎤 Add voice note';
+    btn.classList.toggle('recording', !!_voiceRec);
+  }
+}
+
+window.editCaptureVoiceTitle = function(ev, noteId) {
+  ev.stopPropagation();
+  const note = captureFormVoiceNotes.find(v => v.id === noteId);
+  if (!note) return;
+  const row = document.getElementById('vn-' + noteId);
+  if (!row) return;
+  const title = row.querySelector('.voice-title');
+  if (!title) return;
+  title.outerHTML = `<input class="voice-title-input" value="${esc(note.title)}"
+    onclick="event.stopPropagation()"
+    onblur="saveCaptureVoiceTitle('${esc(noteId)}', this.value)"
+    onkeydown="if(event.key==='Enter'){this.blur()} else if(event.key==='Escape'){this.value='__cancel__';this.blur()}" />`;
+  const input = row.querySelector('.voice-title-input');
+  if (input) { input.focus(); input.select(); }
+};
+
+window.saveCaptureVoiceTitle = function(noteId, val) {
+  const note = captureFormVoiceNotes.find(v => v.id === noteId);
+  if (!note) return;
+  if (val !== '__cancel__') {
+    const trimmed = (val || '').trim();
+    if (trimmed) note.title = trimmed;
+  }
+  renderCaptureVoiceList();
+};
+
+window.deleteCaptureVoiceNote = function(noteId) {
+  const idx = captureFormVoiceNotes.findIndex(v => v.id === noteId);
+  if (idx < 0) return;
+  const note = captureFormVoiceNotes[idx];
+  captureFormVoiceNotes.splice(idx, 1);
+  // Best-effort blob cleanup. If the user is still composing and cancels
+  // the capture afterwards, leftover blobs are tolerated for the pilot —
+  // a sweep job can collect them later.
+  deleteVoiceBlob(note.storagePath);
+  renderCaptureVoiceList();
+};
+
+// Single tap on a voice-note row plays / pauses it. Reuses a cached
+// Audio() so resuming is instant. Pauses any other note that was playing
+// so we never get two streams overlapping.
+window.playVoiceNote = function(url) {
+  let a = _voiceAudioCache.get(url);
+  if (!a) {
+    a = new Audio(url);
+    a.preload = 'metadata';
+    _voiceAudioCache.set(url, a);
+  }
+  if (_currentlyPlayingVoice && _currentlyPlayingVoice !== a) {
+    _currentlyPlayingVoice.pause();
+  }
+  if (a.paused) {
+    a.play().catch(() => toast('Playback failed'));
+    _currentlyPlayingVoice = a;
+  } else {
+    a.pause();
+  }
+};
 
 window.saveDft = function(val) {
   // Each new pending DFT should start with actions hidden — user reveals
@@ -12086,6 +12411,19 @@ window.closeSheets = function() {
   // tearing down the modal so any unsaved keystrokes (e.g. user typed and
   // immediately tapped Cancel) aren't lost.
   flushDailyJournalIfOpen();
+  // If a voice recording is in progress, release the mic immediately so the
+  // mic indicator goes away. The in-progress blob is discarded (user closed
+  // the sheet without committing — same intent as Cancel).
+  if (_voiceRec) {
+    try { clearInterval(_voiceRec.timerHandle); } catch {}
+    try { _voiceRec.recorder.stop(); } catch {}
+    try { _voiceRec.stream.getTracks().forEach(t => t.stop()); } catch {}
+    _voiceRec = null;
+    _voiceUploading = false;
+  }
+  // Pause any voice-note playback when sheets close so audio doesn't keep
+  // running invisibly behind the page.
+  if (_currentlyPlayingVoice) { try { _currentlyPlayingVoice.pause(); } catch {} }
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('open'));
   document.getElementById('backdrop').classList.remove('visible');
 };
