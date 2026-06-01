@@ -3296,6 +3296,7 @@ select option { background: var(--surface2); }
     </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
+      <button class="btn-ghost" onclick="saveAndNewBlock()" title="Save this entry and start a fresh one">+ New</button>
       <button class="btn-primary" onclick="saveBlock()">Save Block</button>
     </div>
   </div>
@@ -8783,7 +8784,7 @@ document.querySelectorAll('[data-energy]').forEach(btn => {
   });
 });
 
-window.saveBlock = function() {
+window.saveBlock = function(keepOpen = false) {
   const label = document.getElementById('f-label').value.trim();
 
   const timeVal = document.getElementById('f-time').value;
@@ -8806,9 +8807,20 @@ window.saveBlock = function() {
     toast('Block logged');
   }
   saveLocal(SK.BLOCKS, blocks);
+  if (keepOpen) {
+    // Re-render the page underneath so it reflects the just-saved block,
+    // then reopen the sheet with a fresh blank form for the next entry.
+    render();
+    openLogBlock(null);
+    return;
+  }
   closeSheets();
   render();
 };
+
+// Save the current entry and immediately reset the modal for a fresh
+// new block — used by the "+ New" button alongside Save Block / Cancel.
+window.saveAndNewBlock = function() { window.saveBlock(true); };
 
 // ── Sheet: Capture ────────────────────────────────────────────
 function openCapture(type = 'note') {
