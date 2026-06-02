@@ -3556,6 +3556,11 @@ select option { background: var(--surface2); }
 Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save."></textarea>
     </div>
     <div class="field">
+      <div class="voice-list" id="f-sess-voice-list"></div>
+      <button type="button" class="voice-add-btn" id="f-sess-voice-add-btn"
+        onclick="toggleSessionVoiceRecording()">🎤 Add voice note</button>
+    </div>
+    <div class="field">
       <label class="session-field-label neutral">Duration</label>
       <div class="pill-row">
         <button class="pill sess-dur-pill" data-dur="30">30m</button>
@@ -3571,11 +3576,6 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       <label class="session-field-label neutral">Tags</label>
       <div class="tag-picker" id="session-tag-picker"></div>
       <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> inside your notes are captured automatically.</div>
-    </div>
-    <div class="field">
-      <div class="voice-list" id="f-sess-voice-list"></div>
-      <button type="button" class="voice-add-btn" id="f-sess-voice-add-btn"
-        onclick="toggleSessionVoiceRecording()">🎤 Add voice note</button>
     </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
