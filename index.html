@@ -987,6 +987,15 @@ html, body {
 }
 .voice-row.recording { border: 1px solid var(--danger); }
 .voice-row.uploading { color: var(--text3); }
+/* Playing state — soft accent tint + accent border so the user can see at
+   a glance which note is currently audible. The .voice-icon glyph swaps
+   to ⏸ from JS while playing. */
+.voice-row.playing {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+}
+.voice-row.playing .voice-icon { color: var(--accent); }
+.voice-row.playing .voice-dur  { color: var(--accent); font-weight: 600; }
 .voice-icon { font-size: 0.95rem; }
 .voice-icon.pulsing { color: var(--danger); animation: voicePulse 1s ease-in-out infinite; }
 @keyframes voicePulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
@@ -4590,7 +4599,7 @@ function renderToday() {
 
     ${todayVoiceItems.length ? `<div class="voice-list home-voice-strip">${
       todayVoiceItems.map(n => `
-        <div class="voice-row" id="home-vn-${esc(n.id)}" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
+        <div class="voice-row" id="home-vn-${esc(n.id)}" data-voice-url="${esc(n.url)}" data-voice-total-dur="${n.durationSec || 0}" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
           <span class="voice-icon">🎤</span>
           <span class="voice-title" ondblclick="editHomeVoiceTitle(event, '${esc(n._capId)}', '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
           <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
@@ -4673,7 +4682,7 @@ function renderBlock(b) {
 function renderVoiceNotesReadonly(voiceNotes) {
   if (!voiceNotes || !voiceNotes.length) return '';
   return `<div class="voice-list readonly">${voiceNotes.map(n => `
-    <div class="voice-row" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
+    <div class="voice-row" data-voice-url="${esc(n.url)}" data-voice-total-dur="${n.durationSec || 0}" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
       <span class="voice-icon">🎤</span>
       <span class="voice-title">${esc(n.title)}</span>
       <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
@@ -10054,7 +10063,7 @@ function renderCaptureVoiceList() {
   const el = document.getElementById('f-cap-voice-list');
   if (!el) return;
   const savedRows = captureFormVoiceNotes.map(n => `
-    <div class="voice-row" id="vn-${esc(n.id)}" onclick="playVoiceNote('${esc(n.url)}', this)">
+    <div class="voice-row" id="vn-${esc(n.id)}" data-voice-url="${esc(n.url)}" data-voice-total-dur="${n.durationSec || 0}" onclick="playVoiceNote('${esc(n.url)}', this)">
       <span class="voice-icon">🎤</span>
       <span class="voice-title" ondblclick="editCaptureVoiceTitle(event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
       <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
@@ -10094,7 +10103,7 @@ function renderVoiceListEditable(listId, addBtnId, draftArr, ctx) {
   const el = document.getElementById(listId);
   if (!el) return;
   const savedRows = draftArr.map(n => `
-    <div class="voice-row" id="vn-${ctx}-${esc(n.id)}" onclick="playVoiceNote('${esc(n.url)}', this)">
+    <div class="voice-row" id="vn-${ctx}-${esc(n.id)}" data-voice-url="${esc(n.url)}" data-voice-total-dur="${n.durationSec || 0}" onclick="playVoiceNote('${esc(n.url)}', this)">
       <span class="voice-icon">🎤</span>
       <span class="voice-title" ondblclick="editVoiceTitleIn('${ctx}', event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
       <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
@@ -10277,12 +10286,19 @@ window.deleteCaptureVoiceNote = function(noteId) {
 
 // Single tap on a voice-note row plays / pauses it. Reuses a cached
 // Audio() so resuming is instant. Pauses any other note that was playing
-// so we never get two streams overlapping.
+// so we never get two streams overlapping. While playing, every matching
+// row in the DOM gets a live ⏸ icon + elapsed-time readout via the
+// audio's timeupdate event — works across re-renders because the update
+// queries the DOM fresh each tick.
 window.playVoiceNote = function(url) {
   let a = _voiceAudioCache.get(url);
   if (!a) {
     a = new Audio(url);
     a.preload = 'metadata';
+    a.addEventListener('timeupdate', () => _syncVoiceRowsFor(url, a));
+    a.addEventListener('play',  () => _syncVoiceRowsFor(url, a));
+    a.addEventListener('pause', () => _clearVoiceRowsFor(url));
+    a.addEventListener('ended', () => _clearVoiceRowsFor(url));
     _voiceAudioCache.set(url, a);
   }
   if (_currentlyPlayingVoice && _currentlyPlayingVoice !== a) {
@@ -10295,6 +10311,41 @@ window.playVoiceNote = function(url) {
     a.pause();
   }
 };
+
+// Stamp every matching row with the playing state + live time. Re-querying
+// the DOM each tick is what lets this survive a renderMain — even if the
+// row got re-rendered without the .playing class, the next 250ms tick
+// re-applies it.
+function _voiceRowsForUrl(url) {
+  try { return document.querySelectorAll(`.voice-row[data-voice-url="${CSS.escape(url)}"]`); }
+  catch { return []; }
+}
+function _syncVoiceRowsFor(url, audio) {
+  const cur = Math.round(audio.currentTime || 0);
+  _voiceRowsForUrl(url).forEach(row => {
+    row.classList.add('playing');
+    const icon = row.querySelector('.voice-icon');
+    if (icon) icon.textContent = '⏸';
+    const dur = row.querySelector('.voice-dur');
+    if (dur) {
+      const total = row.dataset.voiceTotalDur
+        ? parseInt(row.dataset.voiceTotalDur, 10)
+        : Math.round(audio.duration || cur);
+      dur.textContent = `${fmtVoiceDuration(cur)} / ${fmtVoiceDuration(total)}`;
+    }
+  });
+}
+function _clearVoiceRowsFor(url) {
+  _voiceRowsForUrl(url).forEach(row => {
+    row.classList.remove('playing');
+    const icon = row.querySelector('.voice-icon');
+    if (icon) icon.textContent = '🎤';
+    const dur = row.querySelector('.voice-dur');
+    if (dur && row.dataset.voiceTotalDur) {
+      dur.textContent = fmtVoiceDuration(parseInt(row.dataset.voiceTotalDur, 10));
+    }
+  });
+}
 
 window.saveDft = function(val) {
   // Each new pending DFT should start with actions hidden — user reveals
