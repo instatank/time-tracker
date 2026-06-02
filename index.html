@@ -4590,9 +4590,9 @@ function renderToday() {
 
     ${todayVoiceItems.length ? `<div class="voice-list home-voice-strip">${
       todayVoiceItems.map(n => `
-        <div class="voice-row" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
+        <div class="voice-row" id="home-vn-${esc(n.id)}" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
           <span class="voice-icon">🎤</span>
-          <span class="voice-title">${esc(n.title)}</span>
+          <span class="voice-title" ondblclick="editHomeVoiceTitle(event, '${esc(n._capId)}', '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
           <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
         </div>`).join('')
     }</div>` : ''}
@@ -10189,6 +10189,43 @@ window.saveVoiceTitleIn = function(ctx, noteId, val) {
   // Daily journal is autosaved — flush rename immediately.
   if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
 };
+// Today-page voice strip: double-tap title swaps to an inline input and
+// saves back to the parent capture's voiceNotes array. Goes through the
+// same syncCaptureDoc path used by every other rename so the new title
+// propagates to other devices.
+window.editHomeVoiceTitle = function(ev, capId, voiceId) {
+  ev.stopPropagation();
+  const cap = captures.find(c => c.id === capId);
+  if (!cap) return;
+  const note = (cap.voiceNotes || []).find(v => v.id === voiceId);
+  if (!note) return;
+  const row = document.getElementById('home-vn-' + voiceId);
+  if (!row) return;
+  const titleEl = row.querySelector('.voice-title');
+  if (!titleEl) return;
+  titleEl.outerHTML = `<input class="voice-title-input" value="${esc(note.title)}"
+    onclick="event.stopPropagation()"
+    onblur="saveHomeVoiceTitle('${esc(capId)}', '${esc(voiceId)}', this.value)"
+    onkeydown="if(event.key==='Enter'){this.blur()} else if(event.key==='Escape'){this.value='__cancel__';this.blur()}" />`;
+  const input = row.querySelector('.voice-title-input');
+  if (input) { input.focus(); input.select(); }
+};
+
+window.saveHomeVoiceTitle = function(capId, voiceId, val) {
+  const cap = captures.find(c => c.id === capId);
+  if (!cap) return;
+  const note = (cap.voiceNotes || []).find(v => v.id === voiceId);
+  if (!note) return;
+  if (val !== '__cancel__') {
+    const trimmed = (val || '').trim();
+    if (trimmed) note.title = trimmed;
+  }
+  cap._synced = false;
+  saveLocal(SK.CAPTURES, captures);
+  syncCaptureDoc(cap);
+  renderMain();
+};
+
 window.deleteVoiceNoteIn = function(ctx, noteId) {
   const draft = _voiceDraftFor(ctx);
   const idx = draft.findIndex(v => v.id === noteId);
