@@ -1042,6 +1042,10 @@ html, body {
   border-style: solid;
   background: var(--danger-soft);
 }
+/* Today-page placement: no surrounding section wrapper, no vertical
+   margins — just the button, flush between the Captures section above
+   and Rate Your Day below. */
+.voice-add-btn.home-voice-tight { margin: 0; }
 
 #f-daily-fields textarea {
   width: 100%;
@@ -4560,18 +4564,15 @@ function renderToday() {
         : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
     </div>`}
 
-    ${homeQ ? '' : `
-    <div class="section">
-      <button type="button" class="voice-add-btn" id="home-voice-add-btn"
-        onclick="toggleHomeVoiceRecording()">🎤 Add voice note</button>
-    </div>`}
-
     ${allCapItems.length ? `
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Captures</span></div>
       ${visCapItems.map(e => e.kind === 'daily' ? renderDailyJournalCard(e.item) : renderCapPreview(e.item)).join('')}
       ${moreCaps > 0 ? moreBtn(todayCapsExpanded, moreCaps, 'toggleTodayCaps') : ''}
     </div>` : ''}
+
+    ${homeQ ? '' : `<button type="button" class="voice-add-btn home-voice-tight" id="home-voice-add-btn"
+      onclick="toggleHomeVoiceRecording()">🎤 Add voice note</button>`}
 
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Rate Your Day</span></div>
