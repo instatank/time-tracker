@@ -1032,6 +1032,15 @@ html, body {
   line-height: 1;
 }
 .voice-del:hover { color: var(--danger); }
+/* Armed state — set by armOrConfirmDelete on the first tap. Pairs with
+   the "Tap again to delete" toast so the user has both a visual and a
+   textual second-chance signal. */
+.voice-del.armed {
+  color: var(--danger);
+  transform: scale(1.25);
+  background: var(--danger-soft);
+  border-radius: 6px;
+}
 .voice-add-btn {
   width: 100%;
   margin-top: 0.4rem;
@@ -4603,6 +4612,7 @@ function renderToday() {
           <span class="voice-icon">🎤</span>
           <span class="voice-title" ondblclick="editHomeVoiceTitle(event, '${esc(n._capId)}', '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
           <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
+          <button class="voice-del" data-delkey="voice-${esc(n.id)}" onclick="event.stopPropagation();deleteVoiceNoteFromParent('capture', '${esc(n._capId)}', '${esc(n.id)}')" title="Delete">×</button>
         </div>`).join('')
     }</div>` : ''}
 
@@ -4679,14 +4689,20 @@ function renderBlock(b) {
 // card. Single-tap row → play / pause (handled by window.playVoiceNote).
 // Card-level click handlers stop propagation here so tapping a row doesn't
 // also expand or open the parent capture card.
-function renderVoiceNotesReadonly(voiceNotes) {
+function renderVoiceNotesReadonly(voiceNotes, parentKind, parentId) {
   if (!voiceNotes || !voiceNotes.length) return '';
-  return `<div class="voice-list readonly">${voiceNotes.map(n => `
+  return `<div class="voice-list readonly">${voiceNotes.map(n => {
+    const delBtn = parentKind && parentId != null
+      ? `<button class="voice-del" data-delkey="voice-${esc(n.id)}" onclick="event.stopPropagation();deleteVoiceNoteFromParent('${parentKind}', '${esc(String(parentId))}', '${esc(n.id)}')" title="Delete">×</button>`
+      : '';
+    return `
     <div class="voice-row" data-voice-url="${esc(n.url)}" data-voice-total-dur="${n.durationSec || 0}" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
       <span class="voice-icon">🎤</span>
       <span class="voice-title">${esc(n.title)}</span>
       <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
-    </div>`).join('')}</div>`;
+      ${delBtn}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function renderCapPreview(c) {
@@ -4705,7 +4721,7 @@ function renderCapPreview(c) {
           <span class="cap-time">${fmtTime(c.timestamp)}</span>
         </div>
         ${c.body ? `<div class="cap-body-preview">${esc(c.body)}</div>` : ''}
-        ${renderVoiceNotesReadonly(c.voiceNotes)}
+        ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
       </div>
     </div>`;
 }
@@ -5198,7 +5214,7 @@ function renderCapFull(c) {
           <span class="cap-time">${dateLabel}</span>
         </div>
         ${c.body ? `<div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>` : ''}
-        ${renderVoiceNotesReadonly(c.voiceNotes)}
+        ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
         ${renderTagPills(c.tags)}
       </div>
     </div>`;
@@ -5251,7 +5267,7 @@ function renderDailyJournalCard(d) {
           <span class="cap-time">${dateLabel}</span>
         </div>
         ${body}
-        ${renderVoiceNotesReadonly(d.voiceNotes)}
+        ${renderVoiceNotesReadonly(d.voiceNotes, 'daily', d.date)}
       </div>
     </div>`;
 }
@@ -5765,7 +5781,7 @@ function renderSessionCard(s) {
           <span class="session-date">${dateLabel}</span>
         </div>
         ${bodyParts.join('')}
-        ${renderVoiceNotesReadonly(s.voiceNotes)}
+        ${renderVoiceNotesReadonly(s.voiceNotes, 'session', s.id)}
         <div class="session-footer">
           ${hintHtml}
           <span class="session-footer-right">${rightHtml}</span>
@@ -6408,7 +6424,7 @@ function renderLearningCard(e) {
         ${e.fullNotes && expanded
           ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
           : ''}
-        ${renderVoiceNotesReadonly(e.voiceNotes)}
+        ${renderVoiceNotesReadonly(e.voiceNotes, 'learning', e.id)}
       </div>
     </div>
   `;
@@ -10067,7 +10083,7 @@ function renderCaptureVoiceList() {
       <span class="voice-icon">🎤</span>
       <span class="voice-title" ondblclick="editCaptureVoiceTitle(event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
       <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
-      <button class="voice-del" onclick="event.stopPropagation();deleteCaptureVoiceNote('${esc(n.id)}')" title="Delete">×</button>
+      <button class="voice-del" data-delkey="voice-${esc(n.id)}" onclick="event.stopPropagation();deleteCaptureVoiceNote('${esc(n.id)}')" title="Delete">×</button>
     </div>
   `).join('');
   let extra = '';
@@ -10107,7 +10123,7 @@ function renderVoiceListEditable(listId, addBtnId, draftArr, ctx) {
       <span class="voice-icon">🎤</span>
       <span class="voice-title" ondblclick="editVoiceTitleIn('${ctx}', event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
       <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
-      <button class="voice-del" onclick="event.stopPropagation();deleteVoiceNoteIn('${ctx}', '${esc(n.id)}')" title="Delete">×</button>
+      <button class="voice-del" data-delkey="voice-${esc(n.id)}" onclick="event.stopPropagation();deleteVoiceNoteIn('${ctx}', '${esc(n.id)}')" title="Delete">×</button>
     </div>
   `).join('');
   let extra = '';
@@ -10236,14 +10252,16 @@ window.saveHomeVoiceTitle = function(capId, voiceId, val) {
 };
 
 window.deleteVoiceNoteIn = function(ctx, noteId) {
-  const draft = _voiceDraftFor(ctx);
-  const idx = draft.findIndex(v => v.id === noteId);
-  if (idx < 0) return;
-  const note = draft[idx];
-  draft.splice(idx, 1);
-  deleteVoiceBlob(note.storagePath);
-  _voiceRenderFor(ctx)();
-  if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
+  armOrConfirmDelete('voice-' + noteId, () => {
+    const draft = _voiceDraftFor(ctx);
+    const idx = draft.findIndex(v => v.id === noteId);
+    if (idx < 0) return;
+    const note = draft[idx];
+    draft.splice(idx, 1);
+    deleteVoiceBlob(note.storagePath);
+    _voiceRenderFor(ctx)();
+    if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
+  });
 };
 
 window.editCaptureVoiceTitle = function(ev, noteId) {
@@ -10273,15 +10291,56 @@ window.saveCaptureVoiceTitle = function(noteId, val) {
 };
 
 window.deleteCaptureVoiceNote = function(noteId) {
-  const idx = captureFormVoiceNotes.findIndex(v => v.id === noteId);
-  if (idx < 0) return;
-  const note = captureFormVoiceNotes[idx];
-  captureFormVoiceNotes.splice(idx, 1);
-  // Best-effort blob cleanup. If the user is still composing and cancels
-  // the capture afterwards, leftover blobs are tolerated for the pilot —
-  // a sweep job can collect them later.
-  deleteVoiceBlob(note.storagePath);
-  renderCaptureVoiceList();
+  armOrConfirmDelete('voice-' + noteId, () => {
+    const idx = captureFormVoiceNotes.findIndex(v => v.id === noteId);
+    if (idx < 0) return;
+    const note = captureFormVoiceNotes[idx];
+    captureFormVoiceNotes.splice(idx, 1);
+    // Best-effort blob cleanup. If the user is still composing and cancels
+    // the capture afterwards, leftover blobs are tolerated for the pilot —
+    // a sweep job can collect them later.
+    deleteVoiceBlob(note.storagePath);
+    renderCaptureVoiceList();
+  });
+};
+
+// Delete a voice note off an already-saved parent (capture / session /
+// learning / daily). Wraps the destructive bit in armOrConfirmDelete so a
+// misclick on × surfaces a "Tap again to delete" toast instead of nuking
+// the audio immediately. Updates the parent doc + Storage + re-renders.
+window.deleteVoiceNoteFromParent = function(kind, parentId, voiceId) {
+  armOrConfirmDelete('voice-' + voiceId, () => {
+    let parent = null;
+    let persist = () => {};
+    if (kind === 'capture') {
+      parent = captures.find(c => c.id === parentId);
+      if (!parent) return;
+      persist = () => { parent._synced = false; saveLocal(SK.CAPTURES, captures); syncCaptureDoc(parent); };
+    } else if (kind === 'session') {
+      for (const list of Object.values(sessions || {})) {
+        const s = (list || []).find(x => x.id === parentId);
+        if (s) { parent = s; break; }
+      }
+      if (!parent) return;
+      persist = () => { parent._synced = false; saveLocal(SK.SESSIONS, sessions); syncSessionDoc(parent); };
+    } else if (kind === 'learning') {
+      parent = learning.find(e => e.id === parentId);
+      if (!parent) return;
+      persist = () => { parent._synced = false; saveLocal(SK.LEARNING, learning); syncLearningDoc(parent); };
+    } else if (kind === 'daily') {
+      parent = dailyJournals.find(d => d.date === parentId);
+      if (!parent) return;
+      persist = () => { parent._synced = false; saveLocal(SK.DAILY_JOURNAL, dailyJournals); syncDailyJournalDoc(parent); };
+    } else { return; }
+
+    const idx = (parent.voiceNotes || []).findIndex(v => v.id === voiceId);
+    if (idx < 0) return;
+    const note = parent.voiceNotes[idx];
+    parent.voiceNotes.splice(idx, 1);
+    deleteVoiceBlob(note.storagePath);
+    persist();
+    renderMain();
+  });
 };
 
 // Single tap on a voice-note row plays / pauses it. Reuses a cached
