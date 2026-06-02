@@ -1046,6 +1046,10 @@ html, body {
    margins — just the button, flush between the Captures section above
    and Rate Your Day below. */
 .voice-add-btn.home-voice-tight { margin: 0; }
+/* Today-page voice-only strip — voice quick notes captured here show up
+   as a flat list right above the Add voice note button. Tight spacing
+   to match the rest of the page rhythm. */
+.voice-list.home-voice-strip { margin-bottom: 0.4rem; }
 
 #f-daily-fields textarea {
   width: 100%;
@@ -4379,6 +4383,19 @@ function renderToday() {
     caps       = caps.filter(c => capHay(c).includes(homeQ));
     todayDaily = todayDaily.filter(j => dailyHay(j).includes(homeQ));
   }
+  // Voice-only quick notes (no body text, one or more attached voice notes —
+  // the shape the Today-page mic button creates) are surfaced as a flat
+  // standalone strip lower on the page so they don't show up wrapped in
+  // empty Quick Note cards inside Captures. They still live as regular
+  // captures in the data — Journal continues to display them under Quick
+  // Note unchanged.
+  const isVoiceOnlyCap = c => !(c.body || '').trim() && (c.voiceNotes || []).length > 0;
+  const voiceOnlyCaps = caps.filter(isVoiceOnlyCap);
+  const todayVoiceItems = voiceOnlyCaps
+    .flatMap(c => (c.voiceNotes || []).map(v => ({ ...v, _capId: c.id, _capTs: c.timestamp })))
+    .sort((a, b) => (b._capTs || '').localeCompare(a._capTs || ''));
+  caps = caps.filter(c => !isVoiceOnlyCap(c));
+
   const allCapItems = [
     ...todayDaily.map(j => ({ kind: 'daily', item: j, sortKey: j.lastEditedAt || j.timestamp || (j.date + 'T23:59:59') })),
     ...caps.map(c => ({ kind: 'cap', item: c, sortKey: c.timestamp })),
@@ -4570,6 +4587,15 @@ function renderToday() {
       ${visCapItems.map(e => e.kind === 'daily' ? renderDailyJournalCard(e.item) : renderCapPreview(e.item)).join('')}
       ${moreCaps > 0 ? moreBtn(todayCapsExpanded, moreCaps, 'toggleTodayCaps') : ''}
     </div>` : ''}
+
+    ${todayVoiceItems.length ? `<div class="voice-list home-voice-strip">${
+      todayVoiceItems.map(n => `
+        <div class="voice-row" onclick="event.stopPropagation();playVoiceNote('${esc(n.url)}', this)">
+          <span class="voice-icon">🎤</span>
+          <span class="voice-title">${esc(n.title)}</span>
+          <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
+        </div>`).join('')
+    }</div>` : ''}
 
     ${homeQ ? '' : `<button type="button" class="voice-add-btn home-voice-tight" id="home-voice-add-btn"
       onclick="toggleHomeVoiceRecording()">🎤 Add voice note</button>`}
@@ -10546,24 +10572,28 @@ function renderSearchResults() {
   const matches = []; // { kind, item, sortKey }
   const norm = s => (s == null ? '' : String(s)).toLowerCase();
   const matchAny = (parts) => parts.some(p => norm(p).includes(q));
+  // Voice-note audio content isn't searchable, but the user-set titles
+  // (e.g. "ideas for the launch deck") absolutely should be — they're
+  // the only handle a search has on what's inside a voice note.
+  const voiceTitles = (item) => (item && item.voiceNotes || []).map(v => v.title || '').join(' ');
 
   captures.forEach(c => {
-    if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' ')])) return;
+    if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c)])) return;
     matches.push({ kind: 'cap', item: c, sortKey: c.timestamp || '' });
   });
   (dailyJournals || []).forEach(d => {
     if (isDailyEntryEmpty(d)) return;
     const taskText = (d.tasks || []).map(t => t.text || '').join(' ');
-    if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' ')])) return;
+    if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d)])) return;
     matches.push({ kind: 'daily', item: d, sortKey: d.lastEditedAt || d.timestamp || d.date || '' });
   });
   Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
     const reviewText = [...(s.done || []), ...(s.pending || []), ...(s.learned || [])].join(' ');
-    if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' ')])) return;
+    if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s)])) return;
     matches.push({ kind: 'session', item: s, sortKey: s.createdAt || s.date || '' });
   }));
   (learning || []).forEach(e => {
-    if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' ')])) return;
+    if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e)])) return;
     matches.push({ kind: 'learning', item: e, sortKey: e.createdAt || e.date || '' });
   });
   matches.sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
