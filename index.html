@@ -3579,7 +3579,8 @@ select option { background: var(--surface2); }
   <div class="sheet-body">
     <div class="field">
       <label class="session-field-label neutral">Source Name</label>
-      <input type="text" id="f-learn-source" placeholder="e.g. Claude Code in Action, All-In Podcast..." autocomplete="off">
+      <input type="text" id="f-learn-source" placeholder="e.g. Claude Code in Action, All-In Podcast..." autocomplete="off"
+        oninput="onLearningFieldChange()" onblur="saveLearningSilent()">
     </div>
     <div class="field">
       <label class="session-field-label neutral">Source Type</label>
@@ -3587,11 +3588,13 @@ select option { background: var(--surface2); }
     </div>
     <div class="field">
       <label class="session-field-label neutral">Key Takeaway</label>
-      <textarea class="session-textarea" id="f-learn-takeaway" placeholder="The essential thing you're taking away — 1 to 3 lines." style="min-height:72px"></textarea>
+      <textarea class="session-textarea" id="f-learn-takeaway" placeholder="The essential thing you're taking away — 1 to 3 lines." style="min-height:72px"
+        oninput="onLearningFieldChange()" onblur="saveLearningSilent()"></textarea>
     </div>
     <div class="field" id="f-learn-notes-wrap">
       <button type="button" class="learning-notes-toggle" id="f-learn-notes-toggle" onclick="toggleLearningFormNotes()">▸ Add full notes</button>
-      <textarea class="session-textarea" id="f-learn-notes" placeholder="Detailed notes, references, anything worth keeping..." style="min-height:100px;display:none;margin-top:0.4rem"></textarea>
+      <textarea class="session-textarea" id="f-learn-notes" placeholder="Detailed notes, references, anything worth keeping..." style="min-height:100px;display:none;margin-top:0.4rem"
+        oninput="onLearningFieldChange()" onblur="saveLearningSilent()"></textarea>
     </div>
     <div class="field">
       <label class="session-field-label neutral">Tags</label>
@@ -3604,8 +3607,8 @@ select option { background: var(--surface2); }
         onclick="toggleLearningVoiceRecording()">🎤 Add voice note</button>
     </div>
     <div class="btn-row">
-      <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
-      <button class="btn-primary" onclick="saveLearning()">Save Entry</button>
+      <button class="btn-ghost" onclick="closeSheets()">Close</button>
+      <span class="dj-saved-indicator" id="learn-saved-indicator">Auto-saved</span>
     </div>
   </div>
 </div>
@@ -3617,11 +3620,13 @@ select option { background: var(--surface2); }
   <div class="sheet-body">
     <div class="field">
       <label class="session-field-label before">Goals and Intentions</label>
-      <textarea class="session-textarea" id="f-sess-before" placeholder="What do you want to accomplish?"></textarea>
+      <textarea class="session-textarea" id="f-sess-before" placeholder="What do you want to accomplish?"
+        oninput="onSessionFieldChange()" onblur="saveSessionSilent()"></textarea>
     </div>
     <div class="field">
       <label class="session-field-label during">Session Notes</label>
-      <textarea class="session-textarea" id="f-sess-during" placeholder="Notes as you go..."></textarea>
+      <textarea class="session-textarea" id="f-sess-during" placeholder="Notes as you go..."
+        oninput="onSessionFieldChange()" onblur="saveSessionSilent()"></textarea>
     </div>
     <div class="field">
       <label class="session-field-label after">Review</label>
@@ -3631,7 +3636,8 @@ select option { background: var(--surface2); }
         <button type="button" class="review-chip chip-learned" onclick="insertReviewPrefix('*')">💡 Learned</button>
       </div>
       <textarea class="session-textarea" id="f-sess-after" placeholder="Note learnings, what's done and pending.
-Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save."></textarea>
+Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save."
+        oninput="onSessionFieldChange()" onblur="saveSessionSilent()"></textarea>
     </div>
     <div class="field">
       <div class="voice-list" id="f-sess-voice-list"></div>
@@ -3648,7 +3654,8 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
         <button class="pill sess-dur-pill" data-dur="120">120m</button>
         <button class="pill sess-dur-pill" data-dur="0">Custom</button>
       </div>
-      <input type="number" id="f-sess-dur-custom" placeholder="Minutes" style="display:none;margin-top:0.5rem;width:110px;box-sizing:border-box">
+      <input type="number" id="f-sess-dur-custom" placeholder="Minutes" style="display:none;margin-top:0.5rem;width:110px;box-sizing:border-box"
+        oninput="onSessionFieldChange()" onblur="saveSessionSilent()">
     </div>
     <div class="field">
       <label class="session-field-label neutral">Tags</label>
@@ -3656,8 +3663,8 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       <div style="font-size:0.66rem;color:var(--text3);margin-top:0.4rem">Tap to select · any <code style="color:var(--text2)">#hashtags</code> inside your notes are captured automatically.</div>
     </div>
     <div class="btn-row">
-      <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
-      <button class="btn-primary" onclick="saveSession()">Save Session</button>
+      <button class="btn-ghost" onclick="closeSheets()">Close</button>
+      <span class="dj-saved-indicator" id="sess-saved-indicator">Auto-saved</span>
     </div>
   </div>
 </div>
@@ -3929,6 +3936,14 @@ let learningFormNotesOpen = false;                     // whether the "Full note
 let editingLearningId   = null;
 let editingSessionId    = null;
 let editingSessionProject = null;
+// Autosave for Project Sessions + Learning entries — same model as the
+// Daily Journal editor. The drafts are mutated in place; saveSilent()
+// pulls the form values in, persists + syncs, and on close a flush
+// guarantees the latest keystroke lands before the modal tears down.
+let editingSessionDraft  = null;
+let sessionAutoSaveTimer = null;
+let editingLearningDraft  = null;
+let learningAutoSaveTimer = null;
 // Persisted across refresh so the user lands back on the page they were on.
 // Falls back to 'today' for first-time visitors or stale storage values.
 const _VALID_TABS = ['today', 'journal', 'projects', 'dashboard'];
@@ -6015,8 +6030,23 @@ let selSessionDur = 60;  // default
 
 window.openNewSession = function() {
   if (!selectedProject) { toast('Pick a project above to log a session'); return; }
-  editingSessionId = null;
-  editingSessionProject = null;
+  // Build a fresh draft up front — autosave promotes it into sessions[] on
+  // first non-empty save. Until then it lives only in editingSessionDraft.
+  editingSessionDraft = {
+    id: uid(),
+    projectName: selectedProject,
+    date: todayStr(),
+    before: '', during: '', after: '',
+    durationMin: 60,
+    done: [], pending: [], learned: [],
+    tags: [],
+    voiceNotes: [],
+    linkedBlockId: null,
+    createdAt: nowISTIso(),
+    _synced: false,
+  };
+  editingSessionId = editingSessionDraft.id;
+  editingSessionProject = selectedProject;
   // Reset form
   document.getElementById('f-sess-before').value = '';
   document.getElementById('f-sess-during').value = '';
@@ -6025,12 +6055,12 @@ window.openNewSession = function() {
   document.getElementById('f-sess-dur-custom').value = '';
   selSessionDur = 60;
   renderSessionDurPills();
-  // Reset tag picker state for this form
   sessionFormTags = new Set();
   sessionTagCustomOpen = false;
   renderTagPicker('session');
   sessionFormVoiceNotes = [];
   renderSessionVoiceList();
+  setSessionAutoSavedLabel('');
   document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
   openSheet('sheet-session');
 };
@@ -6041,6 +6071,9 @@ window.openEditSession = function(sessionId, projectName) {
   if (!s) { toast('Session not found'); return; }
   editingSessionId = sessionId;
   editingSessionProject = projectName;
+  // Mutate the same object the array holds — keeps onSnapshot in sync and
+  // matches the Daily Journal pattern. saveSessionSilent writes the array.
+  editingSessionDraft = s;
   // Prefill fields
   document.getElementById('f-sess-before').value = s.before || '';
   document.getElementById('f-sess-during').value = s.during || '';
@@ -6062,6 +6095,7 @@ window.openEditSession = function(sessionId, projectName) {
   renderTagPicker('session');
   sessionFormVoiceNotes = liveVoiceNotes(s.voiceNotes).map(v => ({ ...v }));
   renderSessionVoiceList();
+  setSessionAutoSavedLabel('Auto-saved');
   document.getElementById('session-sheet-title').textContent = `Edit Session · ${projectName}`;
   openSheet('sheet-session');
 };
@@ -6114,138 +6148,138 @@ window.insertReviewPrefix = function(prefix) {
   ta.focus();
 };
 
-window.saveSession = async function() {
-  const isEdit = !!editingSessionId;
-  const activeProject = isEdit ? editingSessionProject : selectedProject;
-  if (!activeProject) { toast('No project selected'); return; }
+// ── Session autosave (Daily-Journal-style) ───────────────────
+// Project Sessions are now autosaved: open the sheet → start typing →
+// 30s debounce OR field blur flushes the draft into sessions[project],
+// and closing the modal forces a final flush. The Save button is gone;
+// the only way to "discard" is to soft-delete the entry from Settings →
+// Trash (7-day recovery).
+function isSessionEntryEmpty(s) {
+  return !s || (
+    !(s.before || '').trim()
+    && !(s.during || '').trim()
+    && !(s.after  || '').trim()
+    && liveVoiceNotes(s.voiceNotes).length === 0
+    && (!s.tags || s.tags.length === 0)
+  );
+}
+function setSessionAutoSavedLabel(text) {
+  const el = document.getElementById('sess-saved-indicator');
+  if (el) el.textContent = text || '';
+}
 
-  // Resolve duration (Custom → read number input)
+window.onSessionFieldChange = function() {
+  if (!editingSessionDraft) return;
+  if (sessionAutoSaveTimer) clearTimeout(sessionAutoSaveTimer);
+  sessionAutoSaveTimer = setTimeout(() => {
+    sessionAutoSaveTimer = null;
+    saveSessionSilent();
+  }, 30000);
+  setSessionAutoSavedLabel('Editing…');
+};
+
+window.saveSessionSilent = function() {
+  if (!editingSessionDraft) return;
+  const draft = editingSessionDraft;
+
+  // Pull form values into the draft.
   let duration = selSessionDur;
   if (![30,45,60,90,120].includes(duration)) {
-    const custom = parseInt(document.getElementById('f-sess-dur-custom').value);
+    const custom = parseInt(document.getElementById('f-sess-dur-custom')?.value);
     duration = Number.isFinite(custom) && custom > 0 ? custom : 60;
   }
-
-  // Preserve original text verbatim — do NOT strip hashtags from stored content.
-  // (Outer whitespace trimmed for tidiness; internal text / hashtags untouched.)
-  const before = document.getElementById('f-sess-before').value.trim();
-  const during = document.getElementById('f-sess-during').value.trim();
-  const after  = document.getElementById('f-sess-after').value.trim();
-
-  // Layer 1: pill-selected tags; Layer 2: inline #hashtag detection. Merge + dedupe.
+  const before = document.getElementById('f-sess-before')?.value.trim() || '';
+  const during = document.getElementById('f-sess-during')?.value.trim() || '';
+  const after  = document.getElementById('f-sess-after')?.value.trim()  || '';
   const inlineTags = extractTags(before + ' ' + during + ' ' + after);
   const tags = [...new Set([...sessionFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
-  // Persist any new non-prepopulated tags to history
+  const review = parseReviewText(after);
+  // Preserve trashed voice notes on the existing doc — draft loaded live only.
+  const prevTrashedVoice = (draft.voiceNotes || []).filter(isTrashed);
+
+  draft.before = before;
+  draft.during = during;
+  draft.after  = after;
+  draft.durationMin = duration;
+  draft.done    = review.done;
+  draft.pending = review.pending;
+  draft.learned = review.learned;
+  draft.tags    = tags;
+  draft.voiceNotes = [...prevTrashedVoice, ...sessionFormVoiceNotes];
+  draft._synced = false;
+
+  // Skip persisting an empty draft — prevents stub sessions from accumulating
+  // when the user opens "New Session" and immediately closes without typing.
+  if (isSessionEntryEmpty(draft)) {
+    setSessionAutoSavedLabel('');
+    return;
+  }
   addToTagHistory(tags);
 
-  // Silent parse of Review field → structured buckets. Raw `after` text is kept intact.
-  const review = parseReviewText(after);
-
-  // ── EDIT PATH: update in-place, preserve existing link + createdAt ──
-  if (isEdit) {
-    const list = sessions[activeProject] || [];
-    const idx = list.findIndex(x => x.id === editingSessionId);
-    if (idx === -1) { toast('Session not found'); closeSheets(); return; }
-    const existing = list[idx];
-    // Preserve trashed voice notes on the existing doc — draft loaded live only.
-    const prevTrashedVoice = (existing.voiceNotes || []).filter(isTrashed);
-    const updated = {
-      ...existing,
-      before, during, after,
-      durationMin: duration,
-      done:    review.done,
-      pending: review.pending,
-      learned: review.learned,
-      tags,
-      voiceNotes: [...prevTrashedVoice, ...sessionFormVoiceNotes],
-      // linkedBlockId, projectName, date, createdAt all preserved from `existing`
-      _synced: false,  // mark dirty — cleared once cloud write verifies
-    };
-    list[idx] = updated;
-    sessions[activeProject] = list;
-    saveLocal(SK.SESSIONS, sessions);
-    syncSessionDoc(updated);
-    // If linked, keep the block's duration in sync with the edited session
-    if (updated.linkedBlockId) {
-      const bIdx = blocks.findIndex(b => b.id === updated.linkedBlockId);
-      if (bIdx > -1 && blocks[bIdx].duration_min !== duration) {
-        blocks[bIdx] = { ...blocks[bIdx], duration_min: duration };
+  const list = sessions[draft.projectName] || [];
+  const idx = list.findIndex(x => x.id === draft.id);
+  if (idx === -1) {
+    // First save for this draft — run the auto-link / auto-create-block logic.
+    const match = findAutoLinkBlock(draft.projectName);
+    if (match) {
+      draft.linkedBlockId = match.id;
+      draft.durationMin   = match.duration_min || draft.durationMin;
+      const bIdx = blocks.findIndex(b => b.id === match.id);
+      if (bIdx > -1 && !blocks[bIdx].linkedSessionId) {
+        blocks[bIdx] = { ...blocks[bIdx], linkedSessionId: draft.id };
+        saveLocal(SK.BLOCKS, blocks);
+        syncBlockDoc(blocks[bIdx]);
+      }
+    } else {
+      const startTime = calcBackdatedStartTime(draft.durationMin);
+      const newBlock = {
+        id: uid(),
+        date: todayStr(),
+        start_time: startTime,
+        duration_min: draft.durationMin,
+        category: 'deep_work',
+        label: draft.projectName,
+        note: '',
+        energy_level: '',
+        projectTag: draft.projectName,
+        tags: extractTags(draft.projectName),
+        autoFromSession: true,
+        linkedSessionId: draft.id,
+      };
+      blocks.push(newBlock);
+      saveLocal(SK.BLOCKS, blocks);
+      syncBlockDoc(newBlock);
+      draft.linkedBlockId = newBlock.id;
+    }
+    list.push(draft);
+    sessions[draft.projectName] = list;
+  } else {
+    list[idx] = draft;
+    // Keep linked block's duration in sync with edits.
+    if (draft.linkedBlockId) {
+      const bIdx = blocks.findIndex(b => b.id === draft.linkedBlockId);
+      if (bIdx > -1 && blocks[bIdx].duration_min !== draft.durationMin) {
+        blocks[bIdx] = { ...blocks[bIdx], duration_min: draft.durationMin };
         saveLocal(SK.BLOCKS, blocks);
         syncBlockDoc(blocks[bIdx]);
       }
     }
-    editingSessionId = null;
-    editingSessionProject = null;
-    closeSheets();
-    toast('✓ Session updated');
-    render();
-    return;
   }
-
-  // ── NEW PATH (original behavior) ──
-  const s = {
-    id: uid(),
-    projectName: activeProject,
-    date: todayStr(),
-    before, during, after,
-    durationMin: duration,
-    done:    review.done,
-    pending: review.pending,
-    learned: review.learned,
-    tags,
-    voiceNotes: sessionFormVoiceNotes.slice(),
-    linkedBlockId: null,
-    createdAt: nowISTIso(),
-    _synced: false,  // explicit — flipped to true after cloud verifies
-  };
-
-  // ── Direction 1: auto-link to an existing time block ──
-  const match = findAutoLinkBlock(activeProject);
-  let toastMsg = '✓ Session saved';
-  if (match) {
-    s.linkedBlockId = match.id;
-    s.durationMin   = match.duration_min || s.durationMin; // pull duration from the block
-    // Also back-link on the block side for the picker to surface
-    const bIdx = blocks.findIndex(b => b.id === match.id);
-    if (bIdx > -1 && !blocks[bIdx].linkedSessionId) {
-      blocks[bIdx] = { ...blocks[bIdx], linkedSessionId: s.id };
-      saveLocal(SK.BLOCKS, blocks);
-      syncBlockDoc(blocks[bIdx]);
-    }
-    toastMsg = '✓ Session saved & linked to existing block';
-  } else {
-    // ── Direction 2: auto-create a time block for this session ──
-    const startTime = calcBackdatedStartTime(duration);
-    const newBlock = {
-      id: uid(),
-      date: todayStr(),
-      start_time: startTime,
-      duration_min: duration,
-      category: 'deep_work',
-      label: activeProject,
-      note: '',
-      energy_level: '',
-      projectTag: activeProject,
-      tags: extractTags(activeProject),
-      autoFromSession: true,          // flag: so we can distinguish auto-created blocks
-      linkedSessionId: s.id,
-    };
-    blocks.push(newBlock);
-    saveLocal(SK.BLOCKS, blocks);
-    syncBlockDoc(newBlock);
-    s.linkedBlockId = newBlock.id;
-    toastMsg = '✓ Session saved + time block auto-logged';
-  }
-
-  if (!sessions[activeProject]) sessions[activeProject] = [];
-  sessions[activeProject].push(s);
   saveLocal(SK.SESSIONS, sessions);
-  syncSessionDoc(s);
-
-  closeSheets();
-  toast(toastMsg, 3000);
-  render();                          // full render — Today tab also needs to reflect the new/linked block
+  syncSessionDoc(draft);
+  setSessionAutoSavedLabel('Auto-saved');
+  // Update the Projects list / cards in the background.
+  if (activeTab === 'projects') renderMain(true);
 };
+
+function flushSessionIfOpen() {
+  if (!editingSessionDraft) return;
+  if (sessionAutoSaveTimer) { clearTimeout(sessionAutoSaveTimer); sessionAutoSaveTimer = null; }
+  saveSessionSilent();
+  editingSessionDraft  = null;
+  editingSessionId     = null;
+  editingSessionProject = null;
+}
 
 // Find a candidate block to auto-link a new session to.
 // Rule: today's block, start within last 2 hours, AND
@@ -6338,6 +6372,9 @@ document.querySelectorAll('.sess-dur-pill').forEach(btn => {
     if (v === 0) {
       const custom = document.getElementById('f-sess-dur-custom');
       if (custom) { custom.style.display = 'block'; custom.focus(); }
+    } else if (editingSessionDraft) {
+      // Discrete tap → save immediately (matches Daily Journal pattern).
+      saveSessionSilent();
     }
   });
 });
@@ -6611,7 +6648,21 @@ window.toggleLearningExpand = function(id) {
 };
 
 window.openNewLearning = function() {
-  editingLearningId = null;
+  // Build a fresh draft up front — autosave promotes it into learning[] on
+  // the first non-empty save (Source Name is the gate).
+  editingLearningDraft = {
+    id: uid(),
+    sourceName: '',
+    sourceType: '',
+    takeaway: '',
+    fullNotes: null,
+    tags: [],
+    voiceNotes: [],
+    date: todayStr(),
+    createdAt: nowISTIso(),
+    _synced: false,
+  };
+  editingLearningId = editingLearningDraft.id;
   document.getElementById('f-learn-source').value   = '';
   document.getElementById('f-learn-takeaway').value = '';
   document.getElementById('f-learn-notes').value    = '';
@@ -6625,6 +6676,7 @@ window.openNewLearning = function() {
   renderTagPicker('learning');
   learningFormVoiceNotes = [];
   renderLearningVoiceList();
+  setLearningAutoSavedLabel('');
   document.getElementById('learning-sheet-title').textContent = 'Log Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -6634,6 +6686,9 @@ window.openEditLearning = function(entryId) {
   const e = learning.find(x => x.id === entryId);
   if (!e) { toast('Entry not found'); return; }
   editingLearningId = entryId;
+  // Mutate the existing entry in place — saveLearningSilent writes back to
+  // the array. Matches Daily Journal + Session pattern.
+  editingLearningDraft = e;
   document.getElementById('f-learn-source').value   = e.sourceName || '';
   document.getElementById('f-learn-takeaway').value = e.takeaway   || '';
   const notesEl = document.getElementById('f-learn-notes');
@@ -6655,6 +6710,7 @@ window.openEditLearning = function(entryId) {
   renderTagPicker('learning');
   learningFormVoiceNotes = liveVoiceNotes(e.voiceNotes).map(v => ({ ...v }));
   renderLearningVoiceList();
+  setLearningAutoSavedLabel('Auto-saved');
   document.getElementById('learning-sheet-title').textContent = 'Edit Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -6671,6 +6727,7 @@ function renderLearningTypeRow() {
 window.selLearningTypeFn = function(t) {
   selLearningType = t;
   renderLearningTypeRow();
+  if (editingLearningDraft) saveLearningSilent();
 };
 
 window.toggleLearningFormNotes = function() {
@@ -6687,60 +6744,79 @@ window.toggleLearningFormNotes = function() {
   }
 };
 
-window.saveLearning = function() {
-  const sourceName = document.getElementById('f-learn-source').value.trim();
-  const takeaway   = document.getElementById('f-learn-takeaway').value.trim();
-  const fullNotes  = document.getElementById('f-learn-notes').value.trim();
+// ── Learning autosave (Daily-Journal-style) ──────────────────
+// Same model as sessions / daily: open → type → debounce / blur saves the
+// draft, modal close flushes once more. The Source Name field is the
+// not-empty gate — without it the entry stays a draft only in memory.
+function isLearningEntryEmpty(e) {
+  return !e || (
+    !(e.sourceName || '').trim()
+    && !(e.takeaway || '').trim()
+    && !(e.fullNotes || '').trim()
+    && liveVoiceNotes(e.voiceNotes).length === 0
+  );
+}
+function setLearningAutoSavedLabel(text) {
+  const el = document.getElementById('learn-saved-indicator');
+  if (el) el.textContent = text || '';
+}
 
-  if (!sourceName)       { toast('Source name is required'); document.getElementById('f-learn-source').focus(); return; }
+window.onLearningFieldChange = function() {
+  if (!editingLearningDraft) return;
+  if (learningAutoSaveTimer) clearTimeout(learningAutoSaveTimer);
+  learningAutoSaveTimer = setTimeout(() => {
+    learningAutoSaveTimer = null;
+    saveLearningSilent();
+  }, 30000);
+  setLearningAutoSavedLabel('Editing…');
+};
 
-  // Layer 1 (pill) + Layer 2 (inline #hashtag from takeaway + notes). Merge + dedupe.
+window.saveLearningSilent = function() {
+  if (!editingLearningDraft) return;
+  const draft = editingLearningDraft;
+  const sourceName = document.getElementById('f-learn-source')?.value.trim() || '';
+  const takeaway   = document.getElementById('f-learn-takeaway')?.value.trim() || '';
+  const fullNotes  = document.getElementById('f-learn-notes')?.value.trim() || '';
   const inlineTags = extractTags(takeaway + ' ' + fullNotes);
   const tags = [...new Set([...learningFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
+  const prevTrashedVoice = (draft.voiceNotes || []).filter(isTrashed);
+
+  draft.sourceName = sourceName;
+  draft.sourceType = selLearningType;
+  draft.takeaway   = takeaway;
+  draft.fullNotes  = fullNotes || null;
+  draft.tags       = tags;
+  draft.voiceNotes = [...prevTrashedVoice, ...learningFormVoiceNotes];
+  draft._synced    = false;
+
+  if (isLearningEntryEmpty(draft) || !sourceName) {
+    // Source name is the not-empty gate — without it, don't persist.
+    setLearningAutoSavedLabel('');
+    return;
+  }
   addToTagHistory(tags);
 
-  // Preserve trashed voice notes from the existing entry (draft loaded live
-  // only). Same merging pattern as captures + sessions.
-  const _existingLearning = editingLearningId ? learning.find(e => e.id === editingLearningId) : null;
-  const _prevTrashedLearnVoice = _existingLearning ? (_existingLearning.voiceNotes || []).filter(isTrashed) : [];
-  const entry = {
-    id: editingLearningId || uid(),
-    sourceName,
-    sourceType: selLearningType,
-    takeaway,
-    fullNotes: fullNotes || null,
-    tags,
-    voiceNotes: [..._prevTrashedLearnVoice, ...learningFormVoiceNotes],
-    date: todayStr(),
-    createdAt: editingLearningId
-      ? (_existingLearning?.createdAt || nowISTIso())
-      : nowISTIso(),
-    _synced: false,  // mark dirty — cleared once cloud write verifies
-  };
-
-  const isEdit = !!editingLearningId;
-  let prevTags = [];
-  if (isEdit) {
-    const idx = learning.findIndex(e => e.id === editingLearningId);
-    if (idx > -1) {
-      prevTags = learning[idx].tags || [];
-      learning[idx] = entry;
-    }
-  } else {
-    learning.push(entry);
-  }
+  const idx = learning.findIndex(e => e.id === draft.id);
+  const prevTags = idx > -1 ? (learning[idx].tags || []) : [];
+  if (idx === -1) learning.push(draft);
+  else            learning[idx] = draft;
   saveLocal(SK.LEARNING, learning);
-  syncLearningDoc(entry);
+  syncLearningDoc(draft);
   syncProjectRefsForEntry({
-    sourceType: 'learning', sourceId: entry.id, tags: entry.tags, prev: prevTags,
-    preview: entry.takeaway, date: entry.date, createdAt: entry.createdAt,
+    sourceType: 'learning', sourceId: draft.id, tags: draft.tags, prev: prevTags,
+    preview: draft.takeaway, date: draft.date, createdAt: draft.createdAt,
   });
-  editingLearningId = null;
-
-  closeSheets();
-  toast(isEdit ? '✓ Learning updated' : '✓ Learning saved');
-  renderMain(true);
+  setLearningAutoSavedLabel('Auto-saved');
+  if (activeTab === 'projects') renderMain(true);
 };
+
+function flushLearningIfOpen() {
+  if (!editingLearningDraft) return;
+  if (learningAutoSaveTimer) { clearTimeout(learningAutoSaveTimer); learningAutoSaveTimer = null; }
+  saveLearningSilent();
+  editingLearningDraft = null;
+  editingLearningId    = null;
+}
 
 // Firestore sync — users/{uid}/learning/{id}
 async function syncLearningDoc(e) {
@@ -10332,14 +10408,20 @@ window.toggleSessionVoiceRecording = async function() {
   if (_voiceRec) { await stopVoiceRecording(); return; }
   await startVoiceRecording({
     onTick: renderSessionVoiceList,
-    onStop: (note) => { sessionFormVoiceNotes.push({ ...note, title: `Voice note ${sessionFormVoiceNotes.length + 1}` }); },
+    onStop: (note) => {
+      sessionFormVoiceNotes.push({ ...note, title: `Voice note ${sessionFormVoiceNotes.length + 1}` });
+      try { saveSessionSilent(); } catch {}
+    },
   });
 };
 window.toggleLearningVoiceRecording = async function() {
   if (_voiceRec) { await stopVoiceRecording(); return; }
   await startVoiceRecording({
     onTick: renderLearningVoiceList,
-    onStop: (note) => { learningFormVoiceNotes.push({ ...note, title: `Voice note ${learningFormVoiceNotes.length + 1}` }); },
+    onStop: (note) => {
+      learningFormVoiceNotes.push({ ...note, title: `Voice note ${learningFormVoiceNotes.length + 1}` });
+      try { saveLearningSilent(); } catch {}
+    },
   });
 };
 window.toggleDailyVoiceRecording = async function() {
@@ -10379,8 +10461,10 @@ window.saveVoiceTitleIn = function(ctx, noteId, val) {
     if (trimmed) note.title = trimmed;
   }
   _voiceRenderFor(ctx)();
-  // Daily journal is autosaved — flush rename immediately.
-  if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
+  // Autosaved modals — flush rename immediately for the live indicator.
+  if (ctx === 'daily')    { try { saveDailyJournalSilent(); } catch {} }
+  if (ctx === 'session')  { try { saveSessionSilent();      } catch {} }
+  if (ctx === 'learning') { try { saveLearningSilent();     } catch {} }
 };
 // Today-page voice strip: double-tap title swaps to an inline input and
 // saves back to the parent capture's voiceNotes array. Goes through the
@@ -10429,7 +10513,9 @@ window.deleteVoiceNoteIn = function(ctx, noteId) {
     if (!note) return;
     note.deletedAt = nowISTIso();
     _voiceRenderFor(ctx)();
-    if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
+    if (ctx === 'daily')    { try { saveDailyJournalSilent(); } catch {} }
+    if (ctx === 'session')  { try { saveSessionSilent();      } catch {} }
+    if (ctx === 'learning') { try { saveLearningSilent();     } catch {} }
     toast('Moved to Trash');
   });
 };
@@ -13260,10 +13346,12 @@ window.confirmLifeMetricDelete = function() {
 };
 
 window.closeSheets = function() {
-  // If the Daily Journal editor is currently open, flush a final save before
-  // tearing down the modal so any unsaved keystrokes (e.g. user typed and
-  // immediately tapped Cancel) aren't lost.
+  // If the Daily Journal / Session / Learning editors are currently open,
+  // flush a final save before tearing down the modal so any unsaved
+  // keystrokes (e.g. user typed and immediately tapped Close) aren't lost.
   flushDailyJournalIfOpen();
+  flushSessionIfOpen();
+  flushLearningIfOpen();
   // If a voice recording is in progress, release the mic immediately so the
   // mic indicator goes away. The in-progress blob is discarded (user closed
   // the sheet without committing — same intent as Cancel).
