@@ -4668,7 +4668,7 @@ function renderToday() {
           <span class="voice-icon">🎤</span>
           <span class="voice-title" ondblclick="editHomeVoiceTitle(event, '${esc(n._capId)}', '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
           <span class="voice-dur">${fmtVoiceDuration(n.durationSec)}</span>
-          <button class="voice-del" data-delkey="voice-${esc(n.id)}" onclick="event.stopPropagation();deleteVoiceNoteFromParent('capture', '${esc(n._capId)}', '${esc(n.id)}')" title="Delete">×</button>
+          <button class="voice-del" data-delkey="voice-${esc(n.id)}" onclick="event.stopPropagation();deleteTodayVoiceCapture('${esc(n._capId)}', '${esc(n.id)}')" title="Delete">×</button>
         </div>`).join('')
     }</div>` : ''}
 
@@ -10504,6 +10504,18 @@ window.deleteVoiceNoteFromParent = function(kind, parentId, voiceId) {
   });
 };
 
+// Today-strip × delete: voice-only quick notes are 1:1 with their voice
+// note, so deleting the row should trash the whole wrapper capture in one
+// shot — not leave an empty body floating around. Trash shows one row
+// (the capture), restore brings everything back together.
+window.deleteTodayVoiceCapture = function(capId, voiceId) {
+  armOrConfirmDelete('voice-' + voiceId, () => {
+    softDeleteCapture(capId);
+    toast('Moved to Trash');
+    render();
+  });
+};
+
 // Single tap on a voice-note row plays / pauses it. Reuses a cached
 // Audio() so resuming is instant. Pauses any other note that was playing
 // so we never get two streams overlapping. While playing, every matching
@@ -12861,7 +12873,14 @@ function _fmtTrashAge(d) {
   return `${days}d ago`;
 }
 function _trashPreview(item, kind) {
-  if (kind === 'capture')  return (item.body || '').slice(0, 80) || '(no body)';
+  if (kind === 'capture') {
+    const body = (item.body || '').trim();
+    if (body) return body.slice(0, 80);
+    // Voice-only quick note → label by the first voice note's title.
+    const vn = (item.voiceNotes || [])[0];
+    if (vn) return `🎤 ${vn.title || 'Voice note'}` + (item.voiceNotes.length > 1 ? ` (+${item.voiceNotes.length - 1} more)` : '');
+    return '(no body)';
+  }
   if (kind === 'session')  return (item.before || item.during || item.after || '').slice(0, 80) || '(no notes)';
   if (kind === 'learning') return (item.sourceName || '(untitled)') + (item.takeaway ? ' — ' + item.takeaway.slice(0, 60) : '');
   if (kind === 'daily')    return 'Daily Journal · ' + item.date;
