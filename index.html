@@ -343,15 +343,50 @@ html, body {
   text-transform: uppercase;
   padding: 0.6rem 0 0.2rem;
 }
+.trash-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.4rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.trash-toolbar-count { color: var(--text2); font-size: 0.75rem; flex: 1; min-width: 0; }
+.trash-bulk-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.32rem 0.55rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.trash-bulk-btn.restore { color: var(--accent); border-color: var(--accent); }
+.trash-bulk-btn.restore:hover:not(:disabled) { background: var(--accent-soft); }
+.trash-bulk-btn.purge { color: var(--danger); border-color: var(--danger); }
+.trash-bulk-btn.purge:hover:not(:disabled) { background: var(--danger-soft); }
+.trash-bulk-btn.purge.armed { background: var(--danger-soft-strong); transform: scale(1.04); }
+.trash-bulk-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .trash-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 0.6rem;
   border-radius: 8px;
   background: var(--surface);
   border: 1px solid var(--border);
+}
+.trash-row.selected { background: var(--accent-soft); border-color: var(--accent); }
+.trash-row-check {
+  width: 18px; height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
 }
 .trash-row-text { min-width: 0; }
 .trash-row-preview {
@@ -12904,6 +12939,87 @@ function _collectTrashedVoiceNotes() {
   return out.sort((a, b) => (b.v.deletedAt || '').localeCompare(a.v.deletedAt || ''));
 }
 
+// Build a flat list of every trashed item with a composite key for the
+// bulk selection set in openSettingsTrash. Used both for "Select all" and
+// for translating the selection back to the right hard/soft handler.
+function _buildTrashItems() {
+  const items = [];
+  captures.filter(isTrashed).forEach(c =>
+    items.push({ kind: 'capture', key: 'capture:' + c.id, id: c.id }));
+  (dailyJournals || []).filter(isTrashed).forEach(d =>
+    items.push({ kind: 'daily', key: 'daily:' + d.date, id: d.date }));
+  (learning || []).filter(isTrashed).forEach(e =>
+    items.push({ kind: 'learning', key: 'learning:' + e.id, id: e.id }));
+  Object.values(sessions || {}).flat().filter(isTrashed).forEach(s =>
+    items.push({ kind: 'session', key: 'session:' + s.id, id: s.id, projectName: s.projectName }));
+  const collectVoice = (parent, parentKind, parentId) => {
+    (parent.voiceNotes || []).filter(isTrashed).forEach(v => {
+      items.push({
+        kind: 'voice',
+        key: `voice:${parentKind}:${parentId}:${v.id}`,
+        parentKind, parentId, voiceId: v.id,
+      });
+    });
+  };
+  captures.filter(notTrashed).forEach(c => collectVoice(c, 'capture', c.id));
+  (learning || []).filter(notTrashed).forEach(e => collectVoice(e, 'learning', e.id));
+  (dailyJournals || []).filter(notTrashed).forEach(d => collectVoice(d, 'daily', d.date));
+  Object.values(sessions || {}).flat().filter(notTrashed).forEach(s => collectVoice(s, 'session', s.id));
+  return items;
+}
+
+// Multi-select state for the Trash view — opening / closing the screen
+// preserves the selection only across the openSettingsTrash() re-renders
+// triggered by checkbox taps; navigating away clears it.
+let _trashSelection = new Set();
+
+window.toggleTrashSelect = function(key) {
+  if (_trashSelection.has(key)) _trashSelection.delete(key);
+  else _trashSelection.add(key);
+  openSettingsTrash();
+};
+window.toggleSelectAllTrash = function() {
+  const all = _buildTrashItems();
+  const allSelected = all.length > 0 && _trashSelection.size === all.length;
+  _trashSelection = allSelected ? new Set() : new Set(all.map(i => i.key));
+  openSettingsTrash();
+};
+window.restoreSelectedTrash = function() {
+  const all = _buildTrashItems();
+  const sel = all.filter(i => _trashSelection.has(i.key));
+  sel.forEach(_runTrashAction.bind(null, 'restore'));
+  _trashSelection.clear();
+  toast(`Restored ${sel.length}`);
+  openSettingsTrash();
+  render();
+};
+window.purgeSelectedTrash = function() {
+  armOrConfirmDelete('trash-bulk-purge', () => {
+    const all = _buildTrashItems();
+    const sel = all.filter(i => _trashSelection.has(i.key));
+    sel.forEach(_runTrashAction.bind(null, 'purge'));
+    _trashSelection.clear();
+    toast(`Deleted ${sel.length} forever`);
+    openSettingsTrash();
+    render();
+  });
+};
+function _runTrashAction(action, i) {
+  if (action === 'restore') {
+    if (i.kind === 'capture')  restoreCapture(i.id);
+    else if (i.kind === 'session')  restoreSession(i.id);
+    else if (i.kind === 'learning') restoreLearning(i.id);
+    else if (i.kind === 'daily')    restoreDailyJournal(i.id);
+    else if (i.kind === 'voice')    restoreVoiceInParent(i.parentKind, i.parentId, i.voiceId);
+  } else {
+    if (i.kind === 'capture')  hardDeleteCapture(i.id);
+    else if (i.kind === 'session')  hardDeleteSession(i.id, i.projectName);
+    else if (i.kind === 'learning') hardDeleteLearning(i.id);
+    else if (i.kind === 'daily')    hardDeleteDailyJournal(i.id);
+    else if (i.kind === 'voice')    hardDeleteVoiceFromParent(i.parentKind, i.parentId, i.voiceId);
+  }
+}
+
 function openSettingsTrash() {
   const body = document.getElementById('settings-body');
   const trashedCaps     = captures.filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
@@ -12911,9 +13027,20 @@ function openSettingsTrash() {
   const trashedLearning = (learning || []).filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
   const trashedSessions = Object.values(sessions || {}).flat().filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
   const trashedVoice    = _collectTrashedVoiceNotes();
+  const allItems = _buildTrashItems();
+  const selCount = _trashSelection.size;
+  const totalCount = allItems.length;
+  // Drop any stale selection keys (e.g. items that got hard-purged via
+  // another path while the Trash screen was open).
+  if (selCount) {
+    const validKeys = new Set(allItems.map(i => i.key));
+    for (const k of [..._trashSelection]) if (!validKeys.has(k)) _trashSelection.delete(k);
+  }
 
-  const row = (preview, deletedAt, restoreCall, deleteCall) => `
-    <div class="trash-row">
+  const checkbox = (key) => `<input type="checkbox" class="trash-row-check" ${_trashSelection.has(key) ? 'checked' : ''} onclick="event.stopPropagation();toggleTrashSelect('${esc(key)}')" />`;
+  const row = (key, preview, deletedAt, restoreCall, deleteCall) => `
+    <div class="trash-row ${_trashSelection.has(key) ? 'selected' : ''}">
+      ${checkbox(key)}
       <div class="trash-row-text">
         <div class="trash-row-preview">${esc(preview)}</div>
         <div class="trash-row-meta">deleted ${_fmtTrashAge(deletedAt)}</div>
@@ -12926,38 +13053,49 @@ function openSettingsTrash() {
   if (trashedVoice.length) {
     sections.push(`<div class="trash-section-hdr">Voice notes</div>` +
       trashedVoice.map(({ v, kind, parentId, parentLabel }) =>
-        row(`🎤 ${v.title || 'Voice note'} — ${parentLabel}`, v.deletedAt,
+        row(`voice:${kind}:${parentId}:${v.id}`,
+            `🎤 ${v.title || 'Voice note'} — ${parentLabel}`, v.deletedAt,
             `restoreVoiceFromTrash('${kind}','${esc(parentId)}','${esc(v.id)}')`,
             `purgeVoiceFromTrash('${kind}','${esc(parentId)}','${esc(v.id)}')`)
       ).join(''));
   }
   if (trashedCaps.length) {
     sections.push(`<div class="trash-section-hdr">Captures</div>` +
-      trashedCaps.map(c => row(_trashPreview(c, 'capture'), c.deletedAt,
+      trashedCaps.map(c => row('capture:' + c.id, _trashPreview(c, 'capture'), c.deletedAt,
         `restoreFromTrash('capture','${esc(c.id)}')`,
         `purgeFromTrash('capture','${esc(c.id)}')`)).join(''));
   }
   if (trashedDailies.length) {
     sections.push(`<div class="trash-section-hdr">Daily Journals</div>` +
-      trashedDailies.map(d => row(_trashPreview(d, 'daily'), d.deletedAt,
+      trashedDailies.map(d => row('daily:' + d.date, _trashPreview(d, 'daily'), d.deletedAt,
         `restoreFromTrash('daily','${esc(d.date)}')`,
         `purgeFromTrash('daily','${esc(d.date)}')`)).join(''));
   }
   if (trashedSessions.length) {
     sections.push(`<div class="trash-section-hdr">Sessions</div>` +
-      trashedSessions.map(s => row(_trashPreview(s, 'session'), s.deletedAt,
+      trashedSessions.map(s => row('session:' + s.id, _trashPreview(s, 'session'), s.deletedAt,
         `restoreFromTrash('session','${esc(s.id)}')`,
         `purgeFromTrash('session','${esc(s.id)}','${esc(s.projectName || '')}')`)).join(''));
   }
   if (trashedLearning.length) {
     sections.push(`<div class="trash-section-hdr">Learning</div>` +
-      trashedLearning.map(e => row(_trashPreview(e, 'learning'), e.deletedAt,
+      trashedLearning.map(e => row('learning:' + e.id, _trashPreview(e, 'learning'), e.deletedAt,
         `restoreFromTrash('learning','${esc(e.id)}')`,
         `purgeFromTrash('learning','${esc(e.id)}')`)).join(''));
   }
 
+  const allSelected = totalCount > 0 && selCount === totalCount;
+  const toolbar = totalCount > 0 ? `
+    <div class="trash-toolbar">
+      <button class="trash-bulk-btn" onclick="toggleSelectAllTrash()">${allSelected ? '☑ Deselect all' : '☐ Select all'}</button>
+      <span class="trash-toolbar-count">${selCount} of ${totalCount} selected</span>
+      <button class="trash-bulk-btn restore" onclick="restoreSelectedTrash()" ${selCount === 0 ? 'disabled' : ''}>↺ Restore${selCount ? ` (${selCount})` : ''}</button>
+      <button class="trash-bulk-btn purge" data-delkey="trash-bulk-purge" onclick="purgeSelectedTrash()" ${selCount === 0 ? 'disabled' : ''}>🗑 Delete forever${selCount ? ` (${selCount})` : ''}</button>
+    </div>` : '';
+
   body.innerHTML = settingsSubhdrHtml('Trash') + `
     <div class="trash-body">
+      ${toolbar}
       ${sections.length ? sections.join('') : `<div class="empty" style="padding:1.5rem;text-align:center;color:var(--text3)">Trash is empty.<br><span style="font-size:0.75rem">Items live here for 7 days before auto-purge.</span></div>`}
     </div>`;
 }
