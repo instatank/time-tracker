@@ -332,6 +332,49 @@ html, body {
 .settings-row-sub   { font-size: 0.72rem; color: var(--text3); margin-top: 2px; }
 .settings-row-chev  { color: var(--text3); font-size: 1.1rem; flex-shrink: 0; }
 .settings-row.placeholder .settings-row-label { color: var(--text2); }
+
+/* ── Settings → Trash ──────────────────────────────────────── */
+.trash-body { display: flex; flex-direction: column; gap: 0.4rem; }
+.trash-section-hdr {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text3);
+  text-transform: uppercase;
+  padding: 0.6rem 0 0.2rem;
+}
+.trash-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.trash-row-text { min-width: 0; }
+.trash-row-preview {
+  color: var(--text);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trash-row-meta { color: var(--text3); font-size: 0.68rem; margin-top: 2px; }
+.trash-restore-btn, .trash-purge-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.trash-restore-btn { color: var(--accent); border-color: var(--accent); }
+.trash-restore-btn:hover { background: var(--accent-soft); }
+.trash-purge-btn { color: var(--danger); border-color: var(--danger); }
+.trash-purge-btn:hover { background: var(--danger-soft); }
 .settings-row.placeholder .settings-row-sub   { font-style: italic; }
 
 /* Settings sub-screen header (back arrow + section title) */
@@ -3816,6 +3859,19 @@ let tombstonesSessions  = loadLocal(SK.TOMBSTONES_SESSIONS, {}); // { id: ts }
 let tombstonesLearning  = loadLocal(SK.TOMBSTONES_LEARNING, {}); // { id: ts }
 let tombstonesBlocks    = loadLocal(SK.TOMBSTONES_BLOCKS,   {}); // { id: ts }
 let tombstonesCaptures  = loadLocal(SK.TOMBSTONES_CAPTURES, {}); // { id: ts }
+
+// ── Trash window ──────────────────────────────────────────────
+// Top-level entries (captures / sessions / learning / dailyJournals) and
+// individual voice notes inside them are soft-deleted: deletedAt:ISO is
+// set, items disappear from every render via filters, and a sweep on app
+// init hard-deletes anything older than TRASH_TTL_MS. Restore = clear
+// deletedAt. Trash UI lives under Settings → Trash.
+const TRASH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const isTrashed      = (x) => !!(x && x.deletedAt);
+const notTrashed     = (x) => !isTrashed(x);
+const trashAgeMs     = (x) => x && x.deletedAt ? Date.now() - new Date(x.deletedAt).getTime() : 0;
+const isExpiredTrash = (x) => isTrashed(x) && trashAgeMs(x) > TRASH_TTL_MS;
+const liveVoiceNotes = (arr) => (arr || []).filter(notTrashed);
 // Projects don't have individual doc ids — meta/projects is one list-doc.
 // Tombstone keys are the project SLUG (lowercased, alphanumerics-only).
 // Set on delete/rename; cleared once the loader confirms the slug is gone
@@ -4384,11 +4440,11 @@ function renderToday() {
   // surfacing in-place rather than replacing the view.
   const d = todayStr();
   let bks  = blocks.filter(b => b.date === d).sort((a,b) => b.start_time.localeCompare(a.start_time));
-  let caps = captures.filter(c => capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+  let caps = captures.filter(c => notTrashed(c) && capDateIST(c) === d).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
   // Merge today's Daily Journal entry into the captures feed so it shows up
   // alongside Quick Notes / Project captures (was missing — Daily Journal
   // lives in a separate collection from `captures`).
-  let todayDaily = (dailyJournals || []).filter(j => j && j.date === d && !isDailyEntryEmpty(j));
+  let todayDaily = (dailyJournals || []).filter(j => j && notTrashed(j) && j.date === d && !isDailyEntryEmpty(j));
 
   // Home-page search — narrows ONLY notes / daily journals. Activity-log
   // blocks are excluded from search results per spec; when a query is
@@ -4690,8 +4746,9 @@ function renderBlock(b) {
 // Card-level click handlers stop propagation here so tapping a row doesn't
 // also expand or open the parent capture card.
 function renderVoiceNotesReadonly(voiceNotes, parentKind, parentId) {
-  if (!voiceNotes || !voiceNotes.length) return '';
-  return `<div class="voice-list readonly">${voiceNotes.map(n => {
+  const live = liveVoiceNotes(voiceNotes);
+  if (!live.length) return '';
+  return `<div class="voice-list readonly">${live.map(n => {
     const delBtn = parentKind && parentId != null
       ? `<button class="voice-del" data-delkey="voice-${esc(n.id)}" onclick="event.stopPropagation();deleteVoiceNoteFromParent('${parentKind}', '${esc(String(parentId))}', '${esc(n.id)}')" title="Delete">×</button>`
       : '';
@@ -4746,14 +4803,17 @@ function renderJournal() {
   const projectNames = projectsByRecency();
   const knownProjectTags = new Set(projectNames.map(p => '#' + projectSlug(p)));
 
+  // Always start from non-trashed captures — Trash items are recoverable
+  // from Settings → Trash but invisible to the Journal feed.
+  const liveCaps = captures.filter(notTrashed);
   let filtered;
   if (journalFilter === 'all') {
-    filtered = [...captures];
+    filtered = [...liveCaps];
   } else if (isTagFilter) {
-    filtered = captures.filter(c => (c.tags || []).includes(journalFilter));
+    filtered = liveCaps.filter(c => (c.tags || []).includes(journalFilter));
   } else if (journalFilter === 'project') {
     // Include project-type captures AND any note/journal that references a known project via hashtag
-    filtered = captures.filter(c =>
+    filtered = liveCaps.filter(c =>
       c.type === 'project' ||
       (c.tags || []).some(t => knownProjectTags.has(t))
     );
@@ -4761,9 +4821,9 @@ function renderJournal() {
     // The "Daily Journal" pill — surface legacy free-form journal-type captures
     // (and any rogue type='daily' captures) here. The structured Daily Journal
     // entries themselves are in `dailyJournals` and are merged in below.
-    filtered = captures.filter(c => c.type === 'journal' || c.type === 'daily');
+    filtered = liveCaps.filter(c => c.type === 'journal' || c.type === 'daily');
   } else {
-    filtered = captures.filter(c => c.type === journalFilter);
+    filtered = liveCaps.filter(c => c.type === journalFilter);
   }
 
   if (journalFilter === 'project' && journalProjectFilter) {
@@ -4792,15 +4852,16 @@ function renderJournal() {
   // ── Daily Journal entries ──
   // Live in their own collection (see dailyJournals[]); apply the same filter
   // gates so they slot into the journal feed alongside captures.
+  const liveDailies = dailyJournals.filter(notTrashed);
   let filteredDaily = [];
   if (journalFilter === 'all' || journalFilter === 'journal') {
-    filteredDaily = dailyJournals.slice();
+    filteredDaily = liveDailies.slice();
   } else if (isTagFilter) {
-    filteredDaily = dailyJournals.filter(d => (d.tags || []).includes(journalFilter));
+    filteredDaily = liveDailies.filter(d => (d.tags || []).includes(journalFilter));
   } else if (journalFilter === 'project') {
     // Daily journals don't carry a project_tag string, but their tags[] can
     // reference projects via hashtag. Match the same way we do for captures.
-    filteredDaily = dailyJournals.filter(d =>
+    filteredDaily = liveDailies.filter(d =>
       (d.tags || []).some(t => knownProjectTags.has(t))
     );
   }
@@ -5563,9 +5624,9 @@ window.setProjectsSubTab = function(t) {
 function renderSessionsList(projectName) {
   let list;
   if (projectName === null) {
-    list = Object.values(sessions).flat();
+    list = Object.values(sessions).flat().filter(notTrashed);
   } else {
-    list = (sessions[projectName] || []).slice();
+    list = (sessions[projectName] || []).filter(notTrashed);
   }
   list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
@@ -5844,46 +5905,66 @@ function syncCardExpandOutsideListener() {
   if (hasAny) document.addEventListener('click', _cardExpandOutsideHandler, true);
 }
 
+function findSessionAcrossProjects(sessionId) {
+  for (const [proj, list] of Object.entries(sessions || {})) {
+    const s = (list || []).find(x => x.id === sessionId);
+    if (s) return { session: s, projectName: proj };
+  }
+  return null;
+}
+function softDeleteSession(sessionId) {
+  const found = findSessionAcrossProjects(sessionId);
+  if (!found) return;
+  found.session.deletedAt = nowISTIso();
+  found.session._synced = false;
+  saveLocal(SK.SESSIONS, sessions);
+  syncSessionDoc(found.session);
+}
+function hardDeleteSession(sessionId, projectName) {
+  const list = sessions[projectName] || [];
+  const idx = list.findIndex(x => x.id === sessionId);
+  if (idx === -1) return;
+  const removed = list[idx];
+  if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
+  list.splice(idx, 1);
+  sessions[projectName] = list;
+  saveLocal(SK.SESSIONS, sessions);
+  tombstonesSessions[sessionId] = Date.now();
+  saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
+  if (removed.linkedBlockId) {
+    const bIdx = blocks.findIndex(b => b.id === removed.linkedBlockId);
+    if (bIdx > -1 && blocks[bIdx].linkedSessionId === sessionId) {
+      blocks[bIdx] = { ...blocks[bIdx], linkedSessionId: '' };
+      saveLocal(SK.BLOCKS, blocks);
+      syncBlockDoc(blocks[bIdx]);
+    }
+  }
+  if (user) {
+    cloudDeleteWithVerify(doc(db, 'users', user.uid, 'sessions', sessionId), 'DEL-SESS')
+      .then(res => {
+        if (res.ok) {
+          delete tombstonesSessions[sessionId];
+          saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
+        } else {
+          toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
+          console.error('[DEL-SESS] verification failed:', res.reason);
+        }
+      });
+  }
+}
+function restoreSession(sessionId) {
+  const found = findSessionAcrossProjects(sessionId);
+  if (!found) return;
+  delete found.session.deletedAt;
+  found.session._synced = false;
+  saveLocal(SK.SESSIONS, sessions);
+  syncSessionDoc(found.session);
+}
+
 window.deleteSession = function(sessionId, projectName) {
-  console.log('[DEL-SESS] click on id=', sessionId, 'project=', projectName);
   armOrConfirmDelete('sess-' + sessionId, () => {
-    console.log('[DEL-SESS] CONFIRMED');
-    // Remove from local
-    const list = sessions[projectName] || [];
-    const idx = list.findIndex(x => x.id === sessionId);
-    if (idx === -1) { console.warn('[DEL-SESS] session not found!'); toast('Session not found'); return; }
-    const removed = list[idx];
-    if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
-    list.splice(idx, 1);
-    sessions[projectName] = list;
-    saveLocal(SK.SESSIONS, sessions);
-    // Record tombstone BEFORE firing cloud delete — survives refresh-before-network-completes
-    tombstonesSessions[sessionId] = Date.now();
-    saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
-    // Clear back-link on any linked block (keep the block itself — it may be meaningful on Today)
-    if (removed.linkedBlockId) {
-      const bIdx = blocks.findIndex(b => b.id === removed.linkedBlockId);
-      if (bIdx > -1 && blocks[bIdx].linkedSessionId === sessionId) {
-        blocks[bIdx] = { ...blocks[bIdx], linkedSessionId: '' };
-        saveLocal(SK.BLOCKS, blocks);
-        syncBlockDoc(blocks[bIdx]);
-      }
-    }
-    // Remove from cloud (verified). Tombstone stays until cloud confirms the doc is gone.
-    if (user) {
-      cloudDeleteWithVerify(doc(db, 'users', user.uid, 'sessions', sessionId), 'DEL-SESS')
-        .then(res => {
-          if (res.ok) {
-            // Cloud delete confirmed — safe to drop the tombstone
-            delete tombstonesSessions[sessionId];
-            saveLocal(SK.TOMBSTONES_SESSIONS, tombstonesSessions);
-          } else {
-            toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
-            console.error('[DEL-SESS] verification failed:', res.reason);
-          }
-        });
-    }
-    toast('✓ Session deleted');
+    softDeleteSession(sessionId);
+    toast('Moved to Trash');
     renderMain(true);
   });
 };
@@ -5944,7 +6025,7 @@ window.openEditSession = function(sessionId, projectName) {
   sessionFormTags = new Set((s.tags || []).map(normalizeTag).filter(Boolean));
   sessionTagCustomOpen = false;
   renderTagPicker('session');
-  sessionFormVoiceNotes = (s.voiceNotes || []).map(v => ({ ...v }));
+  sessionFormVoiceNotes = liveVoiceNotes(s.voiceNotes).map(v => ({ ...v }));
   renderSessionVoiceList();
   document.getElementById('session-sheet-title').textContent = `Edit Session · ${projectName}`;
   openSheet('sheet-session');
@@ -6031,9 +6112,8 @@ window.saveSession = async function() {
     const idx = list.findIndex(x => x.id === editingSessionId);
     if (idx === -1) { toast('Session not found'); closeSheets(); return; }
     const existing = list[idx];
-    // Clean up any voice-note blobs removed during this edit.
-    const newIds = new Set(sessionFormVoiceNotes.map(v => v.id));
-    (existing.voiceNotes || []).forEach(v => { if (!newIds.has(v.id)) deleteVoiceBlob(v.storagePath); });
+    // Preserve trashed voice notes on the existing doc — draft loaded live only.
+    const prevTrashedVoice = (existing.voiceNotes || []).filter(isTrashed);
     const updated = {
       ...existing,
       before, during, after,
@@ -6042,7 +6122,7 @@ window.saveSession = async function() {
       pending: review.pending,
       learned: review.learned,
       tags,
-      voiceNotes: sessionFormVoiceNotes.slice(),
+      voiceNotes: [...prevTrashedVoice, ...sessionFormVoiceNotes],
       // linkedBlockId, projectName, date, createdAt all preserved from `existing`
       _synced: false,  // mark dirty — cleared once cloud write verifies
     };
@@ -6348,7 +6428,7 @@ function renderLearningSub() {
   `).join('');
 
   // Filter entries (source-type or hashtag)
-  let filtered = learning.filter(e => learningFilterMatches(learningFilter, e));
+  let filtered = learning.filter(e => notTrashed(e) && learningFilterMatches(learningFilter, e));
 
   // Free-text search across sourceName, sourceType, takeaway, fullNotes, tags
   const q = globalSearch.trim().toLowerCase();
@@ -6437,36 +6517,49 @@ window.learningCardTap = function(entryId) {
   );
 };
 
+function softDeleteLearning(entryId) {
+  const e = learning.find(x => x.id === entryId);
+  if (!e) return;
+  e.deletedAt = nowISTIso();
+  e._synced = false;
+  saveLocal(SK.LEARNING, learning);
+  syncLearningDoc(e);
+}
+function hardDeleteLearning(entryId) {
+  const idx = learning.findIndex(e => e.id === entryId);
+  if (idx === -1) return;
+  const removed = learning[idx];
+  if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
+  learning.splice(idx, 1);
+  saveLocal(SK.LEARNING, learning);
+  tombstonesLearning[entryId] = Date.now();
+  saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
+  if (user) {
+    cloudDeleteWithVerify(doc(db, 'users', user.uid, 'learning', entryId), 'DEL-LEARN')
+      .then(res => {
+        if (res.ok) {
+          delete tombstonesLearning[entryId];
+          saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
+        } else {
+          toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
+        }
+      });
+  }
+  deleteAllProjectRefsForEntry('learning', entryId, removed && removed.tags || []);
+}
+function restoreLearning(entryId) {
+  const e = learning.find(x => x.id === entryId);
+  if (!e) return;
+  delete e.deletedAt;
+  e._synced = false;
+  saveLocal(SK.LEARNING, learning);
+  syncLearningDoc(e);
+}
+
 window.deleteLearning = function(entryId) {
-  console.log('[DEL-LEARN] click on id=', entryId);
   armOrConfirmDelete('learn-' + entryId, () => {
-    console.log('[DEL-LEARN] CONFIRMED. Local before:', learning.length);
-    const idx = learning.findIndex(e => e.id === entryId);
-    if (idx === -1) { console.warn('[DEL-LEARN] entry not found in learning array!'); toast('Entry not found'); return; }
-    const removed = learning[idx];
-    if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
-    learning.splice(idx, 1);
-    saveLocal(SK.LEARNING, learning);
-    tombstonesLearning[entryId] = Date.now();
-    saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
-    console.log('[DEL-LEARN] spliced + tombstoned. Local after:', learning.length, 'tombstones:', Object.keys(tombstonesLearning));
-    if (user) {
-      cloudDeleteWithVerify(doc(db, 'users', user.uid, 'learning', entryId), 'DEL-LEARN')
-        .then(res => {
-          if (res.ok) {
-            // Cloud confirms gone — drop tombstone
-            delete tombstonesLearning[entryId];
-            saveLocal(SK.TOMBSTONES_LEARNING, tombstonesLearning);
-          } else {
-            toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
-            console.error('[DEL-LEARN] verification failed:', res.reason);
-          }
-        });
-    } else {
-      console.warn('[DEL-LEARN] no user signed in — cloud delete skipped');
-    }
-    deleteAllProjectRefsForEntry('learning', entryId, removed && removed.tags || []);
-    toast('✓ Learning deleted');
+    softDeleteLearning(entryId);
+    toast('Moved to Trash');
     renderMain(true);
   });
 };
@@ -6525,7 +6618,7 @@ window.openEditLearning = function(entryId) {
   learningTagCustomOpen = false;
   renderLearningTypeRow();
   renderTagPicker('learning');
-  learningFormVoiceNotes = (e.voiceNotes || []).map(v => ({ ...v }));
+  learningFormVoiceNotes = liveVoiceNotes(e.voiceNotes).map(v => ({ ...v }));
   renderLearningVoiceList();
   document.getElementById('learning-sheet-title').textContent = 'Edit Learning';
   openSheet('sheet-learning');
@@ -6571,6 +6664,10 @@ window.saveLearning = function() {
   const tags = [...new Set([...learningFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
   addToTagHistory(tags);
 
+  // Preserve trashed voice notes from the existing entry (draft loaded live
+  // only). Same merging pattern as captures + sessions.
+  const _existingLearning = editingLearningId ? learning.find(e => e.id === editingLearningId) : null;
+  const _prevTrashedLearnVoice = _existingLearning ? (_existingLearning.voiceNotes || []).filter(isTrashed) : [];
   const entry = {
     id: editingLearningId || uid(),
     sourceName,
@@ -6578,10 +6675,10 @@ window.saveLearning = function() {
     takeaway,
     fullNotes: fullNotes || null,
     tags,
-    voiceNotes: learningFormVoiceNotes.slice(),
+    voiceNotes: [..._prevTrashedLearnVoice, ...learningFormVoiceNotes],
     date: todayStr(),
     createdAt: editingLearningId
-      ? (learning.find(e => e.id === editingLearningId)?.createdAt || nowISTIso())
+      ? (_existingLearning?.createdAt || nowISTIso())
       : nowISTIso(),
     _synced: false,  // mark dirty — cleared once cloud write verifies
   };
@@ -6592,9 +6689,6 @@ window.saveLearning = function() {
     const idx = learning.findIndex(e => e.id === editingLearningId);
     if (idx > -1) {
       prevTags = learning[idx].tags || [];
-      // Clean up voice blobs the user removed during this edit.
-      const newIds = new Set(entry.voiceNotes.map(v => v.id));
-      (learning[idx].voiceNotes || []).forEach(v => { if (!newIds.has(v.id)) deleteVoiceBlob(v.storagePath); });
       learning[idx] = entry;
     }
   } else {
@@ -9085,7 +9179,7 @@ function openCaptureEdit(captureId) {
   captureFormTags = new Set((c.tags || []).map(normalizeTag).filter(Boolean));
   captureTagCustomOpen = false;
   // Load existing voice notes into the form draft.
-  captureFormVoiceNotes = (c.voiceNotes || []).map(v => ({ ...v }));
+  captureFormVoiceNotes = liveVoiceNotes(c.voiceNotes).map(v => ({ ...v }));
   renderCaptureVoiceList();
   editingDailyDate = null;
   dailyDraftEntry = null;
@@ -9199,7 +9293,7 @@ function initDailyJournalEditor(date) {
   // Mirror the draft's voice-notes array into the form-draft variable so
   // the UI list + recorder callbacks operate on the same data shape used
   // by the other entry types.
-  dailyFormVoiceNotes = (dailyDraftEntry.voiceNotes || []).map(v => ({ ...v }));
+  dailyFormVoiceNotes = liveVoiceNotes(dailyDraftEntry.voiceNotes).map(v => ({ ...v }));
   renderDailyVoiceList();
   renderDailyTasks();
   renderDailyEntertainmentCap();
@@ -9270,7 +9364,9 @@ window.saveDailyJournalSilent = function() {
   dailyDraftEntry.thoughts = thoughts;
   dailyDraftEntry.reflection = reflection;
   dailyDraftEntry.tags = tags;
-  dailyDraftEntry.voiceNotes = dailyFormVoiceNotes.slice();
+  // Preserve trashed voice notes — draft only loaded live ones at modal open.
+  const _prevTrashedDailyVoice = (dailyDraftEntry.voiceNotes || []).filter(isTrashed);
+  dailyDraftEntry.voiceNotes = [..._prevTrashedDailyVoice, ...dailyFormVoiceNotes];
   dailyDraftEntry.lastEditedAt = nowISTIso();
   dailyDraftEntry._synced = false;
 
@@ -9293,21 +9389,38 @@ window.saveDailyJournalSilent = function() {
 // Tap the swipe-delete button twice to confirm — armOrConfirmDelete handles
 // the two-tap pattern. First tap "arms" the button visually; second tap
 // within the window actually deletes. Mirrors deleteSession / deleteLearning.
+function softDeleteDailyJournal(date) {
+  const d = dailyJournals.find(x => x.date === date);
+  if (!d) return;
+  d.deletedAt = nowISTIso();
+  d._synced = false;
+  saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+  syncDailyJournalDoc(d);
+}
+function hardDeleteDailyJournal(date) {
+  const removed = dailyJournals.find(d => d.date === date);
+  if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
+  dailyJournals = dailyJournals.filter(d => d.date !== date);
+  saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+  if (user) {
+    cloudDeleteWithVerify(doc(db, 'users', user.uid, 'dailyJournal', date), 'DEL-DAILY')
+      .then(res => {
+        if (!res.ok) toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
+      });
+  }
+}
+function restoreDailyJournal(date) {
+  const d = dailyJournals.find(x => x.date === date);
+  if (!d) return;
+  delete d.deletedAt;
+  d._synced = false;
+  saveLocal(SK.DAILY_JOURNAL, dailyJournals);
+  syncDailyJournalDoc(d);
+}
+
 window.deleteDailyJournal = function(date) {
   armOrConfirmDelete('daily-' + date, () => {
-    const removed = dailyJournals.find(d => d.date === date);
-    if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
-    dailyJournals = dailyJournals.filter(d => d.date !== date);
-    saveLocal(SK.DAILY_JOURNAL, dailyJournals);
-    if (user) {
-      cloudDeleteWithVerify(doc(db, 'users', user.uid, 'dailyJournal', date), 'DEL-DAILY')
-        .then(res => {
-          if (!res.ok) {
-            toast('⚠️ Cloud delete failed: ' + res.reason, 7000);
-            console.error('[DEL-DAILY] verification failed:', res.reason);
-          }
-        });
-    }
+    softDeleteDailyJournal(date);
     // If the deleted entry was open in the editor, drop the draft so the
     // next save doesn't recreate the entry we just removed.
     if (editingDailyDate === date) {
@@ -9315,7 +9428,7 @@ window.deleteDailyJournal = function(date) {
       editingDailyDate = null;
       dailyDraftEntry = null;
     }
-    toast('✓ Daily Journal deleted');
+    toast('Moved to Trash');
     renderMain(true);
   });
 };
@@ -9713,12 +9826,11 @@ window.saveCapture = function() {
     if (idx > -1) {
       const prev = captures[idx];
       const prevTags = prev.tags || [];
-      // Diff voice notes against the previous version so blobs the user
-      // removed during this edit get cleaned out of Storage.
-      const prevIds = new Set((prev.voiceNotes || []).map(v => v.id));
-      const newIds = new Set(voiceNotesSnap.map(v => v.id));
-      (prev.voiceNotes || []).forEach(v => { if (!newIds.has(v.id)) deleteVoiceBlob(v.storagePath); });
-      captures[idx] = { ...prev, type: selCapType, body, project_tag: projectTag, tags, voiceNotes: voiceNotesSnap, _synced: false };
+      // Preserve any voice notes already in Trash on the prev doc — the draft
+      // only loaded live ones, so we'd otherwise wipe them and lose recovery.
+      const prevTrashedVoice = (prev.voiceNotes || []).filter(isTrashed);
+      const finalVoice = [...prevTrashedVoice, ...voiceNotesSnap];
+      captures[idx] = { ...prev, type: selCapType, body, project_tag: projectTag, tags, voiceNotes: finalVoice, _synced: false };
       syncCaptureDoc(captures[idx]);
       syncProjectRefsForEntry({
         sourceType: 'journal', sourceId: captures[idx].id, tags, prev: prevTags,
@@ -9798,10 +9910,19 @@ window.deleteBlock = function(id) {
   toast('Block deleted');
 };
 
-window.deleteCapture = function(id) {
+// Capture deletion is soft by default: deletedAt stamp + sync, recoverable
+// from Settings → Trash for 7 days. The sweep on init calls hardDeleteCapture
+// when the window expires; Settings → Trash also exposes Delete forever.
+function softDeleteCapture(id) {
+  const c = captures.find(x => x.id === id);
+  if (!c) return;
+  c.deletedAt = nowISTIso();
+  c._synced = false;
+  saveLocal(SK.CAPTURES, captures);
+  syncCaptureDoc(c);
+}
+function hardDeleteCapture(id) {
   const removed = captures.find(c => c.id === id);
-  // Clean up any voice-note blobs that were attached to this capture so
-  // deleted entries don't leave Storage orphans behind.
   if (removed && removed.voiceNotes) removed.voiceNotes.forEach(v => deleteVoiceBlob(v.storagePath));
   captures = captures.filter(c => c.id !== id);
   saveLocal(SK.CAPTURES, captures);
@@ -9820,9 +9941,21 @@ window.deleteCapture = function(id) {
       });
   }
   if (removed) deleteAllProjectRefsForEntry('journal', id, removed.tags || []);
+}
+function restoreCapture(id) {
+  const c = captures.find(x => x.id === id);
+  if (!c) return;
+  delete c.deletedAt;
+  c._synced = false;
+  saveLocal(SK.CAPTURES, captures);
+  syncCaptureDoc(c);
+}
+
+window.deleteCapture = function(id) {
+  softDeleteCapture(id);
   closeSheets();
   render();
-  toast('Entry deleted');
+  toast('Moved to Trash');
 };
 
 window.setRating = function(date, val) {
@@ -10078,7 +10211,7 @@ window.toggleHomeVoiceRecording = async function() {
 function renderCaptureVoiceList() {
   const el = document.getElementById('f-cap-voice-list');
   if (!el) return;
-  const savedRows = captureFormVoiceNotes.map(n => `
+  const savedRows = liveVoiceNotes(captureFormVoiceNotes).map(n => `
     <div class="voice-row" id="vn-${esc(n.id)}" data-voice-url="${esc(n.url)}" data-voice-total-dur="${n.durationSec || 0}" onclick="playVoiceNote('${esc(n.url)}', this)">
       <span class="voice-icon">🎤</span>
       <span class="voice-title" ondblclick="editCaptureVoiceTitle(event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
@@ -10118,7 +10251,7 @@ function renderDailyVoiceList()    { renderVoiceListEditable('f-daily-voice-list
 function renderVoiceListEditable(listId, addBtnId, draftArr, ctx) {
   const el = document.getElementById(listId);
   if (!el) return;
-  const savedRows = draftArr.map(n => `
+  const savedRows = liveVoiceNotes(draftArr).map(n => `
     <div class="voice-row" id="vn-${ctx}-${esc(n.id)}" data-voice-url="${esc(n.url)}" data-voice-total-dur="${n.durationSec || 0}" onclick="playVoiceNote('${esc(n.url)}', this)">
       <span class="voice-icon">🎤</span>
       <span class="voice-title" ondblclick="editVoiceTitleIn('${ctx}', event, '${esc(n.id)}')" title="Double-tap to rename">${esc(n.title)}</span>
@@ -10253,14 +10386,16 @@ window.saveHomeVoiceTitle = function(capId, voiceId, val) {
 
 window.deleteVoiceNoteIn = function(ctx, noteId) {
   armOrConfirmDelete('voice-' + noteId, () => {
+    // Soft-delete: stamp deletedAt on the draft item. Render filter hides it
+    // from the modal list; the parent's save persists it with the trash
+    // marker so Settings → Trash can restore for 7 days.
     const draft = _voiceDraftFor(ctx);
-    const idx = draft.findIndex(v => v.id === noteId);
-    if (idx < 0) return;
-    const note = draft[idx];
-    draft.splice(idx, 1);
-    deleteVoiceBlob(note.storagePath);
+    const note = draft.find(v => v.id === noteId);
+    if (!note) return;
+    note.deletedAt = nowISTIso();
     _voiceRenderFor(ctx)();
     if (ctx === 'daily') { try { saveDailyJournalSilent(); } catch {} }
+    toast('Moved to Trash');
   });
 };
 
@@ -10292,53 +10427,79 @@ window.saveCaptureVoiceTitle = function(noteId, val) {
 
 window.deleteCaptureVoiceNote = function(noteId) {
   armOrConfirmDelete('voice-' + noteId, () => {
-    const idx = captureFormVoiceNotes.findIndex(v => v.id === noteId);
-    if (idx < 0) return;
-    const note = captureFormVoiceNotes[idx];
-    captureFormVoiceNotes.splice(idx, 1);
-    // Best-effort blob cleanup. If the user is still composing and cancels
-    // the capture afterwards, leftover blobs are tolerated for the pilot —
-    // a sweep job can collect them later.
-    deleteVoiceBlob(note.storagePath);
+    // Soft-delete: see deleteVoiceNoteIn — same flow, persisted on parent save.
+    const note = captureFormVoiceNotes.find(v => v.id === noteId);
+    if (!note) return;
+    note.deletedAt = nowISTIso();
     renderCaptureVoiceList();
+    toast('Moved to Trash');
   });
 };
 
-// Delete a voice note off an already-saved parent (capture / session /
-// learning / daily). Wraps the destructive bit in armOrConfirmDelete so a
-// misclick on × surfaces a "Tap again to delete" toast instead of nuking
-// the audio immediately. Updates the parent doc + Storage + re-renders.
+// Find a saved parent (capture / session / learning / daily) by kind+id
+// and return its persist+sync helper alongside the parent object. Shared
+// by the voice-note soft/hard/restore handlers below.
+function _findParentForVoice(kind, parentId) {
+  let parent = null;
+  let persist = () => {};
+  if (kind === 'capture') {
+    parent = captures.find(c => c.id === parentId);
+    if (!parent) return null;
+    persist = () => { parent._synced = false; saveLocal(SK.CAPTURES, captures); syncCaptureDoc(parent); };
+  } else if (kind === 'session') {
+    for (const list of Object.values(sessions || {})) {
+      const s = (list || []).find(x => x.id === parentId);
+      if (s) { parent = s; break; }
+    }
+    if (!parent) return null;
+    persist = () => { parent._synced = false; saveLocal(SK.SESSIONS, sessions); syncSessionDoc(parent); };
+  } else if (kind === 'learning') {
+    parent = learning.find(e => e.id === parentId);
+    if (!parent) return null;
+    persist = () => { parent._synced = false; saveLocal(SK.LEARNING, learning); syncLearningDoc(parent); };
+  } else if (kind === 'daily') {
+    parent = dailyJournals.find(d => d.date === parentId);
+    if (!parent) return null;
+    persist = () => { parent._synced = false; saveLocal(SK.DAILY_JOURNAL, dailyJournals); syncDailyJournalDoc(parent); };
+  } else { return null; }
+  return { parent, persist };
+}
+
+// Soft-delete a single voice note off a saved parent — stamps deletedAt
+// on the sub-item and syncs the parent doc. The audio blob stays in
+// Storage until the sweep purges it (7 days later) or the user picks
+// "Delete forever" from Settings → Trash.
+function softDeleteVoiceFromParent(kind, parentId, voiceId) {
+  const found = _findParentForVoice(kind, parentId);
+  if (!found) return;
+  const note = (found.parent.voiceNotes || []).find(v => v.id === voiceId);
+  if (!note) return;
+  note.deletedAt = nowISTIso();
+  found.persist();
+}
+function hardDeleteVoiceFromParent(kind, parentId, voiceId) {
+  const found = _findParentForVoice(kind, parentId);
+  if (!found) return;
+  const idx = (found.parent.voiceNotes || []).findIndex(v => v.id === voiceId);
+  if (idx < 0) return;
+  const note = found.parent.voiceNotes[idx];
+  found.parent.voiceNotes.splice(idx, 1);
+  deleteVoiceBlob(note.storagePath);
+  found.persist();
+}
+function restoreVoiceInParent(kind, parentId, voiceId) {
+  const found = _findParentForVoice(kind, parentId);
+  if (!found) return;
+  const note = (found.parent.voiceNotes || []).find(v => v.id === voiceId);
+  if (!note) return;
+  delete note.deletedAt;
+  found.persist();
+}
+
 window.deleteVoiceNoteFromParent = function(kind, parentId, voiceId) {
   armOrConfirmDelete('voice-' + voiceId, () => {
-    let parent = null;
-    let persist = () => {};
-    if (kind === 'capture') {
-      parent = captures.find(c => c.id === parentId);
-      if (!parent) return;
-      persist = () => { parent._synced = false; saveLocal(SK.CAPTURES, captures); syncCaptureDoc(parent); };
-    } else if (kind === 'session') {
-      for (const list of Object.values(sessions || {})) {
-        const s = (list || []).find(x => x.id === parentId);
-        if (s) { parent = s; break; }
-      }
-      if (!parent) return;
-      persist = () => { parent._synced = false; saveLocal(SK.SESSIONS, sessions); syncSessionDoc(parent); };
-    } else if (kind === 'learning') {
-      parent = learning.find(e => e.id === parentId);
-      if (!parent) return;
-      persist = () => { parent._synced = false; saveLocal(SK.LEARNING, learning); syncLearningDoc(parent); };
-    } else if (kind === 'daily') {
-      parent = dailyJournals.find(d => d.date === parentId);
-      if (!parent) return;
-      persist = () => { parent._synced = false; saveLocal(SK.DAILY_JOURNAL, dailyJournals); syncDailyJournalDoc(parent); };
-    } else { return; }
-
-    const idx = (parent.voiceNotes || []).findIndex(v => v.id === voiceId);
-    if (idx < 0) return;
-    const note = parent.voiceNotes[idx];
-    parent.voiceNotes.splice(idx, 1);
-    deleteVoiceBlob(note.storagePath);
-    persist();
+    softDeleteVoiceFromParent(kind, parentId, voiceId);
+    toast('Moved to Trash');
     renderMain();
   });
 };
@@ -10725,21 +10886,24 @@ function renderSearchResults() {
   const voiceTitles = (item) => (item && item.voiceNotes || []).map(v => v.title || '').join(' ');
 
   captures.forEach(c => {
+    if (isTrashed(c)) return;
     if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c)])) return;
     matches.push({ kind: 'cap', item: c, sortKey: c.timestamp || '' });
   });
   (dailyJournals || []).forEach(d => {
-    if (isDailyEntryEmpty(d)) return;
+    if (isTrashed(d) || isDailyEntryEmpty(d)) return;
     const taskText = (d.tasks || []).map(t => t.text || '').join(' ');
     if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d)])) return;
     matches.push({ kind: 'daily', item: d, sortKey: d.lastEditedAt || d.timestamp || d.date || '' });
   });
   Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
+    if (isTrashed(s)) return;
     const reviewText = [...(s.done || []), ...(s.pending || []), ...(s.learned || [])].join(' ');
     if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s)])) return;
     matches.push({ kind: 'session', item: s, sortKey: s.createdAt || s.date || '' });
   }));
   (learning || []).forEach(e => {
+    if (isTrashed(e)) return;
     if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e)])) return;
     matches.push({ kind: 'learning', item: e, sortKey: e.createdAt || e.date || '' });
   });
@@ -11633,6 +11797,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sleepEod',   icon: '🌙', label: 'Sleep & EOD',     sub: 'Auto-log sleep · end-of-day prompt'     },
   { id: 'appearance', icon: '🎨', label: 'Appearance',      sub: 'System · Light · Dark'                  },
   { id: 'sync',       icon: '☁️', label: 'Sync',            sub: 'Push · Pull · sign-out'                 },
+  { id: 'trash',      icon: '🗑',  label: 'Trash',           sub: 'Recover deleted entries · 7-day window' },
   { id: 'about',      icon: 'ℹ️', label: 'About',           sub: 'DayOS · version · feedback'             },
 ];
 
@@ -11665,6 +11830,7 @@ window.openSettingsSection = function(id) {
     case 'tags':       return openSettingsTags();
     case 'dayscore':   return openSettingsDayScore();
     case 'lifecheck':  return openSettingsLifeCheck();
+    case 'trash':      return openSettingsTrash();
     default: {
       const s = SETTINGS_SECTIONS.find(x => x.id === id);
       toast(`${s?.label || id} — coming next`, 2000);
@@ -12677,6 +12843,136 @@ window.openSettingsProjects   = openSettingsProjects;
 window.openSettingsTags       = openSettingsTags;
 window.openSettingsDayScore   = openSettingsDayScore;
 window.openSettingsLifeCheck  = openSettingsLifeCheck;
+window.openSettingsTrash      = openSettingsTrash;
+
+// ── Settings → Trash ─────────────────────────────────────────
+// Surfaces every soft-deleted item (entries + individual voice notes).
+// Each row shows what was deleted, its parent context where relevant, how
+// long ago it was deleted (relative humanise), Restore + Delete-forever.
+// 7-day sweep on init purges anything past TRASH_TTL_MS automatically.
+function _fmtTrashAge(d) {
+  const ms = Date.now() - new Date(d).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  return `${days}d ago`;
+}
+function _trashPreview(item, kind) {
+  if (kind === 'capture')  return (item.body || '').slice(0, 80) || '(no body)';
+  if (kind === 'session')  return (item.before || item.during || item.after || '').slice(0, 80) || '(no notes)';
+  if (kind === 'learning') return (item.sourceName || '(untitled)') + (item.takeaway ? ' — ' + item.takeaway.slice(0, 60) : '');
+  if (kind === 'daily')    return 'Daily Journal · ' + item.date;
+  return '';
+}
+function _collectTrashedVoiceNotes() {
+  const out = [];
+  const push = (v, kind, parentId, parentLabel) => out.push({ v, kind, parentId, parentLabel });
+  captures.forEach(c => (c.voiceNotes || []).forEach(v => {
+    if (isTrashed(v)) push(v, 'capture', c.id, `Capture · ${(c.body || '').slice(0, 40) || c.type || ''}`);
+  }));
+  (learning || []).forEach(e => (e.voiceNotes || []).forEach(v => {
+    if (isTrashed(v)) push(v, 'learning', e.id, `Learning · ${e.sourceName || ''}`);
+  }));
+  (dailyJournals || []).forEach(d => (d.voiceNotes || []).forEach(v => {
+    if (isTrashed(v)) push(v, 'daily', d.date, `Daily Journal · ${d.date}`);
+  }));
+  Object.values(sessions || {}).forEach(list => (list || []).forEach(s => (s.voiceNotes || []).forEach(v => {
+    if (isTrashed(v)) push(v, 'session', s.id, `Session · ${s.projectName || ''}`);
+  })));
+  return out.sort((a, b) => (b.v.deletedAt || '').localeCompare(a.v.deletedAt || ''));
+}
+
+function openSettingsTrash() {
+  const body = document.getElementById('settings-body');
+  const trashedCaps     = captures.filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const trashedDailies  = (dailyJournals || []).filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const trashedLearning = (learning || []).filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const trashedSessions = Object.values(sessions || {}).flat().filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const trashedVoice    = _collectTrashedVoiceNotes();
+
+  const row = (preview, deletedAt, restoreCall, deleteCall) => `
+    <div class="trash-row">
+      <div class="trash-row-text">
+        <div class="trash-row-preview">${esc(preview)}</div>
+        <div class="trash-row-meta">deleted ${_fmtTrashAge(deletedAt)}</div>
+      </div>
+      <button class="trash-restore-btn" onclick="${restoreCall}">Restore</button>
+      <button class="trash-purge-btn" onclick="${deleteCall}">Delete forever</button>
+    </div>`;
+
+  const sections = [];
+  if (trashedVoice.length) {
+    sections.push(`<div class="trash-section-hdr">Voice notes</div>` +
+      trashedVoice.map(({ v, kind, parentId, parentLabel }) =>
+        row(`🎤 ${v.title || 'Voice note'} — ${parentLabel}`, v.deletedAt,
+            `restoreVoiceFromTrash('${kind}','${esc(parentId)}','${esc(v.id)}')`,
+            `purgeVoiceFromTrash('${kind}','${esc(parentId)}','${esc(v.id)}')`)
+      ).join(''));
+  }
+  if (trashedCaps.length) {
+    sections.push(`<div class="trash-section-hdr">Captures</div>` +
+      trashedCaps.map(c => row(_trashPreview(c, 'capture'), c.deletedAt,
+        `restoreFromTrash('capture','${esc(c.id)}')`,
+        `purgeFromTrash('capture','${esc(c.id)}')`)).join(''));
+  }
+  if (trashedDailies.length) {
+    sections.push(`<div class="trash-section-hdr">Daily Journals</div>` +
+      trashedDailies.map(d => row(_trashPreview(d, 'daily'), d.deletedAt,
+        `restoreFromTrash('daily','${esc(d.date)}')`,
+        `purgeFromTrash('daily','${esc(d.date)}')`)).join(''));
+  }
+  if (trashedSessions.length) {
+    sections.push(`<div class="trash-section-hdr">Sessions</div>` +
+      trashedSessions.map(s => row(_trashPreview(s, 'session'), s.deletedAt,
+        `restoreFromTrash('session','${esc(s.id)}')`,
+        `purgeFromTrash('session','${esc(s.id)}','${esc(s.projectName || '')}')`)).join(''));
+  }
+  if (trashedLearning.length) {
+    sections.push(`<div class="trash-section-hdr">Learning</div>` +
+      trashedLearning.map(e => row(_trashPreview(e, 'learning'), e.deletedAt,
+        `restoreFromTrash('learning','${esc(e.id)}')`,
+        `purgeFromTrash('learning','${esc(e.id)}')`)).join(''));
+  }
+
+  body.innerHTML = settingsSubhdrHtml('Trash') + `
+    <div class="trash-body">
+      ${sections.length ? sections.join('') : `<div class="empty" style="padding:1.5rem;text-align:center;color:var(--text3)">Trash is empty.<br><span style="font-size:0.75rem">Items live here for 7 days before auto-purge.</span></div>`}
+    </div>`;
+}
+
+window.restoreFromTrash = function(kind, id) {
+  if (kind === 'capture')  restoreCapture(id);
+  else if (kind === 'session') restoreSession(id);
+  else if (kind === 'learning') restoreLearning(id);
+  else if (kind === 'daily') restoreDailyJournal(id);
+  toast('Restored');
+  openSettingsTrash();
+  render();
+};
+window.purgeFromTrash = function(kind, id, projectName) {
+  if (kind === 'capture')  hardDeleteCapture(id);
+  else if (kind === 'session') hardDeleteSession(id, projectName);
+  else if (kind === 'learning') hardDeleteLearning(id);
+  else if (kind === 'daily') hardDeleteDailyJournal(id);
+  toast('Deleted forever');
+  openSettingsTrash();
+  render();
+};
+window.restoreVoiceFromTrash = function(kind, parentId, voiceId) {
+  restoreVoiceInParent(kind, parentId, voiceId);
+  toast('Restored');
+  openSettingsTrash();
+  render();
+};
+window.purgeVoiceFromTrash = function(kind, parentId, voiceId) {
+  hardDeleteVoiceFromParent(kind, parentId, voiceId);
+  toast('Deleted forever');
+  openSettingsTrash();
+  render();
+};
 
 window.openLifeMetricAction = function(idx) {
   _settingsLifeAction = { idx, mode: 'menu' };
@@ -13427,6 +13723,7 @@ async function initialSync(uid) {
     }
 
     sweepOldDfts();
+    sweepTrash();
     render();
 
     // After every background loader settles, re-render so any tab whose
@@ -13738,9 +14035,35 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
+// ── Trash sweep ───────────────────────────────────────────────
+// Purge anything older than TRASH_TTL_MS. Runs on init + after sign-in
+// (so post-sync trash that aged past 7d on another device also clears).
+function sweepTrash() {
+  try {
+    captures.filter(isExpiredTrash).slice().forEach(c => hardDeleteCapture(c.id));
+    (learning || []).filter(isExpiredTrash).slice().forEach(e => hardDeleteLearning(e.id));
+    (dailyJournals || []).filter(isExpiredTrash).slice().forEach(d => hardDeleteDailyJournal(d.date));
+    for (const [proj, list] of Object.entries(sessions || {})) {
+      (list || []).filter(isExpiredTrash).slice().forEach(s => hardDeleteSession(s.id, proj));
+    }
+    // Voice notes within still-live parents.
+    const sweepVoice = (parent, kind, parentId) => {
+      if (!parent || !parent.voiceNotes) return;
+      const expired = parent.voiceNotes.filter(isExpiredTrash);
+      if (!expired.length) return;
+      expired.forEach(v => hardDeleteVoiceFromParent(kind, parentId, v.id));
+    };
+    captures.forEach(c => sweepVoice(c, 'capture', c.id));
+    (learning || []).forEach(e => sweepVoice(e, 'learning', e.id));
+    (dailyJournals || []).forEach(d => sweepVoice(d, 'daily', d.date));
+    Object.values(sessions || {}).forEach(list => (list || []).forEach(s => sweepVoice(s, 'session', s.id)));
+  } catch (e) { console.warn('Trash sweep error', e); }
+}
+
 // ── Init ──────────────────────────────────────────────────────
 migrateLegacyProjects();
 sweepOldDfts();
+sweepTrash();
 render();
 </script>
 </body>
