@@ -4463,10 +4463,10 @@ function renderToday() {
   // empty Quick Note cards inside Captures. They still live as regular
   // captures in the data — Journal continues to display them under Quick
   // Note unchanged.
-  const isVoiceOnlyCap = c => !(c.body || '').trim() && (c.voiceNotes || []).length > 0;
+  const isVoiceOnlyCap = c => !(c.body || '').trim() && liveVoiceNotes(c.voiceNotes).length > 0;
   const voiceOnlyCaps = caps.filter(isVoiceOnlyCap);
   const todayVoiceItems = voiceOnlyCaps
-    .flatMap(c => (c.voiceNotes || []).map(v => ({ ...v, _capId: c.id, _capTs: c.timestamp })))
+    .flatMap(c => liveVoiceNotes(c.voiceNotes).map(v => ({ ...v, _capId: c.id, _capTs: c.timestamp })))
     .sort((a, b) => (b._capTs || '').localeCompare(a._capTs || ''));
   caps = caps.filter(c => !isVoiceOnlyCap(c));
 
