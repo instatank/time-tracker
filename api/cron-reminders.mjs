@@ -22,14 +22,6 @@ const IST_OFFSET_MIN  = 5 * 60 + 30;
 // the nominal time, which is fine.
 const REMINDER_WINDOWS = [
   {
-    label: 'midday',
-    istMinute: 17 * 60,                  // 17:00 IST
-    title: 'Midday check',
-    body:  'Log what you’ve been up to.',
-    // Skip if any activity was logged in the last N minutes.
-    skipIfActiveWithinMin: 120,
-  },
-  {
     label: 'eod',
     istMinute: 23 * 60 + 30,             // 23:30 IST
     title: 'End of day',
