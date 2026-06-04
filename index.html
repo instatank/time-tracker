@@ -19,7 +19,7 @@
   })();
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="DayOS">
 <title>DayOS</title>
 <link rel="manifest" href="manifest.json">
@@ -252,15 +252,17 @@ html, body {
   position: relative;
   z-index: 10;
 }
-/* iOS standalone PWA fallback — if env() returns 0 for any reason (some
-   iOS versions / device shapes), force a minimum 50px top padding so
-   content can never clash with the status bar. Only kicks in when the
-   page is launched from the home screen, not in Safari. */
-@media all and (display-mode: standalone) {
-  #hdr {
-    padding-top: max(env(safe-area-inset-top, 0px), 50px);
-    height: calc(var(--hdr-h) + max(env(safe-area-inset-top, 0px), 50px));
-  }
+/* iOS standalone PWA fallback — env() and media queries weren't reliable
+   on the user's device. The .ios-pwa class is stamped by JS at module
+   start (see top of <script>) so this rule runs whenever the page is
+   launched from the home-screen icon, regardless of env() behaviour.
+   The 50px / 24px values are typical iPhone safe-area values; reading
+   the actual env() inset on top via max() ensures the rule never
+   under-pads on devices with bigger insets (Dynamic Island, etc). */
+html.ios-pwa #hdr,
+body.ios-pwa #hdr {
+  padding-top: max(env(safe-area-inset-top, 0px), 50px) !important;
+  height: calc(var(--hdr-h) + max(env(safe-area-inset-top, 0px), 50px)) !important;
 }
 .logo {
   font-size: 1.3rem;
@@ -474,11 +476,10 @@ html, body {
   border-top: 1px solid var(--border);
   background: var(--bg);
 }
-@media all and (display-mode: standalone) {
-  #nav {
-    padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
-    height: calc(var(--nav-h) + max(env(safe-area-inset-bottom, 0px), 24px));
-  }
+html.ios-pwa #nav,
+body.ios-pwa #nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px) !important;
+  height: calc(var(--nav-h) + max(env(safe-area-inset-bottom, 0px), 24px)) !important;
 }
 .nav-btn {
   flex: 1;
@@ -3798,6 +3799,23 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 </div>
 
 <script type="module">
+// ── iOS standalone PWA safe-area shim ────────────────────────
+// Runs before anything else. CSS env(safe-area-inset-*) sometimes
+// returns 0 on iOS even when a status bar overlay exists, and
+// (display-mode: standalone) media queries aren't always reliable.
+// JS detects standalone via navigator.standalone (iOS-only) or the
+// generic media query, and stamps body.ios-pwa so a hardcoded
+// fallback CSS rule below kicks in unconditionally.
+(function() {
+  const isStandalone =
+    (typeof navigator !== 'undefined' && navigator.standalone === true) ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (isStandalone) {
+    document.documentElement.classList.add('ios-pwa');
+    // Body may not exist yet — set on documentElement; CSS below targets both.
+    document.addEventListener('DOMContentLoaded', () => document.body.classList.add('ios-pwa'));
+  }
+})();
 import { initializeApp }                    from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
 import { getAuth, GoogleAuthProvider,
          signInWithPopup, signInWithRedirect,
