@@ -240,7 +240,8 @@ html, body {
   flex-shrink: 0;
   /* iOS PWA: shift the header down by the safe-area inset so the title
      row sits below the status bar (clock / battery / wifi) instead of
-     clashing with it. Total visual height = nav-h + the inset. */
+     clashing with it. env() is 0 in regular Safari (no overlap) so this
+     line is a no-op there. */
   height: calc(var(--hdr-h) + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) 1rem 0;
   display: flex;
@@ -250,6 +251,16 @@ html, body {
   background: var(--bg);
   position: relative;
   z-index: 10;
+}
+/* iOS standalone PWA fallback — if env() returns 0 for any reason (some
+   iOS versions / device shapes), force a minimum 50px top padding so
+   content can never clash with the status bar. Only kicks in when the
+   page is launched from the home screen, not in Safari. */
+@media all and (display-mode: standalone) {
+  #hdr {
+    padding-top: max(env(safe-area-inset-top, 0px), 50px);
+    height: calc(var(--hdr-h) + max(env(safe-area-inset-top, 0px), 50px));
+  }
 }
 .logo {
   font-size: 1.3rem;
@@ -462,6 +473,12 @@ html, body {
   align-items: stretch;
   border-top: 1px solid var(--border);
   background: var(--bg);
+}
+@media all and (display-mode: standalone) {
+  #nav {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+    height: calc(var(--nav-h) + max(env(safe-area-inset-bottom, 0px), 24px));
+  }
 }
 .nav-btn {
   flex: 1;
