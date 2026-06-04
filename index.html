@@ -238,11 +238,14 @@ html, body {
 /* ── Header ─────────────────────────────────────────────────── */
 #hdr {
   flex-shrink: 0;
-  height: var(--hdr-h);
+  /* iOS PWA: shift the header down by the safe-area inset so the title
+     row sits below the status bar (clock / battery / wifi) instead of
+     clashing with it. Total visual height = nav-h + the inset. */
+  height: calc(var(--hdr-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 1rem 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   position: relative;
@@ -449,12 +452,16 @@ html, body {
 /* ── Bottom nav ──────────────────────────────────────────────── */
 #nav {
   flex-shrink: 0;
-  height: var(--nav-h);
+  /* iOS PWA: extend the nav past the home-indicator zone so the icons
+     keep their full target height AND we don't leave visible deadspace
+     above the indicator. Padding-bottom holds the safe-area inset; the
+     icons themselves occupy var(--nav-h) above it. */
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   align-items: stretch;
   border-top: 1px solid var(--border);
   background: var(--bg);
-  padding-bottom: env(safe-area-inset-bottom);
 }
 .nav-btn {
   flex: 1;
