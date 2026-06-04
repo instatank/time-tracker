@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron-reminders", "schedule": "*/30 * * * *" }
+    { "path": "/api/cron-reminders?w=midday", "schedule": "30 11 * * *" },
+    { "path": "/api/cron-reminders?w=eod",    "schedule": "0 18 * * *" }
   ]
 }

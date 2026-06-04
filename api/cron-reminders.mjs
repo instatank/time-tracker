@@ -187,12 +187,16 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
 
-  // Are we inside one of the reminder windows right now?
-  const { minuteOfDay: nowMin } = nowInIST();
-  const window = REMINDER_WINDOWS.find(w => Math.abs(nowMin - w.istMinute) <= 15);
+  // Which window are we serving? Cron config pins each entry to its own
+  // exact UTC time AND tags itself via ?w=midday|eod, so the handler
+  // doesn't need to time-match — it just reads the label.
+  const url = new URL(req.url, 'http://localhost');
+  const wLabel = url.searchParams.get('w');
+  const window = REMINDER_WINDOWS.find(w => w.label === wLabel);
   if (!window) {
-    return res.status(200).json({ ok: true, skip: 'not-in-window', nowMin });
+    return res.status(400).json({ ok: false, error: 'missing or unknown ?w param', wLabel });
   }
+  const { minuteOfDay: nowMin } = nowInIST();
 
   let sa;
   try { sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT); }
