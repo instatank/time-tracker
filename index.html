@@ -3785,6 +3785,9 @@ import { getFirestore, collection, doc,
 import { getStorage, ref as storageRef,
          uploadBytes, deleteObject,
          getDownloadURL }                   from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js';
+import { getMessaging, getToken, onMessage,
+         deleteToken, isSupported as messagingSupported }
+                                            from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js';
 
 // ── Firebase ──────────────────────────────────────────────────
 const fbApp = initializeApp({
@@ -3799,6 +3802,91 @@ const auth = getAuth(fbApp);
 const db   = getFirestore(fbApp);
 const storage = getStorage(fbApp);
 let unsubs = [];
+
+// ── Push notifications (FCM) ─────────────────────────────────
+// Browser support gates everything — getMessaging() throws on
+// unsupported platforms (e.g. iOS Safari not installed as PWA).
+// The VAPID key here is the public key — safe to ship in client code.
+const FCM_VAPID_KEY = 'BBbnsiy08BdT-TIBn0MQgPpuABGpe0lWoGGr91MIO2H0phQ6r7mM6CEszGh3nBnnO9pD1xxHmUaPMY0XRifQdrw';
+let _messaging = null;
+async function getFcmMessaging() {
+  if (_messaging) return _messaging;
+  try {
+    if (!(await messagingSupported())) return null;
+    _messaging = getMessaging(fbApp);
+    // Foreground delivery — show our own toast for messages that arrive
+    // while the app is in focus (background ones go straight to the SW
+    // push handler in sw.js).
+    onMessage(_messaging, (msg) => {
+      const t = (msg.data && msg.data.title) || (msg.notification && msg.notification.title) || 'DayOS';
+      const b = (msg.data && msg.data.body)  || (msg.notification && msg.notification.body)  || '';
+      toast(`${t} · ${b}`, 4000);
+    });
+    return _messaging;
+  } catch (e) {
+    console.warn('FCM init failed', e);
+    return null;
+  }
+}
+
+// Per-device identifier stored locally so the same browser+device updates
+// the same Firestore doc when its token rotates. Tokens themselves can
+// change at any time (browser policy) and we re-register on every sign-in
+// to keep them fresh.
+const DEVICE_ID_KEY = 'dayos_device_id';
+function getDeviceId() {
+  let id = null;
+  try { id = localStorage.getItem(DEVICE_ID_KEY); } catch {}
+  if (!id) {
+    id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : 'd-' + Math.random().toString(36).slice(2, 12);
+    try { localStorage.setItem(DEVICE_ID_KEY, id); } catch {}
+  }
+  return id;
+}
+
+// Request permission + register token. Returns { ok, reason }.
+async function registerPushToken() {
+  if (!user) return { ok: false, reason: 'not-signed-in' };
+  const m = await getFcmMessaging();
+  if (!m) return { ok: false, reason: 'unsupported' };
+  // iOS Safari requires Add-to-Home-Screen + permission gesture.
+  let perm = Notification.permission;
+  if (perm === 'default') {
+    try { perm = await Notification.requestPermission(); }
+    catch { return { ok: false, reason: 'permission-error' }; }
+  }
+  if (perm !== 'granted') return { ok: false, reason: 'permission-denied' };
+
+  const swReg = await navigator.serviceWorker.ready;
+  let token;
+  try {
+    token = await getToken(m, { vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: swReg });
+  } catch (e) {
+    console.warn('FCM getToken failed', e);
+    return { ok: false, reason: 'token-fetch-failed' };
+  }
+  if (!token) return { ok: false, reason: 'no-token' };
+
+  const deviceId = getDeviceId();
+  await setDoc(doc(db, 'users', user.uid, 'devices', deviceId), {
+    token,
+    userAgent: navigator.userAgent || '',
+    platform:  navigator.platform || '',
+    createdAt: nowISTIso(),
+    lastSeen:  nowISTIso(),
+    disabled: false,
+  }, { merge: true });
+  return { ok: true, token, deviceId };
+}
+
+async function unregisterPushToken() {
+  const deviceId = getDeviceId();
+  if (user) {
+    try { await deleteDoc(doc(db, 'users', user.uid, 'devices', deviceId)); } catch {}
+  }
+  const m = await getFcmMessaging();
+  if (m) { try { await deleteToken(m); } catch {} }
+}
 
 // ── Constants ─────────────────────────────────────────────────
 // Category colors are read from CSS tokens so they re-theme instantly.
@@ -11930,6 +12018,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sleepEod',   icon: '🌙', label: 'Sleep & EOD',     sub: 'Auto-log sleep · end-of-day prompt'     },
   { id: 'appearance', icon: '🎨', label: 'Appearance',      sub: 'System · Light · Dark'                  },
   { id: 'sync',       icon: '☁️', label: 'Sync',            sub: 'Push · Pull · sign-out'                 },
+  { id: 'notify',     icon: '🔔', label: 'Notifications',   sub: 'Daily reminders · per-device toggle'    },
   { id: 'trash',      icon: '🗑',  label: 'Trash',           sub: 'Recover deleted entries · 7-day window' },
   { id: 'about',      icon: 'ℹ️', label: 'About',           sub: 'DayOS · version · feedback'             },
 ];
@@ -11964,6 +12053,7 @@ window.openSettingsSection = function(id) {
     case 'dayscore':   return openSettingsDayScore();
     case 'lifecheck':  return openSettingsLifeCheck();
     case 'trash':      return openSettingsTrash();
+    case 'notify':     return openSettingsNotify();
     default: {
       const s = SETTINGS_SECTIONS.find(x => x.id === id);
       toast(`${s?.label || id} — coming next`, 2000);
@@ -12977,6 +13067,75 @@ window.openSettingsTags       = openSettingsTags;
 window.openSettingsDayScore   = openSettingsDayScore;
 window.openSettingsLifeCheck  = openSettingsLifeCheck;
 window.openSettingsTrash      = openSettingsTrash;
+window.openSettingsNotify     = openSettingsNotify;
+
+// ── Settings → Notifications ─────────────────────────────────
+// Per-device opt-in for the two scheduled daily reminders (5pm + 11:30pm
+// IST, dispatched by the Vercel cron). Status line surfaces whether
+// notifications are supported by this browser/PWA at all, the current
+// permission state, and whether this specific device is registered for
+// pushes. The toggle calls registerPushToken / unregisterPushToken from
+// up top — those handle FCM permission + Firestore device-doc writes.
+async function openSettingsNotify() {
+  const body = document.getElementById('settings-body');
+  body.innerHTML = settingsSubhdrHtml('Notifications') + `
+    <div id="notify-body" style="padding:0.25rem 0">
+      <div style="color:var(--text3);font-size:0.85rem;padding:1rem 0.6rem">Checking…</div>
+    </div>`;
+  // Do the support / status checks asynchronously.
+  const root  = document.getElementById('notify-body');
+  if (!root) return;
+  const supported = await (async () => {
+    try { return await messagingSupported(); } catch { return false; }
+  })();
+  const perm   = (typeof Notification !== 'undefined') ? Notification.permission : 'unsupported';
+  const deviceId = getDeviceId();
+  let registered = false;
+  if (user) {
+    try {
+      const snap = await getDoc(doc(db, 'users', user.uid, 'devices', deviceId));
+      registered = snap.exists() && snap.data().disabled !== true;
+    } catch {}
+  }
+
+  const isOn = supported && perm === 'granted' && registered;
+  const blocker = !supported
+    ? 'Push isn’t supported here. On iPhone, add DayOS to your home screen and open it from there.'
+    : (perm === 'denied'
+        ? 'Notifications are blocked in your browser. Enable them in browser settings, then come back.'
+        : null);
+
+  root.innerHTML = `
+    <div class="settings-row" style="cursor:default;align-items:flex-start">
+      <span class="settings-row-icon">🔔</span>
+      <div class="settings-row-text">
+        <div class="settings-row-label">Daily reminders</div>
+        <div class="settings-row-sub">Two pushes per day in IST · 5:00 pm midday check · 11:30 pm end-of-day</div>
+        <div class="settings-row-sub" style="margin-top:0.4rem">
+          ${blocker ? `<span style="color:var(--danger)">${esc(blocker)}</span>` : `<span style="color:${isOn ? 'var(--tick-color)' : 'var(--text3)'}">${isOn ? '✓ This device is registered.' : 'This device is not registered.'}</span>`}
+        </div>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:0.8rem">
+      ${isOn
+        ? `<button class="btn-ghost" onclick="toggleNotifyOff()">Turn off on this device</button>`
+        : `<button class="btn-primary" onclick="toggleNotifyOn()" ${blocker ? 'disabled' : ''}>Turn on for this device</button>`}
+    </div>`;
+}
+
+window.toggleNotifyOn = async function() {
+  const r = await registerPushToken();
+  if (r.ok) { toast('Notifications enabled'); }
+  else if (r.reason === 'permission-denied') { toast('Permission denied'); }
+  else if (r.reason === 'unsupported') { toast('Not supported in this browser'); }
+  else { toast('Could not enable notifications: ' + r.reason, 5000); }
+  openSettingsNotify();
+};
+window.toggleNotifyOff = async function() {
+  await unregisterPushToken();
+  toast('Notifications turned off');
+  openSettingsNotify();
+};
 
 // ── Settings → Trash ─────────────────────────────────────────
 // Surfaces every soft-deleted item (entries + individual voice notes).
