@@ -131,20 +131,41 @@ async function lastActivityISTMin(projectId, uid, accessToken) {
   return lastMin;
 }
 
-async function listUsers(projectId, token) {
-  const r = await firestoreGet(`projects/${projectId}/databases/(default)/documents/users`, token);
-  return (r?.documents || []).map(d => d.name.split('/').pop());
-}
-
-async function listDeviceTokens(projectId, uid, token) {
-  const r = await firestoreGet(`projects/${projectId}/databases/(default)/documents/users/${uid}/devices`, token);
-  return (r?.documents || [])
-    .map(d => ({
-      id: d.name.split('/').pop(),
-      token: d.fields?.token?.stringValue,
-      disabled: d.fields?.disabled?.booleanValue === true,
-    }))
-    .filter(x => x.token && !x.disabled);
+// Collection-group query over every devices subcollection in the
+// database (users/{uid}/devices/{deviceId}). Bypasses the need for
+// users/{uid} docs to exist as concrete documents — they don't in
+// DayOS, where users are only ever in the path. Returns one row per
+// live registered device with uid + token + deviceId derived from
+// the doc's full name.
+async function listAllDevices(projectId, accessToken) {
+  const url = `${FIRESTORE_BASE}/projects/${projectId}/databases/(default)/documents:runQuery`;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: 'devices', allDescendants: true }],
+    },
+  };
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`devices group query → ${r.status} ${await r.text()}`);
+  const data = await r.json();
+  const out = [];
+  for (const row of (data || [])) {
+    if (!row.document) continue;
+    const parts = row.document.name.split('/'); // ../users/{uid}/devices/{id}
+    const usersIdx = parts.indexOf('users');
+    if (usersIdx < 0) continue;
+    const uid = parts[usersIdx + 1];
+    const deviceId = parts[parts.length - 1];
+    const fields = row.document.fields || {};
+    const token = fields.token?.stringValue;
+    const disabled = fields.disabled?.booleanValue === true;
+    if (!token || disabled) continue;
+    out.push({ uid, deviceId, token });
+  }
+  return out;
 }
 
 async function deleteDevice(projectId, uid, deviceId, token) {
@@ -200,12 +221,21 @@ export default async function handler(req, res) {
 
   const projectId = sa.project_id;
   const results = [];
-  let uids = [];
-  try { uids = await listUsers(projectId, accessToken); }
-  catch (e) { return res.status(500).json({ ok: false, error: 'list users: ' + e.message }); }
+  let allDevices = [];
+  try { allDevices = await listAllDevices(projectId, accessToken); }
+  catch (e) { return res.status(500).json({ ok: false, error: 'list devices: ' + e.message }); }
 
-  for (const uid of uids) {
-    // State check
+  if (allDevices.length === 0) {
+    return res.status(200).json({ ok: true, window: window.label, info: 'no devices registered', results: [] });
+  }
+
+  // Group devices by uid so the state check only fires once per user.
+  const byUid = {};
+  for (const d of allDevices) {
+    (byUid[d.uid] = byUid[d.uid] || []).push(d);
+  }
+
+  for (const [uid, devices] of Object.entries(byUid)) {
     if (window.skipIfActiveWithinMin) {
       const last = await lastActivityISTMin(projectId, uid, accessToken);
       if (last !== null && (nowMin - last) < window.skipIfActiveWithinMin) {
@@ -213,17 +243,16 @@ export default async function handler(req, res) {
         continue;
       }
     }
-    const devices = await listDeviceTokens(projectId, uid, accessToken);
     for (const d of devices) {
       const r = await sendFcm(projectId, accessToken, d.token, window.title, window.body, { window: window.label });
-      results.push({ uid, deviceId: d.id, ...r });
+      results.push({ uid, deviceId: d.deviceId, ...r });
       // Clean up dead tokens — FCM returns 404/UNREGISTERED for endpoints
       // that have unsubscribed (uninstalled PWA, denied permissions, etc).
       if (!r.ok && (r.status === 404 || /UNREGISTERED|INVALID_ARGUMENT/i.test(r.body))) {
-        await deleteDevice(projectId, uid, d.id, accessToken);
+        await deleteDevice(projectId, uid, d.deviceId, accessToken);
       }
     }
   }
 
-  return res.status(200).json({ ok: true, window: window.label, results });
+  return res.status(200).json({ ok: true, window: window.label, count: allDevices.length, results });
 }
