@@ -3183,6 +3183,30 @@ body.ios-pwa #nav {
   text-align: center;
 }
 .sheet-body { padding: 0.75rem 1rem 1.25rem; box-sizing: border-box; }
+/* Universal close × for tall sheets — anchored top-right so it doesn't
+   compete with the centered title. Used by Settings (full-screen on
+   phone where there's nothing tappable outside the sheet). */
+.sheet-close-btn {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  z-index: 2;
+}
+.sheet-close-btn:hover { background: var(--surface2); color: var(--text); }
+.sheet-close-btn:active { transform: scale(0.92); }
 
 /* ── Form elements ──────────────────────────────────────────── */
 .field { margin-bottom: 0.85rem; }
@@ -3707,6 +3731,7 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 <!-- Sheet: Settings (shell — sections wired up incrementally) -->
 <div id="sheet-settings" class="sheet">
   <div class="sheet-handle"></div>
+  <button class="sheet-close-btn" onclick="closeSheets()" aria-label="Close settings">×</button>
   <div class="sheet-title">Settings</div>
   <div class="sheet-body" id="settings-body"></div>
 </div>
