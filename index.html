@@ -4190,6 +4190,10 @@ function metricSlug(s) {
 let todayBksExpanded = false;
 let todayCapsExpanded = false;
 const TODAY_PREVIEW = 3;
+// Projects-tab list expansion — show only current-month entries by default,
+// fold older ones behind a "↓ N more" button. Resets on every render.
+let sessionsListExpanded = false;
+let learningListExpanded = false;
 let dfts = loadLocal('dayos_dfts_v1', {}); // { 'YYYY-MM-DD': 'focus task text' }
 // Pending DFT actions (✓ / ✕) are hidden by default; tapping the inline
 // row toggles their visibility. Resets on every state change.
@@ -5852,20 +5856,37 @@ function renderSessionsList(projectName) {
     });
   }
 
+  // Default view: only entries from the current IST month. Older entries
+  // collapse behind a "↓ N more" button so the list doesn't feel like an
+  // endless scroll. Search bypasses the month filter — when the user is
+  // hunting for something, they want every match, not just recent ones.
+  const ym = currentYM();
+  const isThisMonth = (s) => (s.date || (s.createdAt || '').slice(0, 10) || '').startsWith(ym);
+  const visibleList = (q || sessionsListExpanded)
+    ? list
+    : list.filter(isThisMonth);
+  const hiddenCount = list.length - visibleList.length;
+
   const emptyMsg = q
     ? `No sessions match <strong style="color:var(--text)">"${esc(globalSearch)}"</strong>.`
     : (projectName === null
         ? 'No sessions yet. Pick a project above, then tap + New Session.'
         : `No sessions yet for <strong style="color:var(--text)">${esc(projectName)}</strong>.<br>Tap + New Session to log one.`);
 
-  const cards = list.length
-    ? list.map(renderSessionCard).join('')
-    : `<div class="proj-empty" style="padding:1.5rem 1rem">${emptyMsg}</div>`;
+  const cards = visibleList.length
+    ? visibleList.map(renderSessionCard).join('')
+    : (list.length
+        ? `<div class="proj-empty" style="padding:1rem">No sessions this month yet.</div>`
+        : `<div class="proj-empty" style="padding:1.5rem 1rem">${emptyMsg}</div>`);
+  const moreToggle = (!q && hiddenCount > 0)
+    ? moreBtn(sessionsListExpanded, hiddenCount, 'toggleSessionsList')
+    : '';
 
   // Search + new-entry now live on the top row (search icon + unified
   // "+" add button alongside the Projects/Learning toggle).
   return `
     ${cards}
+    ${moreToggle}
     ${renderRelatedCaptures(projectName)}
   `;
 }
@@ -6675,15 +6696,31 @@ function renderLearningSub() {
 
   filtered = filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
+  // Default view: current-IST-month entries only. Search OR a non-default
+  // filter (a specific source type or hashtag) bypasses — those are
+  // intentional drill-ins where the user wants every match.
+  const ym = currentYM();
+  const isThisMonth = (e) => (e.date || (e.createdAt || '').slice(0, 10) || '').startsWith(ym);
+  const filterActive = q || (learningFilter && learningFilter !== 'all');
+  const visibleFiltered = (filterActive || learningListExpanded)
+    ? filtered
+    : filtered.filter(isThisMonth);
+  const hiddenCount = filtered.length - visibleFiltered.length;
+
   const emptyMsg = q
     ? `No entries match <strong style="color:var(--text)">"${esc(globalSearch)}"</strong>.`
     : (learning.length
         ? `No entries matching <strong style="color:var(--text)">${esc(learningFilterLabel(learningFilter))}</strong>.`
         : `No learning entries yet.<br>Tap + Log Learning to start capturing takeaways.`);
 
-  const cards = filtered.length
-    ? filtered.map(renderLearningCard).join('')
-    : `<div class="learning-empty">${emptyMsg}</div>`;
+  const cards = visibleFiltered.length
+    ? visibleFiltered.map(renderLearningCard).join('')
+    : (filtered.length
+        ? `<div class="learning-empty">No entries this month yet.</div>`
+        : `<div class="learning-empty">${emptyMsg}</div>`);
+  const moreToggle = (!filterActive && hiddenCount > 0)
+    ? moreBtn(learningListExpanded, hiddenCount, 'toggleLearningList')
+    : '';
 
   // Search + new-entry now live on the top row (search icon + unified
   // "+" add button alongside the Projects/Learning toggle).
@@ -6691,6 +6728,7 @@ function renderLearningSub() {
     <div class="proj-scroller">${sourceTypeRow}</div>
     <div class="filter-row" style="margin-top:-0.25rem">${tagRow}</div>
     ${cards}
+    ${moreToggle}
   `;
 }
 
@@ -6796,6 +6834,9 @@ window.deleteLearning = function(entryId) {
 
 window.setLearningFilter = function(f) {
   learningFilter = f;
+  // Switching filters means the user is intentionally drilling somewhere —
+  // collapse the list-expand state so the new view starts at "this month".
+  learningListExpanded = false;
   renderMain(true);
 };
 
@@ -7106,6 +7147,9 @@ function subscribeDailyJournal(uid) {
 window.selectProject = function(name) {
   selectedProject = name;
   projectCreating = false;
+  // Switching projects: collapse the sessions list so the new project starts
+  // at "this month" instead of inheriting the previous project's expanded view.
+  sessionsListExpanded = false;
   renderMain();
 };
 
@@ -11128,6 +11172,8 @@ window.setJFilter = function(f) {
 };
 window.setJProjectFilter = function(p) { journalProjectFilter = p; journalExpanded = false; renderMain(); };
 window.toggleJournal = function() { journalExpanded = !journalExpanded; renderMain(); };
+window.toggleSessionsList = function() { sessionsListExpanded = !sessionsListExpanded; renderMain(); };
+window.toggleLearningList = function() { learningListExpanded = !learningListExpanded; renderMain(); };
 // ── Unified global search ────────────────────────────────────────
 // One query, one results view across every page. setGlobalSearch updates
 // the query and re-renders (every page short-circuits to renderSearchResults
