@@ -1074,6 +1074,83 @@ body.ios-pwa #nav {
 }
 .dj-add-task-btn:hover { color: var(--accent); border-color: var(--accent); }
 
+/* ── AI proposal cards (sheet-ai-blocks) ───────────────────────
+   Each Claude-extracted block renders as a small card with category,
+   time, confidence, and accept/edit/reject actions. Keeps the same
+   visual rhythm as the rest of the app — block-card-style surface
+   with pill metadata and a row of small action buttons. */
+.ai-block-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  margin-top: 0.5rem;
+}
+.ai-block-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  margin-bottom: 0.35rem;
+}
+.ai-block-cat {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+.ai-block-time { color: var(--text2); }
+.ai-block-conf {
+  margin-left: auto;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ai-block-label { color: var(--text); font-size: 0.92rem; font-weight: 500; }
+.ai-block-note {
+  color: var(--text2);
+  font-size: 0.78rem;
+  margin-top: 0.2rem;
+  line-height: 1.4;
+}
+.ai-block-project {
+  color: var(--accent);
+  font-size: 0.7rem;
+  margin-top: 0.25rem;
+}
+.ai-block-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+.ai-block-btn {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+}
+.ai-block-btn.accept {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.ai-block-btn.accept:hover { opacity: 0.9; }
+.ai-block-btn.accept.armed {
+  background: var(--danger);
+  border-color: var(--danger);
+  transform: scale(1.02);
+}
+.ai-block-btn.reject {
+  flex: 0 0 auto;
+  color: var(--danger);
+}
+.ai-block-btn:hover { border-color: var(--border2); }
+
 /* ── Voice notes ───────────────────────────────────────────────
    Row shape mirrors .dj-task-row so attached voice notes feel like
    first-class siblings of tasks. Used both inside the capture sheet
@@ -3812,6 +3889,33 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       </div>
       <span class="add-pick-chev">›</span>
     </button>
+    <button class="add-pick-row" onclick="dispatchAdd('aiBlocks')">
+      <span class="add-pick-icon">✨</span>
+      <div class="add-pick-text">
+        <div class="add-pick-label">AI Log Activities</div>
+        <div class="add-pick-sub">Dump your day → AI proposes blocks</div>
+      </div>
+      <span class="add-pick-chev">›</span>
+    </button>
+  </div>
+</div>
+
+<!-- Sheet: AI Activity Log (paste / dictate → Claude extracts → confirm cards) -->
+<div id="sheet-ai-blocks" class="sheet">
+  <div class="sheet-handle"></div>
+  <button class="sheet-close-btn" onclick="closeSheets()" aria-label="Close">×</button>
+  <div class="sheet-title">✨ AI Log Activities</div>
+  <div class="sheet-body">
+    <div class="field">
+      <label class="field-label">Describe what you did today</label>
+      <textarea id="f-ai-blocks-input" placeholder="Paste or dictate, e.g. From 9 to 11 worked on the trading model, then a 30 min standup, then deep work on the deck for an hour…" style="min-height:140px"></textarea>
+      <div style="font-size:0.66rem;color:var(--text3);margin-top:0.35rem">Claude will propose blocks. You confirm each one.</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
+      <button class="btn-primary" id="ai-blocks-extract-btn" onclick="extractAiBlocks()">✨ Extract</button>
+    </div>
+    <div id="ai-blocks-results" style="margin-top:0.5rem"></div>
   </div>
 </div>
 
@@ -13662,6 +13766,201 @@ window.openCaptureEdit = openCaptureEdit;
 // dispatchAdd() routes to the appropriate existing flow. For options
 // that live on a different tab (Project Session, Learning Session) we
 // switch tab + sub-tab first, then open the modal.
+// ── AI: shared client ────────────────────────────────────────
+// Calls /api/ai/claude with a Firebase ID token. The server proxies to
+// Anthropic. Returns { ok, text, usage } or throws on auth / network /
+// API errors. Used by both extraction and (eventually) organize.
+async function aiCall(task, input, ctx = {}) {
+  if (!user) throw new Error('Not signed in');
+  const idToken = await user.getIdToken();
+  const r = await fetch('/api/ai/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+    body: JSON.stringify({ task, input, ctx }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.ok) {
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
+  return data;
+}
+
+// ── AI: Activity log extraction ──────────────────────────────
+// User opens this sheet, pastes (or dictates) a description of their
+// day, taps Extract. Claude returns a JSON array of proposed blocks;
+// we render each as a confirm card. Accept saves via the normal
+// syncBlockDoc path; Edit opens the Log Activity modal pre-filled;
+// Reject just drops it from the local list. Nothing persists until
+// the user explicitly confirms.
+let _aiProposedBlocks = [];
+
+function openAiBlocksSheet() {
+  _aiProposedBlocks = [];
+  const t = document.getElementById('f-ai-blocks-input');
+  if (t) t.value = '';
+  const btn = document.getElementById('ai-blocks-extract-btn');
+  if (btn) { btn.disabled = false; btn.textContent = '✨ Extract'; }
+  const r = document.getElementById('ai-blocks-results');
+  if (r) r.innerHTML = '';
+  openSheet('sheet-ai-blocks');
+  setTimeout(() => { const x = document.getElementById('f-ai-blocks-input'); if (x) x.focus(); }, 300);
+}
+
+window.extractAiBlocks = async function() {
+  const text = (document.getElementById('f-ai-blocks-input')?.value || '').trim();
+  if (!text) { toast('Add some text first'); return; }
+  if (text.length > 5000) { toast('Text too long — keep under 5000 characters'); return; }
+  const btn = document.getElementById('ai-blocks-extract-btn');
+  btn.disabled = true;
+  btn.textContent = '✨ Extracting…';
+  try {
+    const data = await aiCall('extract-blocks', { text }, { projects: projectsByRecency() });
+    // The model is asked for ONLY a JSON array, but it occasionally wraps
+    // in markdown — strip code fences then grab the first [...] block.
+    let raw = (data.text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    const m = raw.match(/\[[\s\S]*\]/);
+    if (!m) throw new Error('No JSON array found in AI response');
+    const parsed = JSON.parse(m[0]);
+    if (!Array.isArray(parsed)) throw new Error('AI response was not an array');
+    _aiProposedBlocks = parsed
+      .filter(p => p && p.duration_min)
+      .map(p => ({ ...p, _tid: uid() }));
+    if (!_aiProposedBlocks.length) {
+      toast('No blocks extracted — try adding more detail', 4000);
+    }
+    renderAiBlocksResults();
+    btn.disabled = false;
+    btn.textContent = '✨ Re-extract';
+  } catch (e) {
+    console.error('[AI extract]', e);
+    toast('AI error: ' + e.message, 6000);
+    btn.disabled = false;
+    btn.textContent = '✨ Extract';
+  }
+};
+
+function renderAiBlocksResults() {
+  const el = document.getElementById('ai-blocks-results');
+  if (!el) return;
+  if (!_aiProposedBlocks.length) {
+    el.innerHTML = '';
+    return;
+  }
+  const cards = _aiProposedBlocks.map(p => {
+    const cat = CATS.find(c => c.id === p.category) || CATS[0];
+    const timeText = p.start_time || '—:—';
+    const confColor = p.confidence === 'high' ? 'var(--tick-color)' :
+                      p.confidence === 'low'  ? 'var(--danger)' : 'var(--text3)';
+    return `
+      <div class="ai-block-card">
+        <div class="ai-block-meta">
+          <span class="ai-block-cat" style="background:${cat.color};color:var(--on-accent)">${cat.icon} ${esc(cat.label)}</span>
+          <span class="ai-block-time">${esc(timeText)} · ${parseInt(p.duration_min)}m</span>
+          <span class="ai-block-conf" style="color:${confColor}">${esc(p.confidence || '—')}</span>
+        </div>
+        <div class="ai-block-label">${esc(p.label || '')}</div>
+        ${p.note ? `<div class="ai-block-note">${esc(p.note)}</div>` : ''}
+        ${p.projectTag ? `<div class="ai-block-project">📁 ${esc(p.projectTag)}</div>` : ''}
+        <div class="ai-block-actions">
+          <button class="ai-block-btn accept" onclick="acceptAiBlock('${p._tid}')">✓ Accept</button>
+          <button class="ai-block-btn edit"   onclick="editAiBlock('${p._tid}')">✎ Edit</button>
+          <button class="ai-block-btn reject" onclick="rejectAiBlock('${p._tid}')">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  const acceptAll = _aiProposedBlocks.length > 1
+    ? `<div style="display:flex;justify-content:flex-end;margin:0.6rem 0 0.4rem">
+         <button class="ai-block-btn accept" data-delkey="ai-blocks-accept-all"
+           onclick="acceptAllAiBlocks()">✓ Accept all (${_aiProposedBlocks.length})</button>
+       </div>`
+    : '';
+  el.innerHTML = acceptAll + cards;
+}
+
+function saveProposedBlock(p) {
+  const date = todayStr();
+  const fallbackTime = (() => {
+    const n = nowIST();
+    return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+  })();
+  const label = String(p.label || '').trim();
+  const note  = String(p.note  || '').trim();
+  const b = {
+    id: uid(),
+    date,
+    start_time:  p.start_time || fallbackTime,
+    duration_min: parseInt(p.duration_min) || 30,
+    category:    CATS.some(c => c.id === p.category) ? p.category : 'deep_work',
+    label,
+    note,
+    energy_level: '',
+    projectTag:   p.projectTag || '',
+    tags:         extractTags(label + ' ' + note),
+    _synced: false,
+  };
+  blocks.push(b);
+  syncBlockDoc(b);
+  saveLocal(SK.BLOCKS, blocks);
+  return b;
+}
+
+window.acceptAiBlock = function(tid) {
+  const idx = _aiProposedBlocks.findIndex(p => p._tid === tid);
+  if (idx < 0) return;
+  saveProposedBlock(_aiProposedBlocks[idx]);
+  _aiProposedBlocks.splice(idx, 1);
+  renderAiBlocksResults();
+  toast('Block saved');
+  if (!_aiProposedBlocks.length) {
+    setTimeout(() => { closeSheets(); render(); }, 400);
+  }
+};
+
+window.rejectAiBlock = function(tid) {
+  _aiProposedBlocks = _aiProposedBlocks.filter(p => p._tid !== tid);
+  renderAiBlocksResults();
+};
+
+window.editAiBlock = function(tid) {
+  const p = _aiProposedBlocks.find(x => x._tid === tid);
+  if (!p) return;
+  // Drop it from the proposal list — once we hand off to the Log
+  // Activity modal, the user owns it.
+  _aiProposedBlocks = _aiProposedBlocks.filter(x => x._tid !== tid);
+  closeSheets();
+  setTimeout(() => {
+    openLogBlock();
+    // Pre-fill the modal once it's rendered.
+    setTimeout(() => {
+      try {
+        if (p.start_time) setTimeValue(p.start_time);
+        const labelEl = document.getElementById('f-label');
+        const noteEl  = document.getElementById('f-note');
+        if (labelEl) labelEl.value = p.label || '';
+        if (noteEl)  noteEl.value  = p.note  || '';
+        selCat    = CATS.some(c => c.id === p.category) ? p.category : 'deep_work';
+        selDur    = parseInt(p.duration_min) || 30;
+        selBlockProject = p.projectTag || '';
+        renderCatGrid();
+        renderDurPills();
+        renderBlockProjectPills();
+      } catch (e) { console.warn('prefill failed', e); }
+    }, 100);
+  }, 250);
+};
+
+window.acceptAllAiBlocks = function() {
+  armOrConfirmDelete('ai-blocks-accept-all', () => {
+    const n = _aiProposedBlocks.length;
+    _aiProposedBlocks.forEach(saveProposedBlock);
+    _aiProposedBlocks = [];
+    renderAiBlocksResults();
+    toast(`${n} block${n === 1 ? '' : 's'} saved`);
+    setTimeout(() => { closeSheets(); render(); }, 400);
+  });
+};
+
 window.openAddPicker = function() {
   openSheet('sheet-add-picker');
 };
@@ -13709,6 +14008,9 @@ window.dispatchAdd = function(action) {
       setTimeout(() => openNewLearning(), 30);
       return;
     }
+    case 'aiBlocks':
+      openAiBlocksSheet();
+      return;
   }
 };
 
