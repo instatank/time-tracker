@@ -7617,13 +7617,17 @@ function renderCalendar(opts) {
 
 function renderDayBlocks(date) {
   const bks = blocks.filter(b => b.date === date).sort((a,b) => b.start_time.localeCompare(a.start_time));
-  const caps = captures.filter(c => capDateIST(c) === date);
+  const caps = captures.filter(c => notTrashed(c) && capDateIST(c) === date);
+  // Pull the day's Daily Journal entry too (was missing — calendar view
+  // showed blocks + quick notes but not the structured journal entry).
+  const dj = (dailyJournals || []).find(j => j && notTrashed(j) && j.date === date && !isDailyEntryEmpty(j));
   const hasExtras = (ratings[date] > 0) || !!eodNotes[date] ||
     Object.values(lifeRatings[date] || {}).some(v => v > 0);
-  if (!bks.length && !caps.length && !hasExtras) return '<div class="empty">No data for this day.</div>';
-  if (!bks.length && !caps.length) return '';
+  if (!bks.length && !caps.length && !dj && !hasExtras) return '<div class="empty">No data for this day.</div>';
+  if (!bks.length && !caps.length && !dj) return '';
   return [
     ...bks.map(renderBlock),
+    ...(dj ? [`<div class="sec-hdr" style="margin-top:0.75rem"><span class="sec-title">Daily Journal</span></div>`, renderDailyJournalCard(dj)] : []),
     ...(caps.length ? [`<div class="sec-hdr" style="margin-top:0.75rem"><span class="sec-title">Captures</span></div>`, ...caps.map(renderCapPreview)] : [])
   ].join('');
 }
