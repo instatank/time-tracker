@@ -38,8 +38,8 @@ Output format:
     "start_time": "HH:MM" or null,
     "duration_min": <number>,
     "category": <id from category list>,
-    "label": "<3-6 words>",
-    "note": "<longer text or empty>",
+    "label": "<keywords only — see rules>",
+    "note": "<empty unless essential>",
     "projectTag": "<project name from list or empty>",
     "confidence": "high"|"medium"|"low"
   }
@@ -51,7 +51,19 @@ Rules:
 - Map each activity to the closest category. Never invent categories.
 - Match projects to the list exactly. Never invent project names.
 - Confidence "low" for vague/uncertain items.
-- Return ONLY the JSON array.`;
+
+label rules (CRITICAL — be terse):
+- 1-4 words. Keywords or short phrases. Never a full sentence.
+- Examples: "Trading model", "Standup", "Deck deep work", "Walk", "Email triage"
+- Do NOT use articles ("the", "a") or filler ("worked on", "spent time on").
+- Do NOT include duration or time in the label.
+
+note rules:
+- Default to empty string. Only fill if there's a single critical detail not captured by the label.
+- If filled, 1 short phrase max. No sentences.
+- Never restate the label. Never include time/duration.
+
+Return ONLY the JSON array.`;
     },
   },
   'organize': {
