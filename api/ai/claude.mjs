@@ -26,11 +26,16 @@ const TASKS = {
       const projects = (ctx.projects || []).length
         ? (ctx.projects).map(p => `"${p}"`).join(', ')
         : '(none — leave projectTag empty)';
+      const recentLabels = (ctx.recentLabels || []).length
+        ? (ctx.recentLabels).map(l => `"${l}"`).join(', ')
+        : '(none yet)';
       return `You extract structured activity blocks from a personal time-tracking description. The user is logging activities they DID today. Return ONLY a JSON array, no preamble, no markdown code fence.
 
 Available categories (use ONLY these IDs): deep_work, learning, practice, routine, leisure, leaks
 
 Active projects (use ONLY these names exactly, or empty string): ${projects}
+
+User's recently used labels (REUSE these exactly when the activity matches one of them — this preserves the user's own vocabulary): ${recentLabels}
 
 Output format:
 [
@@ -45,33 +50,35 @@ Output format:
   }
 ]
 
-Rules:
+General rules:
 - Only extract activities the user clearly DID. Skip future plans, intentions, or generic mentions.
 - If a start time isn't given but duration is clear, set "start_time" to null.
 - Map each activity to the closest category. Never invent categories.
 - Match projects to the list exactly. Never invent project names.
 - Confidence "low" for vague/uncertain items.
 
-label rules (CRITICAL — be terse):
+Splitting rule (IMPORTANT):
+- Each distinct activity becomes its OWN entry, even if mentioned in one phrase.
+- Phrases like "after X", "then Y", "while Z", "followed by W", "and then" indicate a SEPARATE later activity. Always split into two (or more) entries.
+- Example: "chilled with mom after breakfast" → TWO entries:
+    (1) Breakfast (routine, ~30m)
+    (2) Break and chill / Social (leisure, ~30m, note: "with mom")
+- Example: "deep work on trading model then standup" → TWO entries.
+- Never merge two activities into one entry just because they share a sentence.
+
+label rules (CRITICAL — be terse + reuse history):
 - 1-4 words. Keywords or short phrases. Never a full sentence.
-- Examples: "Trading model", "Standup", "Deck deep work", "Walk", "Email triage"
+- FIRST check the recent-labels list above. If the current activity matches one of them semantically, use that exact label (preserves user's conventions like "Wake MR", "Night Routine", "Break and chill", "Social").
+- Only invent a new label if no recent label fits.
 - Do NOT use articles ("the", "a") or filler ("worked on", "spent time on").
 - Do NOT include duration or time in the label.
 
 note rules (CRITICAL — almost always empty):
-- Default to "". The label + category + time already say WHAT and WHEN
-  the activity was. Notes are ONLY for genuinely additional context
-  the user explicitly mentions that the structured fields don't cover.
-- Do NOT restate, paraphrase, or elaborate on the label. If the label
-  is "Breakfast", the note is NOT "had breakfast" or "breakfast meal".
-- Do NOT describe what the category already conveys. If category is
-  "deep_work" and label is "Deck", the note is NOT "deep work session
-  on the deck" or "continued working".
-- Do NOT include time, sequencing, or duration ("after standup",
-  "for an hour", "in the morning").
-- DO fill the note if the user mentions: a specific person (e.g.
-  "with Priya"), a concrete artifact ("v3 of the spec"), a notable
-  outcome ("shipped", "stuck on X"), or context the label can't fit.
+- Default to "". The label + category + time already say WHAT and WHEN. Notes are ONLY for genuinely additional context the user explicitly mentions.
+- Do NOT restate, paraphrase, or elaborate on the label. If the label is "Breakfast", the note is NOT "had breakfast" or "breakfast meal".
+- Do NOT describe what the category already conveys. If category is "deep_work" and label is "Deck", the note is NOT "deep work session on the deck".
+- Do NOT include time, sequencing, or duration ("after standup", "for an hour", "in the morning").
+- DO fill the note if the user mentions: a specific person (e.g. "with Priya", "with mom"), a concrete artifact ("v3 of the spec"), a notable outcome ("shipped", "stuck on X"), or context the label can't fit.
 - 1 short phrase max. No sentences.
 
 Return ONLY the JSON array.`;

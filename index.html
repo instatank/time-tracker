@@ -13835,7 +13835,32 @@ window.extractAiBlocks = async function() {
   btn.disabled = true;
   btn.textContent = '✨ Extracting…';
   try {
-    const data = await aiCall('extract-blocks', { text }, { projects: projectsByRecency() });
+    // Build the per-user style hints the server prompt injects: the active
+    // project list, plus the most recently used distinct block labels (top
+    // 40, recency-ordered). The label history lets Claude match the user's
+    // existing vocabulary (e.g. "Wake MR", "Break and chill", "Night
+    // Routine") instead of inventing new variants for the same activity.
+    const recentLabels = (() => {
+      const seen = new Set();
+      const out = [];
+      const sorted = [...blocks].sort((a, b) =>
+        (b.date + (b.start_time || '')).localeCompare(a.date + (a.start_time || ''))
+      );
+      for (const b of sorted) {
+        const lbl = (b.label || '').trim();
+        if (!lbl) continue;
+        const key = lbl.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(lbl);
+        if (out.length >= 40) break;
+      }
+      return out;
+    })();
+    const data = await aiCall('extract-blocks', { text }, {
+      projects: projectsByRecency(),
+      recentLabels,
+    });
     // The model is asked for ONLY a JSON array, but it occasionally wraps
     // in markdown — strip code fences then grab the first [...] block.
     let raw = (data.text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
