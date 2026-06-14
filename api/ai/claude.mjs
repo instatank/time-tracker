@@ -58,10 +58,21 @@ label rules (CRITICAL — be terse):
 - Do NOT use articles ("the", "a") or filler ("worked on", "spent time on").
 - Do NOT include duration or time in the label.
 
-note rules:
-- Default to empty string. Only fill if there's a single critical detail not captured by the label.
-- If filled, 1 short phrase max. No sentences.
-- Never restate the label. Never include time/duration.
+note rules (CRITICAL — almost always empty):
+- Default to "". The label + category + time already say WHAT and WHEN
+  the activity was. Notes are ONLY for genuinely additional context
+  the user explicitly mentions that the structured fields don't cover.
+- Do NOT restate, paraphrase, or elaborate on the label. If the label
+  is "Breakfast", the note is NOT "had breakfast" or "breakfast meal".
+- Do NOT describe what the category already conveys. If category is
+  "deep_work" and label is "Deck", the note is NOT "deep work session
+  on the deck" or "continued working".
+- Do NOT include time, sequencing, or duration ("after standup",
+  "for an hour", "in the morning").
+- DO fill the note if the user mentions: a specific person (e.g.
+  "with Priya"), a concrete artifact ("v3 of the spec"), a notable
+  outcome ("shipped", "stuck on X"), or context the label can't fit.
+- 1 short phrase max. No sentences.
 
 Return ONLY the JSON array.`;
     },
