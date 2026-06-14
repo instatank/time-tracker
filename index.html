@@ -1002,6 +1002,102 @@ body.ios-pwa #nav {
   color: var(--text3);
   margin-bottom: 0.35rem;
 }
+/* Row that puts the ✨ Organize button to the right of the section label.
+   The label keeps its own margin-bottom so the textarea sits below the
+   row, not below the button. */
+.dj-section-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+.dj-section-hdr .dj-section-label { margin-bottom: 0; }
+.dj-organize-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  color: var(--text2);
+  font-size: 0.65rem;
+  letter-spacing: 0.02em;
+  padding: 0.18rem 0.55rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dj-organize-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.dj-organize-btn:active:not(:disabled) { transform: scale(0.97); }
+.dj-organize-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.dj-organize-btn.busy { color: var(--accent); border-color: var(--accent); }
+
+/* Comparison panel that appears under the textarea once Claude returns.
+   Tabs flip between Original (read-only echo of what was sent) and
+   Cleaned (the AI output). Bottom row of action buttons commits the
+   user's pick or discards. */
+.dj-organize-result {
+  margin-top: 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.dj-organize-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+.dj-organize-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.dj-organize-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+.dj-organize-body {
+  padding: 0.6rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.dj-organize-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.45rem 0.7rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+.dj-organize-actions button {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  cursor: pointer;
+}
+.dj-organize-actions .accept {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.dj-organize-actions .accept:hover { opacity: 0.9; }
+.dj-organize-actions .reject:hover { color: var(--danger); border-color: var(--danger); }
 .dj-tasks { display: flex; flex-direction: column; gap: 0.25rem; }
 /* Task row uses CSS Grid (auto · 1fr · auto) — checkbox and × button size
    to their content, the middle text column takes the rest. Deterministic
@@ -3654,10 +3750,15 @@ select option { background: var(--surface2); }
     <!-- Daily Journal three-section editor — shown only when type='daily' -->
     <div class="field" id="f-daily-fields" style="display:none">
       <div class="dj-section">
-        <label class="dj-section-label">THOUGHTS</label>
+        <div class="dj-section-hdr">
+          <label class="dj-section-label">THOUGHTS</label>
+          <button type="button" class="dj-organize-btn" id="dj-organize-thoughts-btn"
+            onclick="organizeDailyField('thoughts')" title="AI: tighten this section">✨ Organize</button>
+        </div>
         <textarea id="f-daily-thoughts" placeholder="Anything on your mind…"
-          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"
+          oninput="onDailyFieldChange();onDailyOrganizeInputChange('thoughts')" onblur="saveDailyJournalSilent()"
           style="min-height:80px"></textarea>
+        <div id="dj-organize-thoughts-result" class="dj-organize-result" style="display:none"></div>
       </div>
       <div class="dj-section">
         <label class="dj-section-label">TASKS</label>
@@ -3667,9 +3768,14 @@ select option { background: var(--surface2); }
         </div>
       </div>
       <div class="dj-section">
-        <label class="dj-section-label">REFLECTION</label>
+        <div class="dj-section-hdr">
+          <label class="dj-section-label">REFLECTION</label>
+          <button type="button" class="dj-organize-btn" id="dj-organize-reflection-btn"
+            onclick="organizeDailyField('reflection')" title="AI: tighten this section">✨ Organize</button>
+        </div>
         <textarea id="f-daily-reflection" placeholder="End of day reflection…"
-          oninput="onDailyFieldChange()" onblur="saveDailyJournalSilent()"></textarea>
+          oninput="onDailyFieldChange();onDailyOrganizeInputChange('reflection')" onblur="saveDailyJournalSilent()"></textarea>
+        <div id="dj-organize-reflection-result" class="dj-organize-result" style="display:none"></div>
       </div>
       <!-- Entertainment Cap binary toggle — auto-saved like the rest. -->
       <div class="dj-ec-row">
@@ -9735,6 +9841,14 @@ function initDailyJournalEditor(date) {
   const r = document.getElementById('f-daily-reflection');
   if (t) t.value = dailyDraftEntry.thoughts || '';
   if (r) r.value = dailyDraftEntry.reflection || '';
+  // Reset any AI-organize comparison panels left over from a previous open
+  // (the state is in-memory only — never persisted to the entry).
+  _djOrganizeState.thoughts = null;
+  _djOrganizeState.reflection = null;
+  renderDjOrganizeResult('thoughts');
+  renderDjOrganizeResult('reflection');
+  onDailyOrganizeInputChange('thoughts');
+  onDailyOrganizeInputChange('reflection');
   captureFormTags = new Set((dailyDraftEntry.tags || []).map(normalizeTag).filter(Boolean));
   // Mirror the draft's voice-notes array into the form-draft variable so
   // the UI list + recorder callbacks operate on the same data shape used
@@ -14005,6 +14119,114 @@ window.acceptAllAiBlocks = function() {
     toast(`${n} block${n === 1 ? '' : 's'} saved`);
     setTimeout(() => { closeSheets(); render(); }, 400);
   });
+};
+
+// ── AI: Organize (Daily Journal Thoughts / Reflection) ─────
+// Two separate buttons, one per section — Thoughts is the morning
+// surface, Reflection is end-of-day. User taps Organize, Claude
+// returns a tightened version, user picks Original or Cleaned. On
+// Accept, the textarea content is replaced and saveDailyJournalSilent
+// persists; original is NOT preserved (per user spec — they want the
+// cleaned version to BE the entry).
+const _DJ_FIELD_IDS = {
+  thoughts:   { textarea: 'f-daily-thoughts',  resultPanel: 'dj-organize-thoughts-result',  btn: 'dj-organize-thoughts-btn'  },
+  reflection: { textarea: 'f-daily-reflection', resultPanel: 'dj-organize-reflection-result', btn: 'dj-organize-reflection-btn' },
+};
+const _djOrganizeState = { thoughts: null, reflection: null };
+// shape: { tab: 'original'|'cleaned', original: str, cleaned: str }
+
+window.onDailyOrganizeInputChange = function(field) {
+  const ids = _DJ_FIELD_IDS[field];
+  if (!ids) return;
+  const ta  = document.getElementById(ids.textarea);
+  const btn = document.getElementById(ids.btn);
+  if (!ta || !btn) return;
+  // Only enable Organize when there's something meaningful to tighten.
+  // ~30 chars / ~5 words is a reasonable floor — shorter than that and
+  // the model has nothing to do.
+  const len = (ta.value || '').trim().length;
+  btn.disabled = len < 30;
+};
+
+window.organizeDailyField = async function(field) {
+  const ids = _DJ_FIELD_IDS[field];
+  if (!ids) return;
+  const ta  = document.getElementById(ids.textarea);
+  const btn = document.getElementById(ids.btn);
+  if (!ta || !btn) return;
+  const original = (ta.value || '').trim();
+  if (!original) { toast('Nothing to organize yet'); return; }
+  // Flush any pending typing into the draft before calling — keeps the
+  // autosave in sync if the user backgrounds the modal mid-call.
+  try { saveDailyJournalSilent(); } catch {}
+
+  btn.disabled = true;
+  btn.classList.add('busy');
+  btn.textContent = '✨ Organizing…';
+  try {
+    const data = await aiCall('organize', { text: original });
+    const cleaned = (data.text || '').trim();
+    if (!cleaned) throw new Error('AI returned empty output');
+    _djOrganizeState[field] = { tab: 'cleaned', original, cleaned };
+    renderDjOrganizeResult(field);
+  } catch (e) {
+    console.error('[AI organize]', e);
+    toast('AI error: ' + e.message, 6000);
+  } finally {
+    btn.classList.remove('busy');
+    btn.disabled = false;
+    btn.textContent = '✨ Organize';
+  }
+};
+
+function renderDjOrganizeResult(field) {
+  const ids = _DJ_FIELD_IDS[field];
+  const el  = document.getElementById(ids.resultPanel);
+  if (!el) return;
+  const state = _djOrganizeState[field];
+  if (!state) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const body = state.tab === 'cleaned' ? state.cleaned : state.original;
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="dj-organize-tabs">
+      <button type="button" class="dj-organize-tab ${state.tab === 'original' ? 'active' : ''}"
+        onclick="setDjOrganizeTab('${field}','original')">Original</button>
+      <button type="button" class="dj-organize-tab ${state.tab === 'cleaned' ? 'active' : ''}"
+        onclick="setDjOrganizeTab('${field}','cleaned')">Cleaned</button>
+    </div>
+    <div class="dj-organize-body">${esc(body)}</div>
+    <div class="dj-organize-actions">
+      <button type="button" class="reject" onclick="rejectDjOrganize('${field}')">Keep original</button>
+      <button type="button" class="accept" onclick="acceptDjOrganize('${field}')">Use cleaned</button>
+    </div>`;
+}
+
+window.setDjOrganizeTab = function(field, tab) {
+  const state = _djOrganizeState[field];
+  if (!state) return;
+  state.tab = tab;
+  renderDjOrganizeResult(field);
+};
+
+window.acceptDjOrganize = function(field) {
+  const ids = _DJ_FIELD_IDS[field];
+  const state = _djOrganizeState[field];
+  if (!ids || !state) return;
+  const ta = document.getElementById(ids.textarea);
+  if (ta) {
+    ta.value = state.cleaned;
+    // Trigger the existing autosave path so the cleaned version persists.
+    try { saveDailyJournalSilent(); } catch {}
+    onDailyOrganizeInputChange(field);
+  }
+  _djOrganizeState[field] = null;
+  renderDjOrganizeResult(field);
+  toast('Used cleaned version');
+};
+
+window.rejectDjOrganize = function(field) {
+  _djOrganizeState[field] = null;
+  renderDjOrganizeResult(field);
 };
 
 window.openAddPicker = function() {
