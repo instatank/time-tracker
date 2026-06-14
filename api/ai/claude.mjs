@@ -74,11 +74,12 @@ label rules (CRITICAL — be terse + reuse history):
 - Do NOT include duration or time in the label.
 
 note rules (CRITICAL — almost always empty):
+- Guiding principle: if the user took the trouble to mention something specific that the label / category / time don't already capture, THAT'S the note. Everything else stays empty.
 - Default to "". The label + category + time already say WHAT and WHEN. Notes are ONLY for genuinely additional context the user explicitly mentions.
 - Do NOT restate, paraphrase, or elaborate on the label. If the label is "Breakfast", the note is NOT "had breakfast" or "breakfast meal".
 - Do NOT describe what the category already conveys. If category is "deep_work" and label is "Deck", the note is NOT "deep work session on the deck".
 - Do NOT include time, sequencing, or duration ("after standup", "for an hour", "in the morning").
-- DO fill the note if the user mentions: a specific person (e.g. "with Priya", "with mom"), a concrete artifact ("v3 of the spec"), a notable outcome ("shipped", "stuck on X"), or context the label can't fit.
+- DO fill the note if the user mentions: a specific person (e.g. "with Priya", "with mom"), a concrete artifact ("v3 of the spec"), a notable outcome ("shipped", "stuck on X"), a mood / state ("groggy", "energised"), or context the label can't fit.
 - 1 short phrase max. No sentences.
 
 Return ONLY the JSON array.`;
