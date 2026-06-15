@@ -85,6 +85,39 @@ note rules (CRITICAL — almost always empty):
 Return ONLY the JSON array.`;
     },
   },
+  'extract-tasks': {
+    model: 'claude-sonnet-4-6',
+    maxTokens: 1024,
+    buildUserMessage: (input) => String(input.text || '').slice(0, 5000),
+    system: () =>
+      `You extract a to-do list from a personal voice dump. Return ONLY a JSON array of short task strings — no preamble, no markdown code fence.
+
+Output format:
+["<task 1>", "<task 2>", ...]
+
+What counts as a task (extract ONLY these):
+- Concrete actions the user needs/wants to do. Verb + object. Future-ish or imperative in feel.
+- Heuristic: would the sentence read naturally with "I need to..." prefixed? If yes → task.
+- Examples to extract: "Call the bank about the loan", "Follow up with Priya re: deck", "Review v3 of the spec", "Book the venue".
+
+What does NOT count as a task (skip these):
+- Ruminations: "worried about X", "thinking about Y".
+- Observations: "noticed Z was off", "X felt slow today".
+- Feelings: "frustrated about Q", "energised after the walk".
+- Present-tense reports: "working on the deck right now".
+- Past-tense reports: "did Q today", "spent 2h on R".
+- Generic intentions without an object: "be more disciplined", "stay focused".
+
+Task wording rules (CRITICAL — be terse):
+- 5-8 words max. Verb + object. Imperative or short fragment.
+- Drop "I need to", "I should", "I have to" — they're implied.
+- Drop filler ("probably", "remember to", "maybe", "kind of").
+- Compress long context into a "re:" tail when useful: "Call bank re: loan", "Follow up Priya re: deck v3".
+- Keep concrete details (names, numbers, version IDs) verbatim.
+- If no tasks are present in the input, return [].
+
+Return ONLY the JSON array.`,
+  },
   'organize': {
     model: 'claude-sonnet-4-6',
     maxTokens: 2000,

@@ -1098,6 +1098,110 @@ body.ios-pwa #nav {
 }
 .dj-organize-actions .accept:hover { opacity: 0.9; }
 .dj-organize-actions .reject:hover { color: var(--danger); border-color: var(--danger); }
+
+/* Task extraction panel — appears inline beneath the Tasks section
+   when ✨ Add via AI is tapped. Holds a small dump textarea, an
+   Extract button, then a list of proposal pills with per-task
+   accept/reject and an Accept-all shortcut. */
+.dj-extract-tasks-panel {
+  margin-top: 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.dj-extract-tasks-input {
+  padding: 0.55rem 0.7rem;
+}
+.dj-extract-tasks-input textarea {
+  width: 100%;
+  min-height: 70px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.dj-extract-tasks-input textarea:focus { border-color: var(--accent); }
+.dj-extract-tasks-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0 0.7rem 0.5rem;
+}
+.dj-extract-tasks-actions button {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+}
+.dj-extract-tasks-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.dj-extract-tasks-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.dj-task-proposals {
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.dj-task-proposals-bulk {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.72rem;
+  color: var(--text3);
+  margin-bottom: 0.2rem;
+}
+.dj-task-proposals-bulk .spacer { flex: 1; }
+.dj-task-proposals-bulk button {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+.dj-task-proposals-bulk button.armed {
+  background: var(--danger);
+  border-color: var(--danger);
+  transform: scale(1.02);
+}
+.dj-task-proposal {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: var(--surface2);
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.dj-task-proposal .text { min-width: 0; overflow-wrap: anywhere; }
+.dj-task-proposal button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.18rem 0.45rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+  color: var(--text2);
+}
+.dj-task-proposal button.accept { color: var(--accent); border-color: var(--accent); }
+.dj-task-proposal button.reject { color: var(--danger); border-color: var(--danger); }
 .dj-tasks { display: flex; flex-direction: column; gap: 0.25rem; }
 /* Task row uses CSS Grid (auto · 1fr · auto) — checkbox and × button size
    to their content, the middle text column takes the rest. Deterministic
@@ -3761,11 +3865,16 @@ select option { background: var(--surface2); }
         <div id="dj-organize-thoughts-result" class="dj-organize-result" style="display:none"></div>
       </div>
       <div class="dj-section">
-        <label class="dj-section-label">TASKS</label>
+        <div class="dj-section-hdr">
+          <label class="dj-section-label">TASKS</label>
+          <button type="button" class="dj-organize-btn" id="dj-extract-tasks-btn"
+            onclick="openExtractTasks()" title="AI: pull tasks from a dump">✨ Add via AI</button>
+        </div>
         <div class="dj-tasks" id="f-daily-tasks"></div>
         <div id="f-daily-add-task-row">
           <button type="button" class="dj-add-task-btn" onclick="openAddDailyTask()">+ add task</button>
         </div>
+        <div id="dj-extract-tasks-panel" class="dj-extract-tasks-panel" style="display:none"></div>
       </div>
       <div class="dj-section">
         <div class="dj-section-hdr">
@@ -9849,6 +9958,8 @@ function initDailyJournalEditor(date) {
   renderDjOrganizeResult('reflection');
   onDailyOrganizeInputChange('thoughts');
   onDailyOrganizeInputChange('reflection');
+  // Same for the task-extraction panel.
+  if (typeof closeExtractTasks === 'function') closeExtractTasks();
   captureFormTags = new Set((dailyDraftEntry.tags || []).map(normalizeTag).filter(Boolean));
   // Mirror the draft's voice-notes array into the form-draft variable so
   // the UI list + recorder callbacks operate on the same data shape used
@@ -14228,6 +14339,153 @@ window.rejectDjOrganize = function(field) {
   _djOrganizeState[field] = null;
   renderDjOrganizeResult(field);
 };
+
+// ── AI: Task extraction (Daily Journal Tasks section) ───────
+// Tap ✨ Add via AI → inline panel with a small dump textarea →
+// Extract calls Claude → returns a JSON array of short task strings
+// → renders each as a pill with ✓ / ✕. Accept appends to the live
+// dailyDraftEntry.tasks array (same shape openAddDailyTask creates),
+// autosave persists, panel stays open for further extraction or close.
+let _djTaskProposals = []; // array of { _tid, text }
+let _djTaskPanelOpen = false;
+
+window.openExtractTasks = function() {
+  if (!dailyDraftEntry) return;
+  _djTaskPanelOpen = true;
+  _djTaskProposals = [];
+  renderExtractTasksPanel('');
+  setTimeout(() => {
+    const ta = document.getElementById('dj-extract-tasks-input');
+    if (ta) ta.focus();
+  }, 50);
+};
+
+window.closeExtractTasks = function() {
+  _djTaskPanelOpen = false;
+  _djTaskProposals = [];
+  const el = document.getElementById('dj-extract-tasks-panel');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+};
+
+function renderExtractTasksPanel(currentInputValue) {
+  const el = document.getElementById('dj-extract-tasks-panel');
+  if (!el) return;
+  if (!_djTaskPanelOpen) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  const proposalsHtml = _djTaskProposals.length ? `
+    <div class="dj-task-proposals">
+      <div class="dj-task-proposals-bulk">
+        <span>${_djTaskProposals.length} proposed</span>
+        <span class="spacer"></span>
+        <button data-delkey="dj-extract-tasks-accept-all"
+          onclick="acceptAllExtractedTasks()">✓ Accept all</button>
+      </div>
+      ${_djTaskProposals.map(t => `
+        <div class="dj-task-proposal">
+          <span class="text">${esc(t.text)}</span>
+          <button class="accept" onclick="acceptExtractedTask('${t._tid}')">✓</button>
+          <button class="reject" onclick="rejectExtractedTask('${t._tid}')">✕</button>
+        </div>`).join('')}
+    </div>` : '';
+  el.innerHTML = `
+    <div class="dj-extract-tasks-input">
+      <textarea id="dj-extract-tasks-input"
+        placeholder="Dump your to-dos. AI pulls only concrete actions, skips ruminations / observations / feelings."
+        oninput="onExtractTasksInput()">${esc(currentInputValue || '')}</textarea>
+    </div>
+    <div class="dj-extract-tasks-actions">
+      <button onclick="closeExtractTasks()">Close</button>
+      <button class="primary" id="dj-extract-tasks-go" onclick="runExtractTasks()">✨ Extract</button>
+    </div>
+    ${proposalsHtml}`;
+  onExtractTasksInput();
+}
+
+window.onExtractTasksInput = function() {
+  const ta  = document.getElementById('dj-extract-tasks-input');
+  const btn = document.getElementById('dj-extract-tasks-go');
+  if (!ta || !btn) return;
+  const len = (ta.value || '').trim().length;
+  btn.disabled = len < 10;
+};
+
+window.runExtractTasks = async function() {
+  const ta = document.getElementById('dj-extract-tasks-input');
+  const text = (ta?.value || '').trim();
+  if (!text) { toast('Add some text first'); return; }
+  if (text.length > 5000) { toast('Text too long — keep under 5000 characters'); return; }
+  const btn = document.getElementById('dj-extract-tasks-go');
+  btn.disabled = true;
+  btn.textContent = '✨ Extracting…';
+  try {
+    const data = await aiCall('extract-tasks', { text });
+    // Strip any markdown fence and grab the JSON array.
+    let raw = (data.text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    const m = raw.match(/\[[\s\S]*\]/);
+    if (!m) throw new Error('No JSON array found in AI response');
+    const parsed = JSON.parse(m[0]);
+    if (!Array.isArray(parsed)) throw new Error('AI response was not an array');
+    const tasks = parsed
+      .map(t => (typeof t === 'string' ? t : (t && t.text) || '').trim())
+      .filter(Boolean);
+    if (!tasks.length) {
+      toast('No tasks found in that text', 4000);
+      _djTaskProposals = [];
+    } else {
+      _djTaskProposals = tasks.map(text => ({ _tid: uid(), text }));
+    }
+    renderExtractTasksPanel(text);
+  } catch (e) {
+    console.error('[AI extract-tasks]', e);
+    toast('AI error: ' + e.message, 6000);
+  } finally {
+    const b = document.getElementById('dj-extract-tasks-go');
+    if (b) { b.disabled = false; b.textContent = '✨ Extract'; }
+  }
+};
+
+function _commitTaskToDailyDraft(text) {
+  if (!dailyDraftEntry) return;
+  dailyDraftEntry.tasks = dailyDraftEntry.tasks || [];
+  dailyDraftEntry.tasks.push({
+    id: uid(),
+    text,
+    completed: false,
+    completedAt: null,
+  });
+}
+
+window.acceptExtractedTask = function(tid) {
+  const idx = _djTaskProposals.findIndex(t => t._tid === tid);
+  if (idx < 0) return;
+  _commitTaskToDailyDraft(_djTaskProposals[idx].text);
+  _djTaskProposals.splice(idx, 1);
+  saveDailyJournalSilent();
+  renderDailyTasks();
+  // Preserve the current dump text in the textarea so the user can iterate.
+  const ta = document.getElementById('dj-extract-tasks-input');
+  renderExtractTasksPanel(ta ? ta.value : '');
+};
+
+window.rejectExtractedTask = function(tid) {
+  _djTaskProposals = _djTaskProposals.filter(t => t._tid !== tid);
+  const ta = document.getElementById('dj-extract-tasks-input');
+  renderExtractTasksPanel(ta ? ta.value : '');
+};
+
+window.acceptAllExtractedTasks = function() {
+  armOrConfirmDelete('dj-extract-tasks-accept-all', () => {
+    const n = _djTaskProposals.length;
+    _djTaskProposals.forEach(t => _commitTaskToDailyDraft(t.text));
+    _djTaskProposals = [];
+    saveDailyJournalSilent();
+    renderDailyTasks();
+    toast(`${n} task${n === 1 ? '' : 's'} added`);
+    const ta = document.getElementById('dj-extract-tasks-input');
+    renderExtractTasksPanel(ta ? ta.value : '');
+  });
+};
+
 
 window.openAddPicker = function() {
   openSheet('sheet-add-picker');
