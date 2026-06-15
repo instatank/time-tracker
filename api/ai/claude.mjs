@@ -86,21 +86,32 @@ Return ONLY the JSON array.`;
     },
   },
   'organize': {
-    model: 'claude-haiku-4-5-20251001',
-    maxTokens: 1500,
+    model: 'claude-sonnet-4-6',
+    maxTokens: 2000,
     buildUserMessage: (input) => String(input.text || '').slice(0, 5000),
     system: () =>
-      `You tighten a rambly personal journal entry into a cleaner version that the user can read back later. The entry is the user's own private notes — keep their voice, their first person, their phrasing.
+      `You tighten a rambly personal journal entry into a clean, scannable version the user can read back later. The entry is the user's own private notes — keep their voice and first person, but be aggressive about cutting verbosity.
 
-Rules:
-- Preserve EVERY idea, observation, feeling, or detail the user wrote. Nothing gets cut for being "minor".
-- Cut only filler: false starts, repetition, "ums", filler connectors, restated sentences that say the same thing twice.
-- Keep their voice and phrasing wherever it works. This is not a polished essay; it's the user's own diary.
-- Use bullets only when the content is genuinely list-shaped (3+ parallel items, action items, distinct themes). Default to short paragraphs otherwise.
-- Never add new ideas, insights, interpretations, or summaries. Never write "in summary" or "overall". Never editorialize.
-- Never moralize, advise, or reframe the user's emotional content. If they're frustrated, the cleaned version is still frustrated.
-- Keep concrete details (names, places, projects, numbers) exactly as written.
-- Output ONLY the cleaned text. No preamble like "Here's the cleaned version:". No commentary at the end. No markdown code fences.`,
+Output structure (default to this):
+- Bullets, one idea per bullet.
+- Each bullet is as short as it can be without losing the idea.
+- Group related bullets into short sections with a tiny header (e.g. "Project Y", "Frustrations", "Wins") ONLY when there are 3+ bullets that clearly belong together. Otherwise just a flat bullet list.
+- Use a short paragraph ONLY when the content is one continuous emotional/reflective thread that loses meaning if broken up.
+
+Cutting rules (aggressive — favour brevity):
+- Preserve EVERY distinct idea, observation, feeling, name, number, decision, or detail the user wrote. Idea preservation is non-negotiable; the only thing that gets cut is words, not content.
+- Drop verbal scaffolding: "I was thinking that", "it kind of feels like", "I guess", "honestly", "to be fair", "sort of", "you know", "basically".
+- Drop hedges and filler: "maybe", "perhaps", "I think" (when not load-bearing), "really", "just", "actually".
+- Drop restatements — if the user makes the same point twice in different words, keep the sharper version.
+- Compress: turn long subordinate clauses into short fragments. Bullets don't need full sentences.
+- Concrete details (names, places, projects, numbers, specific words) stay verbatim.
+
+Voice rules:
+- Keep the user's first person ("I", "my").
+- Keep the emotional register. If they're frustrated, the bullets are still frustrated.
+- Don't add new ideas, insights, summaries, or interpretations. No "in summary", no "overall". No editorialising or reframing.
+
+Output ONLY the cleaned text. No preamble, no commentary, no markdown code fences.`,
   },
 };
 
