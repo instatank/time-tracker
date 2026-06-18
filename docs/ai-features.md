@@ -75,17 +75,28 @@ All three prompts live in the `TASKS` object near the top of `api/ai/claude.mjs`
 - Label rules: 1-4 words, keywords/phrases, never a sentence. Reuse `recentLabels` first.
 - Note rules: default empty. Only filled for people, artifacts, outcomes, moods, or context the label can't fit.
 
-### `organize` — Thoughts / Reflection tightener
+### `organize` — text tightener / structurer
 
-**Input:** `{ text: "<rambly text>" }`. No `ctx` needed.
+**Input:** `{ text: "<rambly text>" }`, optional `ctx: { entryType }`.
 
-**Critical prompt rules:**
-- Default to bullets, one idea per bullet, kept as short as possible.
-- Short paragraphs only when content is a single continuous emotional/reflective thread.
-- Preserve EVERY idea. Cut words, not content.
-- Explicit hit-list of phrases to drop: "I was thinking that", "kind of", "honestly", "basically", hedges, restatements.
-- No new ideas, insights, summaries. No editorializing.
-- Keep first person + emotional register intact.
+**One task, two prompt shapes** — selected by `ctx.entryType`:
+
+1. **Free-form tighten** (default — any `entryType` except `session-review`, or none). Used by Daily Journal Thoughts/Reflection, Project/Quick Note + Insight body, Session Notes (during), Learning full notes.
+   - Default to bullets, one idea per bullet, kept as short as possible.
+   - Short paragraphs only when content is a single continuous emotional/reflective thread.
+   - Preserve EVERY idea. Cut words, not content.
+   - Explicit hit-list of phrases to drop: "I was thinking that", "kind of", "honestly", "basically", hedges, restatements.
+   - No new ideas, insights, summaries. No editorializing.
+   - Keep first person + emotional register intact.
+
+2. **Structured** (`entryType: 'session-review'`). Used by the Project Session **Review (after)** field.
+   - Classifies every point into Done / Pending / Learned and outputs `✓ ` / `> ` / `* ` prefixed lines — the exact prefixes `parseReviewText()` reads back into `done[]` / `pending[]` / `learned[]` on save.
+   - STRICT output: one point per line, each line starts with a prefix, ✓ then > then * order, no headers/blanks/bullets.
+   - Ambiguous points default to `>` (Pending) — safer to keep visible than wrongly mark done.
+
+**Both variants preserve `#hashtags` verbatim** (same spelling/casing, kept attached to their idea). Tags drive Journal/project filtering, so dropping or renaming them silently breaks data — this rule is in both prompts.
+
+**Client `entryType` values** (in `index.html` `_ORGANIZE_FIELDS`): `project-note`, `session-notes`, `session-review`, `learning-notes`. The Daily Journal organize path is separate (`_DJ_FIELD_IDS`) and sends no `entryType` → default shape.
 
 ### `extract-tasks` — actionable items from a dump
 
@@ -121,8 +132,11 @@ async function aiCall(task, input, ctx = {}) {
 | Task | UI entry point | UX pattern |
 |---|---|---|
 | `extract-blocks` | + add picker → ✨ AI Log Activities | Sheet with textarea + Extract button; results as proposal cards with ✓ / ✎ / ✕ |
-| `organize` | ✨ Organize button next to Thoughts + Reflection in Daily Journal modal | Inline comparison panel below textarea with Original / Cleaned tabs |
+| `organize` (default) | ✨ Organize next to: Daily Journal Thoughts/Reflection; capture body (Note/Project/Insight); Session Notes (during); Learning full notes | Inline comparison panel below textarea with Original / Cleaned tabs |
+| `organize` (session-review) | ✨ Organize next to Session **Review** (after) field | Same comparison panel; Cleaned tab shows ✓/>/* prefixed lines |
 | `extract-tasks` | ✨ Add via AI button in Daily Journal Tasks section header | Inline panel with textarea + Extract; results as pill rows with ✓ / ✕ |
+
+The generic organize widget lives in `index.html` (`_ORGANIZE_FIELDS` registry + `organizeField` / `acceptOrganize` / `rejectOrganize`). The Daily Journal organize predates it and uses its own near-identical `_DJ_FIELD_IDS` path — same UX, same CSS (`.dj-organize-*`).
 
 **The pattern that holds across all three: AI proposes, human commits.** Nothing auto-saves. Every proposal requires explicit user acceptance before persisting.
 
@@ -144,8 +158,8 @@ When the user says output is "too verbose" / "too terse" / "missing X":
 
 ## Pending AI work (priority order)
 
-1. **Tune prompts based on user feedback** — they're testing the three live features.
-2. **Organize on Quick Notes + Project Notes** — trivial extension. Same backend `organize` task already exists; just need to add the button + panel UI in the capture sheet.
+1. **Tune prompts based on user feedback** — they're testing the live features.
+2. ~~Organize on Quick Notes + Project Notes~~ — **done.** Also extended to Sessions (Notes + Review) and Learning notes via the generic widget.
 3. **Weekly/Monthly review summarizer** — bigger build. AI reads the period's data and drafts the review.
 4. **Smart EOD prompts** — personalized prompts on the Today page based on actual day data.
 5. **Semantic search across journal entries** — RAG over user's data. Requires embedding generation + storage.
