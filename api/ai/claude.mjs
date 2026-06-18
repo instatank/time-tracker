@@ -122,8 +122,48 @@ Return ONLY the JSON array.`,
     model: 'claude-sonnet-4-6',
     maxTokens: 2000,
     buildUserMessage: (input) => String(input.text || '').slice(0, 5000),
-    system: () =>
-      `You tighten a rambly personal journal entry into a clean, scannable version the user can read back later. The entry is the user's own private notes — keep their voice and first person, but be aggressive about cutting verbosity.
+    // One task, two shapes. `ctx.entryType` selects the prompt:
+    //   - 'session-review' → classify a dump into DONE / PENDING / LEARNED
+    //     and emit ✓ / > / * prefixed lines the app's parser reads back.
+    //   - everything else (project-note, session-notes, learning-notes,
+    //     daily journal) → free-form tighten into a scannable version.
+    // Both variants preserve #hashtags verbatim — tags carry meaning the
+    // user relies on for filtering, so they must never be dropped or altered.
+    system: (ctx) => {
+      const TAG_RULE =
+        `Hashtags: preserve every #hashtag exactly as written — same spelling and casing — and keep it attached to the idea it belongs to. Never drop, rename, merge, or invent a tag.`;
+
+      if ((ctx.entryType || '') === 'session-review') {
+        return `You organize a rambly project-session review into three buckets the app parses automatically: DONE, PENDING, and LEARNED. The text is the user's own notes from a work session — keep their voice and first person, but be aggressive about cutting verbosity.
+
+Classify every distinct point in the input into exactly one bucket and output it as a prefixed line:
+- "✓ " for things finished, accomplished, shipped, or decided (DONE).
+- "> " for things still open — unfinished, to do next, blocked, or an unresolved question (PENDING).
+- "* " for insights, lessons, realisations, or principles worth keeping (LEARNED).
+
+Output format (STRICT):
+- One point per line. Every line MUST start with "✓ ", "> ", or "* " and nothing else.
+- No section headers, no blank lines, no bullets, no numbering — just prefixed lines.
+- Order all ✓ lines first, then all > lines, then all * lines.
+
+Classification rules:
+- Past-tense accomplishment ("did", "finished", "fixed", "shipped") → ✓ DONE.
+- "still need to", "next", "didn't get to", "blocked on", an open question → > PENDING.
+- "realised", "learned", "turns out", "noticed that", a takeaway or principle → * LEARNED.
+- If a point is genuinely ambiguous, prefer > PENDING — an open item is safer left visible than wrongly marked done.
+
+Cutting rules (aggressive — favour brevity):
+- Preserve EVERY distinct point. The only thing that gets cut is words, not content.
+- Each line is as short as it can be without losing meaning. Fragments are fine; lines don't need to be full sentences.
+- Drop scaffolding and filler: "I was thinking that", "kind of", "honestly", "I guess", "basically", "maybe", "really", "just".
+- Concrete details (names, numbers, project names, specific terms) stay verbatim.
+
+${TAG_RULE}
+
+Output ONLY the prefixed lines. No preamble, no commentary, no markdown code fences.`;
+      }
+
+      return `You tighten a rambly personal journal entry into a clean, scannable version the user can read back later. The entry is the user's own private notes — keep their voice and first person, but be aggressive about cutting verbosity.
 
 Output structure (default to this):
 - Bullets, one idea per bullet.
@@ -144,7 +184,10 @@ Voice rules:
 - Keep the emotional register. If they're frustrated, the bullets are still frustrated.
 - Don't add new ideas, insights, summaries, or interpretations. No "in summary", no "overall". No editorialising or reframing.
 
-Output ONLY the cleaned text. No preamble, no commentary, no markdown code fences.`,
+${TAG_RULE}
+
+Output ONLY the cleaned text. No preamble, no commentary, no markdown code fences.`;
+    },
   },
 };
 
