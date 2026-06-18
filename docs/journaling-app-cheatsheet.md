@@ -19,8 +19,10 @@ cumbersome. Everything below is aimed at avoiding that.
   don't outsource design taste back to them either — show them something on screen to react to.
 - **Push back fast when you've misread the ask.** Solving the wrong problem politely is still
   the wrong problem. Confirm the intent in one line, then go.
-- **The phone is the source of truth.** "Works on the laptop" means nothing. The real test is
-  "I picked it up on the couch and used it." Build and verify mobile-first.
+- **Laptop-first, but keep it mobile-friendly.** Unlike DayOS (which is phone-first), this
+  trading journal will primarily be used on the laptop — that's where the trading happens. But
+  it should still look and work well on a phone for reviewing trades on the go. Don't adopt a
+  mobile-first philosophy; do make sure nothing breaks or looks unusable on a smaller screen.
 
 ---
 
@@ -88,38 +90,43 @@ This is the hardest part and the most important for Trade Genie right now. What 
 
 ---
 
-## The AI pattern (it transfers almost 1:1)
+## The AI pattern (early-stage — still learning what works)
 
-DayOS has exactly three AI features and a clean, cheap architecture behind them. The shape is
-directly reusable for a trading journal.
+> **Important caveat:** DayOS has three AI features that are live and in daily testing, but
+> we're still figuring out what works well and what doesn't. The patterns below are
+> *directions we're exploring*, not battle-tested best practices. Don't treat these as
+> established rules — treat them as a starting point that may change as we learn more. If
+> something below feels wrong for Trade Genie, trust that instinct over this document.
+
+DayOS currently has three AI-assisted features, all built through a simple architecture:
 
 **Architecture:** one serverless route, several "tasks." Client POSTs `{ task, input, ctx }`.
 The server verifies the user's auth token, looks up the task in a registry, builds a system
 prompt, calls the model, returns text + usage. No SDKs, no dependencies — just `fetch`. Auth
-on the route matters: it protects your model spend from anyone who finds the URL.
+on the route matters: it protects your model spend from anyone who finds the URL. This part
+of the architecture has held up well.
 
-**The three tasks (and their trading-journal analogues):**
+**The three tasks we're experimenting with (and possible trading-journal analogues):**
 
 - **Extract structured items from a dump** — DayOS turns a voice/text dump into time-block
-  proposals. Trading: turn a "here's how the session went" dump into individual trade entries
-  or a structured review.
-- **Organize / tighten rambly text** — clean up Thoughts/Reflection into tight bullets while
-  *preserving every idea and every `#hashtag` verbatim*. Cut words, not content. Trading: tidy
-  up trade rationales and post-session reflections.
-- **Extract actionable tasks** — pull a checklist out of a brain-dump, filtering out rumination.
-  Trading: pull "rules to follow tomorrow" / action items out of a review.
+  proposals. Trading equivalent might be: turn a "here's how the session went" dump into
+  individual trade entries or a structured review.
+- **Organize / tighten rambly text** — clean up journal text into tight bullets while
+  preserving every idea. Still tuning how aggressively it should edit and what format works
+  best. Trading: could tidy up trade rationales and post-session reflections.
+- **Extract actionable tasks** — pull a checklist out of a brain-dump, filtering out
+  rumination. Trading: could pull "rules to follow tomorrow" / action items out of a review.
 
-**The non-negotiable rule across all of them: AI proposes, human commits.** Nothing auto-saves.
-Every proposal shows as a card/pill the founder accepts (✓), edits (✎), or rejects (✕) before it
-persists. The founder flagged the data-integrity risk of auto-accept early — don't add a
-"high-confidence auto-save" shortcut.
+**One principle we do feel confident about: AI proposes, human commits.** Nothing auto-saves.
+Every proposal shows as a card/pill the founder accepts (✓), edits (✎), or rejects (✕) before
+it persists. This has felt right from the start — the founder flagged the data-integrity risk
+of auto-accept early.
 
-**Tuning:** when output is "too verbose / too terse / missing X," **change the prompt only** —
-don't swap models or bolt on post-processing. Structure prompts as positive rules + explicit
-do/don't lists + worked examples; the model responds well to anti-examples. Test by re-running
-the same input. Use a capable model for judgment-heavy tasks (structured extraction, nuanced
-filtering); a cheaper one is fine only where the task is mechanical. Always use the latest
-Claude models, and keep a hard spend cap on the account.
+**Prompt tuning — what we've tried so far:** when output is "too verbose / too terse / missing
+X," we've been adjusting the system prompt only — not swapping models or adding post-processing.
+Structuring prompts as positive rules + explicit do/don't lists + worked examples has helped,
+but we're still iterating on the right level of specificity. This is an area where the
+trading journal should feel free to find its own approach rather than copying DayOS.
 
 ---
 
@@ -148,7 +155,7 @@ become critical — ask for the fuller multi-user notes then.)
 
 ## Pre-ship checklist
 
-- [ ] Tested on the phone, not just the laptop
+- [ ] Tested on the laptop (primary device); spot-checked on phone for layout sanity
 - [ ] Reopened the modal / reloaded a fresh tab — no leftover state leaking between sessions
 - [ ] No "while I'm here" cleanups bundled into the change
 - [ ] Things that were broken before are still broken the *same* way (no surprise side-effects)
