@@ -3835,7 +3835,14 @@ select option { background: var(--surface2); }
     </div>
     <!-- Body textarea — used by Quick Note + Project capture types -->
     <div class="field" id="f-cap-body-field">
-      <textarea id="f-cap-body" placeholder="What's on your mind…" style="min-height:120px"></textarea>
+      <div class="dj-section-hdr">
+        <span></span>
+        <button type="button" class="dj-organize-btn" id="org-cap-body-btn" disabled
+          onclick="organizeField('cap-body')" title="AI: tighten this note">✨ Organize</button>
+      </div>
+      <textarea id="f-cap-body" placeholder="What's on your mind…" style="min-height:120px"
+        oninput="onOrganizeInputChange('cap-body')"></textarea>
+      <div id="org-cap-body-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <!-- Voice notes — pilot on Quick Note (selCapType==='note'). Each row
          single-tap plays, double-tap on title renames. Recordings upload to
@@ -3950,9 +3957,14 @@ select option { background: var(--surface2); }
         oninput="onLearningFieldChange()" onblur="saveLearningSilent()"></textarea>
     </div>
     <div class="field" id="f-learn-notes-wrap">
-      <button type="button" class="learning-notes-toggle" id="f-learn-notes-toggle" onclick="toggleLearningFormNotes()">▸ Add full notes</button>
+      <div class="dj-section-hdr">
+        <button type="button" class="learning-notes-toggle" id="f-learn-notes-toggle" onclick="toggleLearningFormNotes()">▸ Add full notes</button>
+        <button type="button" class="dj-organize-btn" id="org-learn-notes-btn" disabled
+          onclick="organizeField('learn-notes')" title="AI: tighten these notes">✨ Organize</button>
+      </div>
       <textarea class="session-textarea" id="f-learn-notes" placeholder="Detailed notes, references, anything worth keeping..." style="min-height:100px;display:none;margin-top:0.4rem"
-        oninput="onLearningFieldChange()" onblur="saveLearningSilent()"></textarea>
+        oninput="onLearningFieldChange();onOrganizeInputChange('learn-notes')" onblur="saveLearningSilent()"></textarea>
+      <div id="org-learn-notes-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <div class="field">
       <label class="session-field-label neutral">Tags</label>
@@ -3983,12 +3995,21 @@ select option { background: var(--surface2); }
         oninput="onSessionFieldChange()" onblur="saveSessionSilent()"></textarea>
     </div>
     <div class="field">
-      <label class="session-field-label during">Session Notes</label>
+      <div class="dj-section-hdr">
+        <label class="session-field-label during">Session Notes</label>
+        <button type="button" class="dj-organize-btn" id="org-sess-during-btn" disabled
+          onclick="organizeField('sess-during')" title="AI: tighten these notes">✨ Organize</button>
+      </div>
       <textarea class="session-textarea" id="f-sess-during" placeholder="Notes as you go..."
-        oninput="onSessionFieldChange()" onblur="saveSessionSilent()"></textarea>
+        oninput="onSessionFieldChange();onOrganizeInputChange('sess-during')" onblur="saveSessionSilent()"></textarea>
+      <div id="org-sess-during-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <div class="field">
-      <label class="session-field-label after">Review</label>
+      <div class="dj-section-hdr">
+        <label class="session-field-label after">Review</label>
+        <button type="button" class="dj-organize-btn" id="org-sess-after-btn" disabled
+          onclick="organizeField('sess-after')" title="AI: sort into Done / Pending / Learned">✨ Organize</button>
+      </div>
       <div class="review-chips">
         <button type="button" class="review-chip chip-done"    onclick="insertReviewPrefix('✓')">✓ Done</button>
         <button type="button" class="review-chip chip-pending" onclick="insertReviewPrefix('>')">⏳ Pending</button>
@@ -3996,7 +4017,8 @@ select option { background: var(--surface2); }
       </div>
       <textarea class="session-textarea" id="f-sess-after" placeholder="Note learnings, what's done and pending.
 Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save."
-        oninput="onSessionFieldChange()" onblur="saveSessionSilent()"></textarea>
+        oninput="onSessionFieldChange();onOrganizeInputChange('sess-after')" onblur="saveSessionSilent()"></textarea>
+      <div id="org-sess-after-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <div class="field">
       <div class="voice-list" id="f-sess-voice-list"></div>
@@ -6584,6 +6606,8 @@ window.openNewSession = function() {
   sessionFormVoiceNotes = [];
   renderSessionVoiceList();
   setSessionAutoSavedLabel('');
+  resetOrganizeWidget('sess-during');
+  resetOrganizeWidget('sess-after');
   document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
   openSheet('sheet-session');
 };
@@ -6619,6 +6643,8 @@ window.openEditSession = function(sessionId, projectName) {
   sessionFormVoiceNotes = liveVoiceNotes(s.voiceNotes).map(v => ({ ...v }));
   renderSessionVoiceList();
   setSessionAutoSavedLabel('Auto-saved');
+  resetOrganizeWidget('sess-during');
+  resetOrganizeWidget('sess-after');
   document.getElementById('session-sheet-title').textContent = `Edit Session · ${projectName}`;
   openSheet('sheet-session');
 };
@@ -7220,6 +7246,7 @@ window.openNewLearning = function() {
   learningFormVoiceNotes = [];
   renderLearningVoiceList();
   setLearningAutoSavedLabel('');
+  resetOrganizeWidget('learn-notes');
   document.getElementById('learning-sheet-title').textContent = 'Log Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -7254,6 +7281,7 @@ window.openEditLearning = function(entryId) {
   learningFormVoiceNotes = liveVoiceNotes(e.voiceNotes).map(v => ({ ...v }));
   renderLearningVoiceList();
   setLearningAutoSavedLabel('Auto-saved');
+  resetOrganizeWidget('learn-notes');
   document.getElementById('learning-sheet-title').textContent = 'Edit Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -9816,6 +9844,7 @@ function openCapture(type = 'note') {
     dailyDraftEntry = null;
   }
   renderTagPicker('capture');
+  resetOrganizeWidget('cap-body');
   openSheet('sheet-capture');
   setTimeout(() => {
     if (selCapType === 'daily') {
@@ -9845,6 +9874,7 @@ function openCaptureEdit(captureId) {
   editingDailyDate = null;
   dailyDraftEntry = null;
   renderTagPicker('capture');
+  resetOrganizeWidget('cap-body');
   openSheet('sheet-capture');
   setTimeout(() => document.getElementById('f-cap-body').focus(), 300);
 }
@@ -14338,6 +14368,116 @@ window.acceptDjOrganize = function(field) {
 window.rejectDjOrganize = function(field) {
   _djOrganizeState[field] = null;
   renderDjOrganizeResult(field);
+};
+
+// ── Generic AI Organize widget ───────────────────────────────
+// Same UX as the Daily Journal organize (✨ button → Original/Cleaned
+// comparison panel → accept swaps the textarea value), reused across
+// Project Notes, Project Sessions, and Learning entries. Each field
+// declares: its element IDs, the server `entryType` that selects the
+// prompt, and a `flush` callback that persists the host's own draft
+// (no-op for the capture sheet, which commits via an explicit Save).
+const _ORGANIZE_FIELDS = {
+  'cap-body':    { textarea: 'f-cap-body',    btn: 'org-cap-body-btn',    panel: 'org-cap-body-result',    entryType: 'project-note',   flush: () => {} },
+  'sess-during': { textarea: 'f-sess-during', btn: 'org-sess-during-btn', panel: 'org-sess-during-result', entryType: 'session-notes',  flush: () => { try { saveSessionSilent(); } catch {} } },
+  'sess-after':  { textarea: 'f-sess-after',  btn: 'org-sess-after-btn',  panel: 'org-sess-after-result',  entryType: 'session-review', flush: () => { try { saveSessionSilent(); } catch {} } },
+  'learn-notes': { textarea: 'f-learn-notes', btn: 'org-learn-notes-btn', panel: 'org-learn-notes-result', entryType: 'learning-notes', flush: () => { try { saveLearningSilent(); } catch {} } },
+};
+const _organizeWidgetState = {}; // key → { tab, original, cleaned } | null
+
+// Enable/disable the button — same ~30-char floor as the Daily Journal.
+window.onOrganizeInputChange = function(key) {
+  const cfg = _ORGANIZE_FIELDS[key]; if (!cfg) return;
+  const ta  = document.getElementById(cfg.textarea);
+  const btn = document.getElementById(cfg.btn);
+  if (!ta || !btn) return;
+  btn.disabled = (ta.value || '').trim().length < 30;
+};
+
+// Clear any stale comparison panel + refresh button state when a sheet opens.
+window.resetOrganizeWidget = function(key) {
+  _organizeWidgetState[key] = null;
+  renderOrganizeWidget(key);
+  window.onOrganizeInputChange(key);
+};
+
+window.organizeField = async function(key) {
+  const cfg = _ORGANIZE_FIELDS[key]; if (!cfg) return;
+  const ta  = document.getElementById(cfg.textarea);
+  const btn = document.getElementById(cfg.btn);
+  if (!ta || !btn) return;
+  const original = (ta.value || '').trim();
+  if (!original) { toast('Nothing to organize yet'); return; }
+  // Flush the host's draft so a backgrounded modal keeps in sync mid-call.
+  try { cfg.flush(); } catch {}
+
+  btn.disabled = true;
+  btn.classList.add('busy');
+  btn.textContent = '✨ Organizing…';
+  try {
+    const data = await aiCall('organize', { text: original }, { entryType: cfg.entryType });
+    const cleaned = (data.text || '').trim();
+    if (!cleaned) throw new Error('AI returned empty output');
+    _organizeWidgetState[key] = { tab: 'cleaned', original, cleaned };
+    renderOrganizeWidget(key);
+  } catch (e) {
+    console.error('[AI organize]', e);
+    toast('AI error: ' + e.message, 6000);
+  } finally {
+    btn.classList.remove('busy');
+    btn.disabled = false;
+    btn.textContent = '✨ Organize';
+  }
+};
+
+function renderOrganizeWidget(key) {
+  const cfg = _ORGANIZE_FIELDS[key]; if (!cfg) return;
+  const el  = document.getElementById(cfg.panel);
+  if (!el) return;
+  const state = _organizeWidgetState[key];
+  if (!state) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const body = state.tab === 'cleaned' ? state.cleaned : state.original;
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="dj-organize-tabs">
+      <button type="button" class="dj-organize-tab ${state.tab === 'original' ? 'active' : ''}"
+        onclick="setOrganizeTab('${key}','original')">Original</button>
+      <button type="button" class="dj-organize-tab ${state.tab === 'cleaned' ? 'active' : ''}"
+        onclick="setOrganizeTab('${key}','cleaned')">Cleaned</button>
+    </div>
+    <div class="dj-organize-body">${esc(body)}</div>
+    <div class="dj-organize-actions">
+      <button type="button" class="reject" onclick="rejectOrganize('${key}')">Keep original</button>
+      <button type="button" class="accept" onclick="acceptOrganize('${key}')">Use cleaned</button>
+    </div>`;
+}
+
+window.setOrganizeTab = function(key, tab) {
+  const state = _organizeWidgetState[key];
+  if (!state) return;
+  state.tab = tab;
+  renderOrganizeWidget(key);
+};
+
+window.acceptOrganize = function(key) {
+  const cfg   = _ORGANIZE_FIELDS[key];
+  const state = _organizeWidgetState[key];
+  if (!cfg || !state) return;
+  const ta = document.getElementById(cfg.textarea);
+  if (ta) {
+    ta.value = state.cleaned;
+    // Persist via the host's own save path; refresh button state.
+    try { cfg.flush(); } catch {}
+    window.onOrganizeInputChange(key);
+  }
+  _organizeWidgetState[key] = null;
+  renderOrganizeWidget(key);
+  toast('Used cleaned version');
+};
+
+window.rejectOrganize = function(key) {
+  _organizeWidgetState[key] = null;
+  renderOrganizeWidget(key);
 };
 
 // ── AI: Task extraction (Daily Journal Tasks section) ───────
