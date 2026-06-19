@@ -1018,14 +1018,14 @@ body.ios-pwa #nav {
 .organize-field-wrap > textarea { width: 100%; box-sizing: border-box; }
 .organize-field-wrap > .dj-organize-btn {
   position: absolute;
-  bottom: 0.4rem;
-  right: 0.4rem;
+  bottom: 0.7rem;
+  right: 0.7rem;
 }
 .dj-organize-btn {
   background: var(--surface2);
-  border: 1px solid var(--border2);
+  border: 1px solid var(--accent);
   border-radius: 999px;
-  color: var(--text2);
+  color: var(--accent);
   font-size: 0.65rem;
   letter-spacing: 0.02em;
   padding: 0.18rem 0.55rem;
@@ -1033,12 +1033,25 @@ body.ios-pwa #nav {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.35), 0 0 0 1px rgba(59, 130, 246, 0.15);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
 }
-.dj-organize-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.dj-organize-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.55), 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
 .dj-organize-btn:active:not(:disabled) { transform: scale(0.97); }
-.dj-organize-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.dj-organize-btn.busy { color: var(--accent); border-color: var(--accent); }
+.dj-organize-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: 0 0 4px rgba(59, 130, 246, 0.2);
+}
+.dj-organize-btn.busy {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.55);
+}
 
 /* Comparison panel that appears under the textarea once Claude returns.
    Tabs flip between Original (read-only echo of what was sent) and
