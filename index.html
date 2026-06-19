@@ -3959,11 +3959,11 @@ select option { background: var(--surface2); }
     <div class="field" id="f-learn-notes-wrap">
       <div class="dj-section-hdr">
         <button type="button" class="learning-notes-toggle" id="f-learn-notes-toggle" onclick="toggleLearningFormNotes()">▸ Add full notes</button>
-        <button type="button" class="dj-organize-btn" id="org-learn-notes-btn" disabled
-          onclick="organizeField('learn-notes')" title="AI: tighten these notes">✨ Organize</button>
       </div>
       <textarea class="session-textarea" id="f-learn-notes" placeholder="Detailed notes, references, anything worth keeping..." style="min-height:100px;display:none;margin-top:0.4rem"
         oninput="onLearningFieldChange();onOrganizeInputChange('learn-notes')" onblur="saveLearningSilent()"></textarea>
+      <button type="button" class="dj-organize-btn" id="org-learn-notes-btn" disabled
+        onclick="organizeField('learn-notes')" title="AI: tighten these notes" style="display:none;margin-top:0.3rem">✨ Organize</button>
       <div id="org-learn-notes-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <div class="field">
@@ -7236,6 +7236,7 @@ window.openNewLearning = function() {
   document.getElementById('f-learn-takeaway').value = '';
   document.getElementById('f-learn-notes').value    = '';
   document.getElementById('f-learn-notes').style.display = 'none';
+  document.getElementById('org-learn-notes-btn').style.display = 'none';
   document.getElementById('f-learn-notes-toggle').textContent = '▸ Add full notes';
   selLearningType = '';
   learningFormNotesOpen = false;
@@ -7264,12 +7265,15 @@ window.openEditLearning = function(entryId) {
   const notesEl = document.getElementById('f-learn-notes');
   const notesBtn = document.getElementById('f-learn-notes-toggle');
   notesEl.value = e.fullNotes || '';
+  const orgBtn = document.getElementById('org-learn-notes-btn');
   if (e.fullNotes) {
     notesEl.style.display = 'block';
+    orgBtn.style.display = '';
     notesBtn.textContent = '▾ Hide full notes';
     learningFormNotesOpen = true;
   } else {
     notesEl.style.display = 'none';
+    orgBtn.style.display = 'none';
     notesBtn.textContent = '▸ Add full notes';
     learningFormNotesOpen = false;
   }
@@ -7305,12 +7309,15 @@ window.toggleLearningFormNotes = function() {
   learningFormNotesOpen = !learningFormNotesOpen;
   const ta = document.getElementById('f-learn-notes');
   const btn = document.getElementById('f-learn-notes-toggle');
+  const orgBtn = document.getElementById('org-learn-notes-btn');
   if (learningFormNotesOpen) {
     ta.style.display = 'block';
+    orgBtn.style.display = '';
     btn.textContent = '▾ Hide full notes';
     setTimeout(() => ta.focus(), 20);
   } else {
     ta.style.display = 'none';
+    orgBtn.style.display = 'none';
     btn.textContent = ta.value.trim() ? '▸ Notes (tap to expand)' : '▸ Add full notes';
   }
 };
