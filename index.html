@@ -1012,8 +1012,17 @@ body.ios-pwa #nav {
   margin-bottom: 0.35rem;
 }
 .dj-section-hdr .dj-section-label { margin-bottom: 0; }
+.organize-field-wrap {
+  position: relative;
+}
+.organize-field-wrap > textarea { width: 100%; box-sizing: border-box; }
+.organize-field-wrap > .dj-organize-btn {
+  position: absolute;
+  bottom: 0.4rem;
+  right: 0.4rem;
+}
 .dj-organize-btn {
-  background: none;
+  background: var(--surface2);
   border: 1px solid var(--border2);
   border-radius: 999px;
   color: var(--text2);
@@ -3835,13 +3844,12 @@ select option { background: var(--surface2); }
     </div>
     <!-- Body textarea — used by Quick Note + Project capture types -->
     <div class="field" id="f-cap-body-field">
-      <div class="dj-section-hdr">
-        <span></span>
+      <div class="organize-field-wrap">
+        <textarea id="f-cap-body" placeholder="What's on your mind…" style="min-height:120px"
+          oninput="onOrganizeInputChange('cap-body')"></textarea>
         <button type="button" class="dj-organize-btn" id="org-cap-body-btn" disabled
           onclick="organizeField('cap-body')" title="AI: tighten this note">✨ Organize</button>
       </div>
-      <textarea id="f-cap-body" placeholder="What's on your mind…" style="min-height:120px"
-        oninput="onOrganizeInputChange('cap-body')"></textarea>
       <div id="org-cap-body-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <!-- Voice notes — pilot on Quick Note (selCapType==='note'). Each row
@@ -3863,12 +3871,14 @@ select option { background: var(--surface2); }
       <div class="dj-section">
         <div class="dj-section-hdr">
           <label class="dj-section-label">THOUGHTS</label>
+        </div>
+        <div class="organize-field-wrap">
+          <textarea id="f-daily-thoughts" placeholder="Anything on your mind…"
+            oninput="onDailyFieldChange();onDailyOrganizeInputChange('thoughts')" onblur="saveDailyJournalSilent()"
+            style="min-height:80px"></textarea>
           <button type="button" class="dj-organize-btn" id="dj-organize-thoughts-btn"
             onclick="organizeDailyField('thoughts')" title="AI: tighten this section">✨ Organize</button>
         </div>
-        <textarea id="f-daily-thoughts" placeholder="Anything on your mind…"
-          oninput="onDailyFieldChange();onDailyOrganizeInputChange('thoughts')" onblur="saveDailyJournalSilent()"
-          style="min-height:80px"></textarea>
         <div id="dj-organize-thoughts-result" class="dj-organize-result" style="display:none"></div>
       </div>
       <div class="dj-section">
@@ -3886,11 +3896,13 @@ select option { background: var(--surface2); }
       <div class="dj-section">
         <div class="dj-section-hdr">
           <label class="dj-section-label">REFLECTION</label>
+        </div>
+        <div class="organize-field-wrap">
+          <textarea id="f-daily-reflection" placeholder="End of day reflection…"
+            oninput="onDailyFieldChange();onDailyOrganizeInputChange('reflection')" onblur="saveDailyJournalSilent()"></textarea>
           <button type="button" class="dj-organize-btn" id="dj-organize-reflection-btn"
             onclick="organizeDailyField('reflection')" title="AI: tighten this section">✨ Organize</button>
         </div>
-        <textarea id="f-daily-reflection" placeholder="End of day reflection…"
-          oninput="onDailyFieldChange();onDailyOrganizeInputChange('reflection')" onblur="saveDailyJournalSilent()"></textarea>
         <div id="dj-organize-reflection-result" class="dj-organize-result" style="display:none"></div>
       </div>
       <!-- Entertainment Cap binary toggle — auto-saved like the rest. -->
@@ -3960,10 +3972,12 @@ select option { background: var(--surface2); }
       <div class="dj-section-hdr">
         <button type="button" class="learning-notes-toggle" id="f-learn-notes-toggle" onclick="toggleLearningFormNotes()">▸ Add full notes</button>
       </div>
-      <textarea class="session-textarea" id="f-learn-notes" placeholder="Detailed notes, references, anything worth keeping..." style="min-height:100px;display:none;margin-top:0.4rem"
-        oninput="onLearningFieldChange();onOrganizeInputChange('learn-notes')" onblur="saveLearningSilent()"></textarea>
-      <button type="button" class="dj-organize-btn" id="org-learn-notes-btn" disabled
-        onclick="organizeField('learn-notes')" title="AI: tighten these notes" style="display:none;margin-top:0.3rem">✨ Organize</button>
+      <div class="organize-field-wrap" id="learn-notes-organize-wrap" style="display:none">
+        <textarea class="session-textarea" id="f-learn-notes" placeholder="Detailed notes, references, anything worth keeping..." style="min-height:100px;margin-top:0.4rem"
+          oninput="onLearningFieldChange();onOrganizeInputChange('learn-notes')" onblur="saveLearningSilent()"></textarea>
+        <button type="button" class="dj-organize-btn" id="org-learn-notes-btn" disabled
+          onclick="organizeField('learn-notes')" title="AI: tighten these notes">✨ Organize</button>
+      </div>
       <div id="org-learn-notes-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <div class="field">
@@ -3995,29 +4009,31 @@ select option { background: var(--surface2); }
         oninput="onSessionFieldChange()" onblur="saveSessionSilent()"></textarea>
     </div>
     <div class="field">
-      <div class="dj-section-hdr">
-        <label class="session-field-label during">Session Notes</label>
+      <label class="session-field-label during">Session Notes</label>
+      <div class="organize-field-wrap">
+        <textarea class="session-textarea" id="f-sess-during" placeholder="Notes as you go..."
+          oninput="onSessionFieldChange();onOrganizeInputChange('sess-during')" onblur="saveSessionSilent()"></textarea>
         <button type="button" class="dj-organize-btn" id="org-sess-during-btn" disabled
           onclick="organizeField('sess-during')" title="AI: tighten these notes">✨ Organize</button>
       </div>
-      <textarea class="session-textarea" id="f-sess-during" placeholder="Notes as you go..."
-        oninput="onSessionFieldChange();onOrganizeInputChange('sess-during')" onblur="saveSessionSilent()"></textarea>
       <div id="org-sess-during-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <div class="field">
       <div class="dj-section-hdr">
         <label class="session-field-label after">Review</label>
-        <button type="button" class="dj-organize-btn" id="org-sess-after-btn" disabled
-          onclick="organizeField('sess-after')" title="AI: sort into Done / Pending / Learned">✨ Organize</button>
       </div>
       <div class="review-chips">
         <button type="button" class="review-chip chip-done"    onclick="insertReviewPrefix('✓')">✓ Done</button>
         <button type="button" class="review-chip chip-pending" onclick="insertReviewPrefix('>')">⏳ Pending</button>
         <button type="button" class="review-chip chip-learned" onclick="insertReviewPrefix('*')">💡 Learned</button>
       </div>
-      <textarea class="session-textarea" id="f-sess-after" placeholder="Note learnings, what's done and pending.
+      <div class="organize-field-wrap">
+        <textarea class="session-textarea" id="f-sess-after" placeholder="Note learnings, what's done and pending.
 Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save."
-        oninput="onSessionFieldChange();onOrganizeInputChange('sess-after')" onblur="saveSessionSilent()"></textarea>
+          oninput="onSessionFieldChange();onOrganizeInputChange('sess-after')" onblur="saveSessionSilent()"></textarea>
+        <button type="button" class="dj-organize-btn" id="org-sess-after-btn" disabled
+          onclick="organizeField('sess-after')" title="AI: sort into Done / Pending / Learned">✨ Organize</button>
+      </div>
       <div id="org-sess-after-result" class="dj-organize-result" style="display:none"></div>
     </div>
     <div class="field">
@@ -7235,8 +7251,7 @@ window.openNewLearning = function() {
   document.getElementById('f-learn-source').value   = '';
   document.getElementById('f-learn-takeaway').value = '';
   document.getElementById('f-learn-notes').value    = '';
-  document.getElementById('f-learn-notes').style.display = 'none';
-  document.getElementById('org-learn-notes-btn').style.display = 'none';
+  document.getElementById('learn-notes-organize-wrap').style.display = 'none';
   document.getElementById('f-learn-notes-toggle').textContent = '▸ Add full notes';
   selLearningType = '';
   learningFormNotesOpen = false;
@@ -7265,15 +7280,13 @@ window.openEditLearning = function(entryId) {
   const notesEl = document.getElementById('f-learn-notes');
   const notesBtn = document.getElementById('f-learn-notes-toggle');
   notesEl.value = e.fullNotes || '';
-  const orgBtn = document.getElementById('org-learn-notes-btn');
+  const notesWrap = document.getElementById('learn-notes-organize-wrap');
   if (e.fullNotes) {
-    notesEl.style.display = 'block';
-    orgBtn.style.display = '';
+    notesWrap.style.display = '';
     notesBtn.textContent = '▾ Hide full notes';
     learningFormNotesOpen = true;
   } else {
-    notesEl.style.display = 'none';
-    orgBtn.style.display = 'none';
+    notesWrap.style.display = 'none';
     notesBtn.textContent = '▸ Add full notes';
     learningFormNotesOpen = false;
   }
@@ -7307,17 +7320,15 @@ window.selLearningTypeFn = function(t) {
 
 window.toggleLearningFormNotes = function() {
   learningFormNotesOpen = !learningFormNotesOpen;
+  const wrap = document.getElementById('learn-notes-organize-wrap');
   const ta = document.getElementById('f-learn-notes');
   const btn = document.getElementById('f-learn-notes-toggle');
-  const orgBtn = document.getElementById('org-learn-notes-btn');
   if (learningFormNotesOpen) {
-    ta.style.display = 'block';
-    orgBtn.style.display = '';
+    wrap.style.display = '';
     btn.textContent = '▾ Hide full notes';
     setTimeout(() => ta.focus(), 20);
   } else {
-    ta.style.display = 'none';
-    orgBtn.style.display = 'none';
+    wrap.style.display = 'none';
     btn.textContent = ta.value.trim() ? '▸ Notes (tap to expand)' : '▸ Add full notes';
   }
 };
