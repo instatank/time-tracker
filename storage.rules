@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Firebase Storage security rules for DayOS.
+//
+// All user media lives under users/{uid}/… — voice notes (users/{uid}/voice/*)
+// and file attachments (users/{uid}/attachments/*). A signed-in user may only
+// read, write, and delete files inside their OWN folder. Writes are capped at
+// 50 MB as a server-side backstop (the client caps attachments at 25 MB and
+// voice notes are tiny); this prevents a hijacked client from filling Storage.
+//
+// IMPORTANT: Vercel does NOT deploy these rules. Push them to Firebase with
+//   firebase deploy --only storage
+// or paste them into Firebase Console → Storage → Rules.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{userId}/{allPaths=**} {
+      allow read: if request.auth != null
+                  && request.auth.uid == userId;
+
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 50 * 1024 * 1024;
+
+      allow delete: if request.auth != null
+                    && request.auth.uid == userId;
+    }
+  }
+}

@@ -1480,6 +1480,57 @@ body.ios-pwa #nav {
    margins — just the button, flush between the Captures section above
    and Rate Your Day below. */
 .voice-add-btn.home-voice-tight { margin: 0; }
+
+/* ── Attachments ──────────────────────────────────────────── */
+/* Inline upload progress bar inside an attachment row (reuses voice-row). */
+.attach-progress {
+  display: inline-block;
+  width: 64px; height: 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.attach-progress-bar {
+  display: block; height: 100%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+/* Overflow "Add attachment" menu — standalone overlay so it can sit above an
+   open entry sheet (z-index 101) without being closed by openSheet(). */
+.attach-menu-overlay {
+  position: fixed; inset: 0;
+  z-index: 200;
+  display: none;
+}
+.attach-menu-overlay.open { display: block; }
+.attach-menu-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.attach-menu-card {
+  position: absolute;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%; max-width: 600px;
+  background: var(--surface);
+  border-radius: 16px 16px 0 0;
+  border-top: 1px solid var(--border2);
+  padding: 0.75rem 1.1rem calc(0.75rem + env(safe-area-inset-bottom));
+}
+.attach-menu-title {
+  font-weight: 600; font-size: 0.9rem;
+  padding: 0.25rem 0 0.5rem;
+  color: var(--text);
+}
+.attach-menu-card .opt-btn.attach-soon { color: var(--text3); cursor: default; }
+.attach-soon-tag {
+  margin-left: auto;
+  font-size: 0.66rem;
+  color: var(--text3);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 0.05rem 0.4rem;
+}
 /* Today-page voice-only strip — voice quick notes captured here show up
    as a flat list right above the Add voice note button. Tight spacing
    to match the rest of the page rhythm. */
@@ -3873,6 +3924,8 @@ select option { background: var(--surface2); }
       <div class="voice-list" id="f-cap-voice-list"></div>
       <button type="button" class="voice-add-btn" id="f-cap-voice-add-btn"
         onclick="toggleCaptureVoiceRecording()">🎤 Add voice note</button>
+      <div class="voice-list" id="f-cap-attach-list"></div>
+      <button type="button" class="voice-add-btn" onclick="openAttachMenu('capture')">📎 Add file</button>
     </div>
     <div class="field" id="f-project-field" style="display:none;position:relative">
       <label class="field-label">Project Tag</label>
@@ -3933,6 +3986,8 @@ select option { background: var(--surface2); }
         <div class="voice-list" id="f-daily-voice-list"></div>
         <button type="button" class="voice-add-btn" id="f-daily-voice-add-btn"
           onclick="toggleDailyVoiceRecording()">🎤 Add voice note</button>
+        <div class="voice-list" id="f-daily-attach-list"></div>
+        <button type="button" class="voice-add-btn" onclick="openAttachMenu('daily')">📎 Add file</button>
       </div>
     </div>
     <div class="field">
@@ -4002,6 +4057,8 @@ select option { background: var(--surface2); }
       <div class="voice-list" id="f-learn-voice-list"></div>
       <button type="button" class="voice-add-btn" id="f-learn-voice-add-btn"
         onclick="toggleLearningVoiceRecording()">🎤 Add voice note</button>
+      <div class="voice-list" id="f-learn-attach-list"></div>
+      <button type="button" class="voice-add-btn" onclick="openAttachMenu('learning')">📎 Add file</button>
     </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Close</button>
@@ -4053,6 +4110,8 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       <div class="voice-list" id="f-sess-voice-list"></div>
       <button type="button" class="voice-add-btn" id="f-sess-voice-add-btn"
         onclick="toggleSessionVoiceRecording()">🎤 Add voice note</button>
+      <div class="voice-list" id="f-sess-attach-list"></div>
+      <button type="button" class="voice-add-btn" onclick="openAttachMenu('session')">📎 Add file</button>
     </div>
     <div class="field">
       <label class="session-field-label neutral">Duration</label>
@@ -4198,6 +4257,21 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 
 <div id="backdrop" class="backdrop" onclick="closeSheets()"></div>
 <div id="toasts"></div>
+<!-- Shared attachment picker + overflow menu. The menu is a standalone
+     overlay (NOT a .sheet) so it can layer above an open entry sheet without
+     openSheet() closing the form underneath. Built to grow: Photo/Camera/Draw
+     slot in as live buttons in later phases. -->
+<input type="file" id="attach-file-input" style="display:none" onchange="onAttachFileChosen(this)" />
+<div id="attach-menu" class="attach-menu-overlay">
+  <div class="attach-menu-backdrop" onclick="closeAttachMenu()"></div>
+  <div class="attach-menu-card">
+    <div class="attach-menu-title">Add attachment</div>
+    <button type="button" class="opt-btn" onclick="pickAttachmentFile()">📎 &nbsp;Attach file</button>
+    <button type="button" class="opt-btn attach-soon" disabled>🖼 &nbsp;Photo / Camera <span class="attach-soon-tag">soon</span></button>
+    <button type="button" class="opt-btn attach-soon" disabled>✏️ &nbsp;Draw <span class="attach-soon-tag">soon</span></button>
+    <button type="button" class="opt-btn" onclick="closeAttachMenu()">✕ &nbsp;Cancel</button>
+  </div>
+</div>
 <!-- Trends-tab zoom modal (D3) — reused by Time by Category, Time by Project,
      and the Over-Time line charts. Stays in the DOM, toggled via .open. -->
 <div id="zoom-modal" class="zoom-modal">
@@ -4238,7 +4312,7 @@ import { getFirestore, collection, doc,
          getDocs, getDoc, setDoc, deleteDoc,
          writeBatch, onSnapshot }           from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { getStorage, ref as storageRef,
-         uploadBytes, deleteObject,
+         uploadBytes, uploadBytesResumable, deleteObject,
          getDownloadURL }                   from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js';
 import { getMessaging, getToken, onMessage,
          deleteToken, isSupported as messagingSupported }
@@ -4597,6 +4671,18 @@ let _voiceRec = null;          // { recorder, stream, chunks, startedAt, mime, e
 let _voiceUploading = false;
 let _currentlyPlayingVoice = null;
 const _voiceAudioCache = new Map(); // url → Audio() instance (resume-friendly)
+// ── Attachments (files; later: images, drawings) ────────────
+// Generic counterpart to voiceNotes. Each entry type owns its own draft
+// array, mirrored onto the parent's attachments[] at save time. Shape:
+//   { id, kind, url, storagePath, title, mime, size, ext, createdAt, deletedAt? }
+// kind is 'file' in Phase 1; the discriminator that later carries 'image' etc.
+let captureFormAttachments  = [];
+let sessionFormAttachments  = [];
+let learningFormAttachments = [];
+let dailyFormAttachments    = [];
+let _attachUploading = false;  // true while a file is uploading
+let _attachUploadPct = 0;      // 0–100 progress for the in-flight upload
+let _attachCtx = null;         // which form the shared file picker targets
 // Today-tab banner dismissals (B3). One date-keyed flag per banner kind.
 //   shape: { 'YYYY-MM-DD': { reviewBanner: true } }
 let dismissals = loadLocal('dayos_dismissals_v1', {});
@@ -5378,6 +5464,7 @@ function renderCapPreview(c) {
         </div>
         ${c.body ? `<div class="cap-body-preview">${esc(c.body)}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
+        ${renderAttachmentsReadonly(c.attachments, 'capture', c.id)}
       </div>
     </div>`;
 }
@@ -5875,6 +5962,7 @@ function renderCapFull(c) {
         </div>
         ${c.body ? `<div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
+        ${renderAttachmentsReadonly(c.attachments, 'capture', c.id)}
         ${renderTagPills(c.tags)}
       </div>
     </div>`;
@@ -5928,6 +6016,7 @@ function renderDailyJournalCard(d) {
         </div>
         ${body}
         ${renderVoiceNotesReadonly(d.voiceNotes, 'daily', d.date)}
+        ${renderAttachmentsReadonly(d.attachments, 'daily', d.date)}
       </div>
     </div>`;
 }
@@ -6459,6 +6548,7 @@ function renderSessionCard(s) {
         </div>
         ${bodyParts.join('')}
         ${renderVoiceNotesReadonly(s.voiceNotes, 'session', s.id)}
+        ${renderAttachmentsReadonly(s.attachments, 'session', s.id)}
         <div class="session-footer">
           ${hintHtml}
           <span class="session-footer-right">${rightHtml}</span>
@@ -6634,6 +6724,8 @@ window.openNewSession = function() {
   renderTagPicker('session');
   sessionFormVoiceNotes = [];
   renderSessionVoiceList();
+  sessionFormAttachments = [];
+  renderSessionAttachList();
   setSessionAutoSavedLabel('');
   resetOrganizeWidget('sess-during');
   resetOrganizeWidget('sess-after');
@@ -6671,6 +6763,8 @@ window.openEditSession = function(sessionId, projectName) {
   renderTagPicker('session');
   sessionFormVoiceNotes = liveVoiceNotes(s.voiceNotes).map(v => ({ ...v }));
   renderSessionVoiceList();
+  sessionFormAttachments = liveAttachments(s.attachments).map(a => ({ ...a }));
+  renderSessionAttachList();
   setSessionAutoSavedLabel('Auto-saved');
   resetOrganizeWidget('sess-during');
   resetOrganizeWidget('sess-after');
@@ -6738,6 +6832,7 @@ function isSessionEntryEmpty(s) {
     && !(s.during || '').trim()
     && !(s.after  || '').trim()
     && liveVoiceNotes(s.voiceNotes).length === 0
+    && liveAttachments(s.attachments).length === 0
     && (!s.tags || s.tags.length === 0)
   );
 }
@@ -6772,8 +6867,9 @@ window.saveSessionSilent = function() {
   const inlineTags = extractTags(before + ' ' + during + ' ' + after);
   const tags = [...new Set([...sessionFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
   const review = parseReviewText(after);
-  // Preserve trashed voice notes on the existing doc — draft loaded live only.
+  // Preserve trashed voice notes / attachments on the existing doc — draft loaded live only.
   const prevTrashedVoice = (draft.voiceNotes || []).filter(isTrashed);
+  const prevTrashedAttach = (draft.attachments || []).filter(isTrashed);
 
   draft.before = before;
   draft.during = during;
@@ -6784,6 +6880,7 @@ window.saveSessionSilent = function() {
   draft.learned = review.learned;
   draft.tags    = tags;
   draft.voiceNotes = [...prevTrashedVoice, ...sessionFormVoiceNotes];
+  draft.attachments = [...prevTrashedAttach, ...sessionFormAttachments];
   draft._synced = false;
 
   // Skip persisting an empty draft — prevents stub sessions from accumulating
@@ -7172,6 +7269,7 @@ function renderLearningCard(e) {
           ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
           : ''}
         ${renderVoiceNotesReadonly(e.voiceNotes, 'learning', e.id)}
+        ${renderAttachmentsReadonly(e.attachments, 'learning', e.id)}
       </div>
     </div>
   `;
@@ -7274,6 +7372,8 @@ window.openNewLearning = function() {
   renderTagPicker('learning');
   learningFormVoiceNotes = [];
   renderLearningVoiceList();
+  learningFormAttachments = [];
+  renderLearningAttachList();
   setLearningAutoSavedLabel('');
   resetOrganizeWidget('learn-notes');
   document.getElementById('learning-sheet-title').textContent = 'Log Learning';
@@ -7310,6 +7410,8 @@ window.openEditLearning = function(entryId) {
   renderTagPicker('learning');
   learningFormVoiceNotes = liveVoiceNotes(e.voiceNotes).map(v => ({ ...v }));
   renderLearningVoiceList();
+  learningFormAttachments = liveAttachments(e.attachments).map(a => ({ ...a }));
+  renderLearningAttachList();
   setLearningAutoSavedLabel('Auto-saved');
   resetOrganizeWidget('learn-notes');
   document.getElementById('learning-sheet-title').textContent = 'Edit Learning';
@@ -7356,6 +7458,7 @@ function isLearningEntryEmpty(e) {
     && !(e.takeaway || '').trim()
     && !(e.fullNotes || '').trim()
     && liveVoiceNotes(e.voiceNotes).length === 0
+    && liveAttachments(e.attachments).length === 0
   );
 }
 function setLearningAutoSavedLabel(text) {
@@ -7382,6 +7485,7 @@ window.saveLearningSilent = function() {
   const inlineTags = extractTags(takeaway + ' ' + fullNotes);
   const tags = [...new Set([...learningFormTags, ...inlineTags].map(normalizeTag).filter(Boolean))];
   const prevTrashedVoice = (draft.voiceNotes || []).filter(isTrashed);
+  const prevTrashedAttach = (draft.attachments || []).filter(isTrashed);
 
   draft.sourceName = sourceName;
   draft.sourceType = selLearningType;
@@ -7389,6 +7493,7 @@ window.saveLearningSilent = function() {
   draft.fullNotes  = fullNotes || null;
   draft.tags       = tags;
   draft.voiceNotes = [...prevTrashedVoice, ...learningFormVoiceNotes];
+  draft.attachments = [...prevTrashedAttach, ...learningFormAttachments];
   draft._synced    = false;
 
   if (isLearningEntryEmpty(draft) || !sourceName) {
@@ -9864,9 +9969,11 @@ function openCapture(type = 'note') {
   // Reset tag picker state for a new capture
   captureFormTags = new Set();
   captureTagCustomOpen = false;
-  // Reset voice-note draft for a brand-new capture.
+  // Reset voice-note + attachment drafts for a brand-new capture.
   captureFormVoiceNotes = [];
   renderCaptureVoiceList();
+  captureFormAttachments = [];
+  renderCaptureAttachList();
   // For daily journal mode, prefill from today's entry (if any) or start a draft.
   if (type === 'daily') {
     initDailyJournalEditor(todayStr());
@@ -9899,9 +10006,11 @@ function openCaptureEdit(captureId) {
   // Pre-select any tags the capture already has (from either pills or inline hashtags)
   captureFormTags = new Set((c.tags || []).map(normalizeTag).filter(Boolean));
   captureTagCustomOpen = false;
-  // Load existing voice notes into the form draft.
+  // Load existing voice notes + attachments into the form drafts.
   captureFormVoiceNotes = liveVoiceNotes(c.voiceNotes).map(v => ({ ...v }));
   renderCaptureVoiceList();
+  captureFormAttachments = liveAttachments(c.attachments).map(a => ({ ...a }));
+  renderCaptureAttachList();
   editingDailyDate = null;
   dailyDraftEntry = null;
   renderTagPicker('capture');
@@ -10027,6 +10136,8 @@ function initDailyJournalEditor(date) {
   // by the other entry types.
   dailyFormVoiceNotes = liveVoiceNotes(dailyDraftEntry.voiceNotes).map(v => ({ ...v }));
   renderDailyVoiceList();
+  dailyFormAttachments = liveAttachments(dailyDraftEntry.attachments).map(a => ({ ...a }));
+  renderDailyAttachList();
   renderDailyTasks();
   renderDailyEntertainmentCap();
   setDailyAutoSavedLabel(dailyDraftEntry.lastEditedAt && existing ? 'Auto-saved' : '');
@@ -10061,7 +10172,8 @@ function isDailyEntryEmpty(e) {
     !(e.reflection || '').trim() &&
     (!Array.isArray(e.tasks) || e.tasks.length === 0) &&
     !e.entertainmentCap &&
-    (!Array.isArray(e.voiceNotes) || e.voiceNotes.length === 0)
+    (!Array.isArray(e.voiceNotes) || e.voiceNotes.length === 0) &&
+    liveAttachments(e.attachments).length === 0
   );
 }
 
@@ -10096,9 +10208,11 @@ window.saveDailyJournalSilent = function() {
   dailyDraftEntry.thoughts = thoughts;
   dailyDraftEntry.reflection = reflection;
   dailyDraftEntry.tags = tags;
-  // Preserve trashed voice notes — draft only loaded live ones at modal open.
+  // Preserve trashed voice notes / attachments — draft only loaded live ones at modal open.
   const _prevTrashedDailyVoice = (dailyDraftEntry.voiceNotes || []).filter(isTrashed);
   dailyDraftEntry.voiceNotes = [..._prevTrashedDailyVoice, ...dailyFormVoiceNotes];
+  const _prevTrashedDailyAttach = (dailyDraftEntry.attachments || []).filter(isTrashed);
+  dailyDraftEntry.attachments = [..._prevTrashedDailyAttach, ...dailyFormAttachments];
   dailyDraftEntry.lastEditedAt = nowISTIso();
   dailyDraftEntry._synced = false;
 
@@ -10523,7 +10637,7 @@ window.saveCapture = function() {
     return;
   }
   const body = document.getElementById('f-cap-body').value.trim();
-  if (!body && captureFormVoiceNotes.length === 0) { toast('Capture cannot be empty'); return; }
+  if (!body && captureFormVoiceNotes.length === 0 && liveAttachments(captureFormAttachments).length === 0) { toast('Capture cannot be empty'); return; }
   const projectTag = document.getElementById('f-project-tag').value.trim();
   // Auto-add freshly typed project name into the canonical list so we never
   // create stranded "legacy" entries again. Case-insensitive de-dupe via slug.
@@ -10553,6 +10667,7 @@ window.saveCapture = function() {
   addToTagHistory(tags);
 
   const voiceNotesSnap = captureFormVoiceNotes.slice();
+  const attachmentsSnap = captureFormAttachments.slice();
   if (editingCaptureId) {
     const idx = captures.findIndex(c => c.id === editingCaptureId);
     if (idx > -1) {
@@ -10562,7 +10677,9 @@ window.saveCapture = function() {
       // only loaded live ones, so we'd otherwise wipe them and lose recovery.
       const prevTrashedVoice = (prev.voiceNotes || []).filter(isTrashed);
       const finalVoice = [...prevTrashedVoice, ...voiceNotesSnap];
-      captures[idx] = { ...prev, type: selCapType, body, project_tag: projectTag, tags, voiceNotes: finalVoice, _synced: false };
+      const prevTrashedAttach = (prev.attachments || []).filter(isTrashed);
+      const finalAttach = [...prevTrashedAttach, ...attachmentsSnap];
+      captures[idx] = { ...prev, type: selCapType, body, project_tag: projectTag, tags, voiceNotes: finalVoice, attachments: finalAttach, _synced: false };
       syncCaptureDoc(captures[idx]);
       syncProjectRefsForEntry({
         sourceType: 'journal', sourceId: captures[idx].id, tags, prev: prevTags,
@@ -10571,7 +10688,7 @@ window.saveCapture = function() {
       toast('Entry updated');
     }
   } else {
-    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags, voiceNotes: voiceNotesSnap, _synced: false };
+    const c = { id: uid(), timestamp: nowISTIso(), type: selCapType, body, project_tag: projectTag, tags, voiceNotes: voiceNotesSnap, attachments: attachmentsSnap, _synced: false };
     captures.push(c);
     syncCaptureDoc(c);
     syncProjectRefsForEntry({
@@ -11321,6 +11438,256 @@ function _clearVoiceRowsFor(url) {
   });
 }
 
+// ── Attachments (files) ──────────────────────────────────────
+// Generic file attachments on the same Firebase Storage + parent-embedded-
+// array pattern as voice notes. A single hidden <input> in the page shell is
+// the picker; the "📎 Add" buttons open a small overflow menu so future
+// modalities (photo, camera, drawing) slot in without new toolbar real estate.
+const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // 25 MB cap per file
+
+function fmtFileSize(bytes) {
+  if (bytes == null) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Pick a glyph from the mime type / extension so the row is scannable.
+function fileIconFor(mime, ext) {
+  const m = (mime || '').toLowerCase();
+  const e = (ext || '').toLowerCase();
+  if (m.startsWith('image/')) return '🖼';
+  if (m === 'application/pdf' || e === 'pdf') return '📕';
+  if (m.startsWith('video/')) return '🎬';
+  if (m.startsWith('audio/')) return '🎵';
+  if (['zip', 'rar', '7z', 'gz', 'tar'].includes(e)) return '🗜';
+  if (['doc', 'docx', 'odt', 'rtf'].includes(e)) return '📝';
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(e)) return '📊';
+  if (['ppt', 'pptx', 'odp'].includes(e)) return '📑';
+  if (['txt', 'md'].includes(e) || m.startsWith('text/')) return '📄';
+  return '📎';
+}
+
+const liveAttachments = (arr) => (arr || []).filter(notTrashed);
+
+// Resumable upload to users/{uid}/attachments/{id}.{ext} with progress.
+function uploadAttachmentFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    if (!user) { reject(new Error('not signed in')); return; }
+    const id = uid();
+    const parts = (file.name || '').split('.');
+    const ext = parts.length > 1 ? parts.pop().toLowerCase().replace(/[^a-z0-9]/g, '') : 'bin';
+    const path = `users/${user.uid}/attachments/${id}.${ext}`;
+    const r = storageRef(storage, path);
+    const task = uploadBytesResumable(r, file, { contentType: file.type || 'application/octet-stream' });
+    task.on('state_changed',
+      (snap) => { if (onProgress && snap.totalBytes) onProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)); },
+      (err) => reject(err),
+      async () => {
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          resolve({ id, url, storagePath: path, mime: file.type || '', size: file.size || 0, ext });
+        } catch (e) { reject(e); }
+      }
+    );
+  });
+}
+
+async function deleteAttachmentBlob(storagePath) {
+  if (!storagePath) return;
+  try { await deleteObject(storageRef(storage, storagePath)); }
+  catch (e) { console.warn('Attachment blob delete failed', e); }
+}
+
+function _attachDraftFor(ctx) {
+  if (ctx === 'capture')  return captureFormAttachments;
+  if (ctx === 'session')  return sessionFormAttachments;
+  if (ctx === 'learning') return learningFormAttachments;
+  if (ctx === 'daily')    return dailyFormAttachments;
+  return [];
+}
+function _attachRenderFor(ctx) {
+  if (ctx === 'capture')  return renderCaptureAttachList;
+  if (ctx === 'session')  return renderSessionAttachList;
+  if (ctx === 'learning') return renderLearningAttachList;
+  if (ctx === 'daily')    return renderDailyAttachList;
+  return () => {};
+}
+// Autosaved modals flush immediately so a file-only entry survives close;
+// capture uses its explicit Save button so it persists via the draft snapshot.
+function _attachPersistFor(ctx) {
+  if (ctx === 'daily')    return () => { try { saveDailyJournalSilent(); } catch {} };
+  if (ctx === 'session')  return () => { try { saveSessionSilent();      } catch {} };
+  if (ctx === 'learning') return () => { try { saveLearningSilent();     } catch {} };
+  return () => {};
+}
+
+function renderCaptureAttachList()  { renderAttachListEditable('f-cap-attach-list',   captureFormAttachments,  'capture');  }
+function renderSessionAttachList()  { renderAttachListEditable('f-sess-attach-list',  sessionFormAttachments,  'session');  }
+function renderLearningAttachList() { renderAttachListEditable('f-learn-attach-list', learningFormAttachments, 'learning'); }
+function renderDailyAttachList()    { renderAttachListEditable('f-daily-attach-list', dailyFormAttachments,    'daily');    }
+
+// Reuses the voice-row CSS grid (icon · title · meta · delete) for a
+// consistent look; size replaces duration in the meta slot.
+function renderAttachListEditable(listId, draftArr, ctx) {
+  const el = document.getElementById(listId);
+  if (!el) return;
+  const rows = liveAttachments(draftArr).map(a => `
+    <div class="voice-row" id="at-${ctx}-${esc(a.id)}" onclick="openAttachment('${esc(a.url)}')">
+      <span class="voice-icon">${fileIconFor(a.mime, a.ext)}</span>
+      <span class="voice-title" ondblclick="editAttachTitleIn('${ctx}', event, '${esc(a.id)}')" title="Double-tap to rename">${esc(a.title)}</span>
+      <span class="voice-dur">${esc(fmtFileSize(a.size))}</span>
+      <button class="voice-del" data-delkey="attach-${esc(a.id)}" onclick="event.stopPropagation();deleteAttachIn('${ctx}', '${esc(a.id)}')" title="Delete">×</button>
+    </div>`).join('');
+  let extra = '';
+  if (_attachUploading && _attachCtx === ctx) {
+    extra = `<div class="voice-row uploading">
+      <span class="voice-icon">⏳</span>
+      <span class="voice-title">Uploading… ${_attachUploadPct}%</span>
+      <span class="attach-progress"><span class="attach-progress-bar" style="width:${_attachUploadPct}%"></span></span>
+    </div>`;
+  }
+  el.innerHTML = rows + extra;
+}
+
+// ── Attach menu + shared file picker ─────────────────────────
+window.openAttachMenu = function(ctx) {
+  _attachCtx = ctx;
+  document.getElementById('attach-menu')?.classList.add('open');
+};
+window.closeAttachMenu = function() {
+  document.getElementById('attach-menu')?.classList.remove('open');
+};
+window.pickAttachmentFile = function() {
+  closeAttachMenu();
+  const input = document.getElementById('attach-file-input');
+  if (input) { input.value = ''; input.click(); }
+};
+
+window.onAttachFileChosen = async function(inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const ctx = _attachCtx;
+  if (file.size > ATTACH_MAX_BYTES) {
+    toast(`File too large — max ${fmtFileSize(ATTACH_MAX_BYTES)}`, 4000);
+    return;
+  }
+  _attachUploading = true;
+  _attachUploadPct = 0;
+  _attachRenderFor(ctx)();
+  try {
+    const uploaded = await uploadAttachmentFile(file, (pct) => {
+      _attachUploadPct = pct;
+      _attachRenderFor(ctx)();
+    });
+    const draft = _attachDraftFor(ctx);
+    draft.push({ ...uploaded, kind: 'file', title: file.name || `File ${draft.length + 1}`, createdAt: nowISTIso() });
+    _attachPersistFor(ctx)();
+    toast('File attached');
+  } catch (e) {
+    console.error('attachment upload failed', e);
+    toast('File upload failed — try again', 4000);
+  }
+  _attachUploading = false;
+  _attachUploadPct = 0;
+  _attachRenderFor(ctx)();
+};
+
+window.openAttachment = function(url) {
+  try { window.open(url, '_blank', 'noopener'); }
+  catch { location.href = url; }
+};
+
+window.editAttachTitleIn = function(ctx, ev, attId) {
+  ev.stopPropagation();
+  const a = _attachDraftFor(ctx).find(x => x.id === attId);
+  if (!a) return;
+  const row = document.getElementById(`at-${ctx}-${attId}`);
+  if (!row) return;
+  const title = row.querySelector('.voice-title');
+  if (!title) return;
+  title.outerHTML = `<input class="voice-title-input" value="${esc(a.title)}"
+    onclick="event.stopPropagation()"
+    onblur="saveAttachTitleIn('${ctx}', '${esc(attId)}', this.value)"
+    onkeydown="if(event.key==='Enter'){this.blur()} else if(event.key==='Escape'){this.value='__cancel__';this.blur()}" />`;
+  const input = row.querySelector('.voice-title-input');
+  if (input) { input.focus(); input.select(); }
+};
+window.saveAttachTitleIn = function(ctx, attId, val) {
+  const a = _attachDraftFor(ctx).find(x => x.id === attId);
+  if (!a) return;
+  if (val !== '__cancel__') {
+    const trimmed = (val || '').trim();
+    if (trimmed) a.title = trimmed;
+  }
+  _attachRenderFor(ctx)();
+  _attachPersistFor(ctx)();
+};
+
+window.deleteAttachIn = function(ctx, attId) {
+  armOrConfirmDelete('attach-' + attId, () => {
+    const a = _attachDraftFor(ctx).find(x => x.id === attId);
+    if (!a) return;
+    a.deletedAt = nowISTIso();
+    _attachRenderFor(ctx)();
+    _attachPersistFor(ctx)();
+    toast('Moved to Trash');
+  });
+};
+
+// Compact read-only rendering on a saved card. Reuses _findParentForVoice
+// (which only resolves parent + re-sync, agnostic of which array changed).
+function renderAttachmentsReadonly(attachments, parentKind, parentId) {
+  const live = liveAttachments(attachments);
+  if (!live.length) return '';
+  return `<div class="voice-list readonly">${live.map(a => {
+    const delBtn = parentKind && parentId != null
+      ? `<button class="voice-del" data-delkey="attach-${esc(a.id)}" onclick="event.stopPropagation();deleteAttachmentFromParent('${parentKind}', '${esc(String(parentId))}', '${esc(a.id)}')" title="Delete">×</button>`
+      : '';
+    return `
+    <div class="voice-row" onclick="event.stopPropagation();openAttachment('${esc(a.url)}')">
+      <span class="voice-icon">${fileIconFor(a.mime, a.ext)}</span>
+      <span class="voice-title">${esc(a.title)}</span>
+      <span class="voice-dur">${esc(fmtFileSize(a.size))}</span>
+      ${delBtn}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function softDeleteAttachmentFromParent(kind, parentId, attId) {
+  const found = _findParentForVoice(kind, parentId);
+  if (!found) return;
+  const a = (found.parent.attachments || []).find(x => x.id === attId);
+  if (!a) return;
+  a.deletedAt = nowISTIso();
+  found.persist();
+}
+function hardDeleteAttachmentFromParent(kind, parentId, attId) {
+  const found = _findParentForVoice(kind, parentId);
+  if (!found) return;
+  const idx = (found.parent.attachments || []).findIndex(x => x.id === attId);
+  if (idx < 0) return;
+  const a = found.parent.attachments[idx];
+  found.parent.attachments.splice(idx, 1);
+  deleteAttachmentBlob(a.storagePath);
+  found.persist();
+}
+function restoreAttachmentInParent(kind, parentId, attId) {
+  const found = _findParentForVoice(kind, parentId);
+  if (!found) return;
+  const a = (found.parent.attachments || []).find(x => x.id === attId);
+  if (!a) return;
+  delete a.deletedAt;
+  found.persist();
+}
+window.deleteAttachmentFromParent = function(kind, parentId, attId) {
+  armOrConfirmDelete('attach-' + attId, () => {
+    softDeleteAttachmentFromParent(kind, parentId, attId);
+    toast('Moved to Trash');
+    renderMain();
+  });
+};
+
 window.saveDft = function(val) {
   // Each new pending DFT should start with actions hidden — user reveals
   // them with a tap on the row. Reset here so a fresh entry isn't carrying
@@ -11640,27 +12007,29 @@ function renderSearchResults() {
   // (e.g. "ideas for the launch deck") absolutely should be — they're
   // the only handle a search has on what's inside a voice note.
   const voiceTitles = (item) => (item && item.voiceNotes || []).map(v => v.title || '').join(' ');
+  // Attachment filenames/titles are the only searchable handle on a file.
+  const attachTitles = (item) => liveAttachments(item && item.attachments).map(a => a.title || '').join(' ');
 
   captures.forEach(c => {
     if (isTrashed(c)) return;
-    if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c)])) return;
+    if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c), attachTitles(c)])) return;
     matches.push({ kind: 'cap', item: c, sortKey: c.timestamp || '' });
   });
   (dailyJournals || []).forEach(d => {
     if (isTrashed(d) || isDailyEntryEmpty(d)) return;
     const taskText = (d.tasks || []).map(t => t.text || '').join(' ');
-    if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d)])) return;
+    if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d), attachTitles(d)])) return;
     matches.push({ kind: 'daily', item: d, sortKey: d.lastEditedAt || d.timestamp || d.date || '' });
   });
   Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
     if (isTrashed(s)) return;
     const reviewText = [...(s.done || []), ...(s.pending || []), ...(s.learned || [])].join(' ');
-    if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s)])) return;
+    if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s), attachTitles(s)])) return;
     matches.push({ kind: 'session', item: s, sortKey: s.createdAt || s.date || '' });
   }));
   (learning || []).forEach(e => {
     if (isTrashed(e)) return;
-    if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e)])) return;
+    if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e), attachTitles(e)])) return;
     matches.push({ kind: 'learning', item: e, sortKey: e.createdAt || e.date || '' });
   });
   matches.sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
@@ -13718,6 +14087,23 @@ function _collectTrashedVoiceNotes() {
   })));
   return out.sort((a, b) => (b.v.deletedAt || '').localeCompare(a.v.deletedAt || ''));
 }
+function _collectTrashedAttachments() {
+  const out = [];
+  const push = (a, kind, parentId, parentLabel) => out.push({ a, kind, parentId, parentLabel });
+  captures.forEach(c => (c.attachments || []).forEach(a => {
+    if (isTrashed(a)) push(a, 'capture', c.id, `Capture · ${(c.body || '').slice(0, 40) || c.type || ''}`);
+  }));
+  (learning || []).forEach(e => (e.attachments || []).forEach(a => {
+    if (isTrashed(a)) push(a, 'learning', e.id, `Learning · ${e.sourceName || ''}`);
+  }));
+  (dailyJournals || []).forEach(d => (d.attachments || []).forEach(a => {
+    if (isTrashed(a)) push(a, 'daily', d.date, `Daily Journal · ${d.date}`);
+  }));
+  Object.values(sessions || {}).forEach(list => (list || []).forEach(s => (s.attachments || []).forEach(a => {
+    if (isTrashed(a)) push(a, 'session', s.id, `Session · ${s.projectName || ''}`);
+  })));
+  return out.sort((a, b) => (b.a.deletedAt || '').localeCompare(a.a.deletedAt || ''));
+}
 
 // Build a flat list of every trashed item with a composite key for the
 // bulk selection set in openSettingsTrash. Used both for "Select all" and
@@ -13741,10 +14127,19 @@ function _buildTrashItems() {
       });
     });
   };
-  captures.filter(notTrashed).forEach(c => collectVoice(c, 'capture', c.id));
-  (learning || []).filter(notTrashed).forEach(e => collectVoice(e, 'learning', e.id));
-  (dailyJournals || []).filter(notTrashed).forEach(d => collectVoice(d, 'daily', d.date));
-  Object.values(sessions || {}).flat().filter(notTrashed).forEach(s => collectVoice(s, 'session', s.id));
+  const collectAttach = (parent, parentKind, parentId) => {
+    (parent.attachments || []).filter(isTrashed).forEach(a => {
+      items.push({
+        kind: 'attachment',
+        key: `attachment:${parentKind}:${parentId}:${a.id}`,
+        parentKind, parentId, attId: a.id,
+      });
+    });
+  };
+  captures.filter(notTrashed).forEach(c => { collectVoice(c, 'capture', c.id); collectAttach(c, 'capture', c.id); });
+  (learning || []).filter(notTrashed).forEach(e => { collectVoice(e, 'learning', e.id); collectAttach(e, 'learning', e.id); });
+  (dailyJournals || []).filter(notTrashed).forEach(d => { collectVoice(d, 'daily', d.date); collectAttach(d, 'daily', d.date); });
+  Object.values(sessions || {}).flat().filter(notTrashed).forEach(s => { collectVoice(s, 'session', s.id); collectAttach(s, 'session', s.id); });
   return items;
 }
 
@@ -13791,12 +14186,14 @@ function _runTrashAction(action, i) {
     else if (i.kind === 'learning') restoreLearning(i.id);
     else if (i.kind === 'daily')    restoreDailyJournal(i.id);
     else if (i.kind === 'voice')    restoreVoiceInParent(i.parentKind, i.parentId, i.voiceId);
+    else if (i.kind === 'attachment') restoreAttachmentInParent(i.parentKind, i.parentId, i.attId);
   } else {
     if (i.kind === 'capture')  hardDeleteCapture(i.id);
     else if (i.kind === 'session')  hardDeleteSession(i.id, i.projectName);
     else if (i.kind === 'learning') hardDeleteLearning(i.id);
     else if (i.kind === 'daily')    hardDeleteDailyJournal(i.id);
     else if (i.kind === 'voice')    hardDeleteVoiceFromParent(i.parentKind, i.parentId, i.voiceId);
+    else if (i.kind === 'attachment') hardDeleteAttachmentFromParent(i.parentKind, i.parentId, i.attId);
   }
 }
 
@@ -13807,6 +14204,7 @@ function openSettingsTrash() {
   const trashedLearning = (learning || []).filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
   const trashedSessions = Object.values(sessions || {}).flat().filter(isTrashed).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
   const trashedVoice    = _collectTrashedVoiceNotes();
+  const trashedAttach   = _collectTrashedAttachments();
   const allItems = _buildTrashItems();
   const selCount = _trashSelection.size;
   const totalCount = allItems.length;
@@ -13837,6 +14235,15 @@ function openSettingsTrash() {
             `🎤 ${v.title || 'Voice note'} — ${parentLabel}`, v.deletedAt,
             `restoreVoiceFromTrash('${kind}','${esc(parentId)}','${esc(v.id)}')`,
             `purgeVoiceFromTrash('${kind}','${esc(parentId)}','${esc(v.id)}')`)
+      ).join(''));
+  }
+  if (trashedAttach.length) {
+    sections.push(`<div class="trash-section-hdr">Attachments</div>` +
+      trashedAttach.map(({ a, kind, parentId, parentLabel }) =>
+        row(`attachment:${kind}:${parentId}:${a.id}`,
+            `${fileIconFor(a.mime, a.ext)} ${a.title || 'File'} — ${parentLabel}`, a.deletedAt,
+            `restoreAttachFromTrash('${kind}','${esc(parentId)}','${esc(a.id)}')`,
+            `purgeAttachFromTrash('${kind}','${esc(parentId)}','${esc(a.id)}')`)
       ).join(''));
   }
   if (trashedCaps.length) {
@@ -13906,6 +14313,18 @@ window.restoreVoiceFromTrash = function(kind, parentId, voiceId) {
 };
 window.purgeVoiceFromTrash = function(kind, parentId, voiceId) {
   hardDeleteVoiceFromParent(kind, parentId, voiceId);
+  toast('Deleted forever');
+  openSettingsTrash();
+  render();
+};
+window.restoreAttachFromTrash = function(kind, parentId, attId) {
+  restoreAttachmentInParent(kind, parentId, attId);
+  toast('Restored');
+  openSettingsTrash();
+  render();
+};
+window.purgeAttachFromTrash = function(kind, parentId, attId) {
+  hardDeleteAttachmentFromParent(kind, parentId, attId);
   toast('Deleted forever');
   openSettingsTrash();
   render();
@@ -14059,6 +14478,8 @@ window.closeSheets = function() {
   // Pause any voice-note playback when sheets close so audio doesn't keep
   // running invisibly behind the page.
   if (_currentlyPlayingVoice) { try { _currentlyPlayingVoice.pause(); } catch {} }
+  // Also dismiss the attachment overflow menu (a standalone overlay, not a .sheet).
+  document.getElementById('attach-menu')?.classList.remove('open');
   document.querySelectorAll('.sheet').forEach(s => s.classList.remove('open'));
   document.getElementById('backdrop').classList.remove('visible');
 };
@@ -15580,10 +16001,16 @@ function sweepTrash() {
       if (!expired.length) return;
       expired.forEach(v => hardDeleteVoiceFromParent(kind, parentId, v.id));
     };
-    captures.forEach(c => sweepVoice(c, 'capture', c.id));
-    (learning || []).forEach(e => sweepVoice(e, 'learning', e.id));
-    (dailyJournals || []).forEach(d => sweepVoice(d, 'daily', d.date));
-    Object.values(sessions || {}).forEach(list => (list || []).forEach(s => sweepVoice(s, 'session', s.id)));
+    const sweepAttach = (parent, kind, parentId) => {
+      if (!parent || !parent.attachments) return;
+      const expired = parent.attachments.filter(isExpiredTrash);
+      if (!expired.length) return;
+      expired.forEach(a => hardDeleteAttachmentFromParent(kind, parentId, a.id));
+    };
+    captures.forEach(c => { sweepVoice(c, 'capture', c.id); sweepAttach(c, 'capture', c.id); });
+    (learning || []).forEach(e => { sweepVoice(e, 'learning', e.id); sweepAttach(e, 'learning', e.id); });
+    (dailyJournals || []).forEach(d => { sweepVoice(d, 'daily', d.date); sweepAttach(d, 'daily', d.date); });
+    Object.values(sessions || {}).forEach(list => (list || []).forEach(s => { sweepVoice(s, 'session', s.id); sweepAttach(s, 'session', s.id); }));
   } catch (e) { console.warn('Trash sweep error', e); }
 }
 

@@ -41,10 +41,10 @@ Server-side code lives in `api/`:
 State lives in three places, in this order of truth: module-level `let` vars → `localStorage` → Firestore mirror. All localStorage keys are in the `SK` object near the top of the script. Current keys:
 
 - `dayos_blocks_v1` — time blocks: `{ id, date, start_time, duration_min, category, label, note, energy_level, projectTag, tags, voiceNotes?, deletedAt?, _synced }`
-- `dayos_captures_v1` — captures: `{ id, timestamp (IST ISO), type, body, project_tag, tags, voiceNotes?, deletedAt?, _synced }`
-- `dayos_daily_journal_v1` — Daily Journal entries (separate collection): `{ id (=date), date, thoughts, reflection, tasks[], entertainmentCap, tags, voiceNotes?, deletedAt?, _synced }`
-- `dayos_sessions_v1` — `{ [projectName]: Session[] }` where a Session is `{ id, projectName, date, before, during, after, durationMin, done[], pending[], learned[], tags, voiceNotes?, linkedBlockId, createdAt, deletedAt?, _synced }`
-- `dayos_learning_v1` — Learning entries: `{ id, sourceName, sourceType, takeaway, fullNotes, tags, voiceNotes?, date, createdAt, deletedAt?, _synced }`
+- `dayos_captures_v1` — captures: `{ id, timestamp (IST ISO), type, body, project_tag, tags, voiceNotes?, attachments?, deletedAt?, _synced }`
+- `dayos_daily_journal_v1` — Daily Journal entries (separate collection): `{ id (=date), date, thoughts, reflection, tasks[], entertainmentCap, tags, voiceNotes?, attachments?, deletedAt?, _synced }`
+- `dayos_sessions_v1` — `{ [projectName]: Session[] }` where a Session is `{ id, projectName, date, before, during, after, durationMin, done[], pending[], learned[], tags, voiceNotes?, attachments?, linkedBlockId, createdAt, deletedAt?, _synced }`
+- `dayos_learning_v1` — Learning entries: `{ id, sourceName, sourceType, takeaway, fullNotes, tags, voiceNotes?, attachments?, date, createdAt, deletedAt?, _synced }`
 - `dayos_projects_v1` — canonical project name list
 - `dayos_ratings_v1` — `{ 'YYYY-MM-DD': 1–5 }` (day star rating)
 - `dayos_life_ratings_v1` — `{ 'YYYY-MM-DD': { metricId: 1–5 } }` (Daily Check-in)
@@ -74,6 +74,10 @@ Entries (captures, daily journals, sessions, learning) and individual voice note
 ### Voice notes
 
 Recorded via `MediaRecorder`, uploaded to **Firebase Storage** at `users/{uid}/voice/{id}.{ext}`. Stored on the parent entry as a `voiceNotes[]` array: `{ id, url, storagePath, title, durationSec, createdAt, deletedAt? }`. Codec differs by platform (Safari `audio/mp4`, Chrome `audio/webm`). Available on Quick Note / Project Note / Daily Journal / Session / Learning, plus a one-tap quick-voice strip on Today. Titles are searchable; playback shows a live elapsed-time indicator.
+
+### Attachments (files)
+
+Generic counterpart to voice notes, built on the **same** Storage + parent-embedded-array + soft-delete/trash/sync plumbing — so new modalities (image, drawing, location) slot in by adding a `kind` without new sync code. Files upload (resumable, with progress, 25 MB client cap) to **Firebase Storage** at `users/{uid}/attachments/{id}.{ext}` and persist on the parent as an `attachments[]` array: `{ id, kind ('file'…), url, storagePath, title, mime, size, ext, createdAt, deletedAt? }`. Added via the **📎 Add file** button → `openAttachMenu(ctx)` overflow menu (a standalone overlay, NOT a `.sheet`, so it layers over an open entry sheet without `openSheet()` closing it). Available on Quick Note / Project Note / Daily Journal / Session / Learning. Tapping a row opens the file; titles/filenames are searchable; soft-delete + Trash + 7-day sweep + the per-modality `live*()` filter all mirror voice. Since `attachments[]` rides inside the parent doc, every sync path (per-write, `initialSync`, force push/pull) carries it for free. **Storage rules** live in `storage.rules` (deploy with `firebase deploy --only storage` — Vercel does not deploy them). Future modalities (camera/photo, drawing, location) are stubbed as "soon" in the attach menu.
 
 ### Autosave
 
