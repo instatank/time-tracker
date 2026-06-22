@@ -11797,11 +11797,22 @@ async function _downloadAttachment(url, filename) {
     f.src = url;
   }
 }
+// iPhone/iPad (incl. installed PWA) can't reliably download via fetch/iframe,
+// but iOS Quick Look previews images, PDFs AND Office docs when the file is
+// simply opened in a new tab — so on iOS we always open in a tab. Desktop keeps
+// the real download for non-previewable files.
+const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+function _openInTab(url) {
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
 window.openAttachment = function(url, mime, ext, title) {
-  if (_isPreviewableAttachment(mime, ext)) {
-    const a = document.createElement('a');
-    a.href = url; a.target = '_blank'; a.rel = 'noopener';
-    document.body.appendChild(a); a.click(); a.remove();
+  if (_isIOS || _isPreviewableAttachment(mime, ext)) {
+    _openInTab(url);
     return;
   }
   const name = title && /\.[a-z0-9]+$/i.test(title) ? title : `${title || 'file'}.${(ext || 'bin')}`;
