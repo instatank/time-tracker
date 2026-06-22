@@ -3706,6 +3706,21 @@ select option { background: var(--surface2); }
   font-weight: 600;
   cursor: pointer;
 }
+.btn-ghost.ai-switch-btn {
+  display: block;
+  width: 100%;
+  flex: none;
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--text2);
+  border-style: dashed;
+}
+.btn-ghost.ai-switch-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 .btn-ghost {
   flex: 1;
   padding: 0.75rem;
@@ -3930,6 +3945,13 @@ select option { background: var(--surface2); }
       <label class="field-label">Project tag <span style="color:var(--text3);font-weight:400">(optional)</span></label>
       <div class="proj-scroller" id="f-block-project-row" style="margin:0;padding:0.2rem 0 0"></div>
     </div>
+    <!-- Shortcut: jump straight from the manual Log Activity sheet into the
+         AI extractor without going back to the + picker. openAiBlocksSheet()
+         calls openSheet(), which closes this sheet first, so it's effectively
+         a tab switch between the two flows. -->
+    <button class="btn-ghost ai-switch-btn" onclick="openAiBlocksSheet()" title="Switch to AI extractor — paste / dictate a dump and let Claude propose blocks">
+      ✨ AI Log Activities
+    </button>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Cancel</button>
       <button class="btn-ghost" onclick="saveAndNewBlock()" title="Save this entry and start a fresh one">+ New</button>
