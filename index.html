@@ -5843,7 +5843,8 @@ function renderTagPicker(ctx) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  const projectTags = projectsByRecency().map(p => '#' + projectSlug(p));
+  const projectList = projectsByRecency();
+  const projectTags = projectList.map(p => '#' + projectSlug(p));
   const knownSet = new Set([...TAG_CONTENT_BASE, ...projectTags]);
 
   // Sort extras (custom tags already on this entry) by tagHistory recency
@@ -5866,9 +5867,24 @@ function renderTagPicker(ctx) {
          onblur="confirmTagCustom('${ctx}')" />`
     : `<button type="button" class="tag-pick-pill custom-pill" onclick="openTagCustom('${ctx}')"># custom</button>`;
 
+  // Project pills mimic the Activity-log block model: same `proj-pill-lg`
+  // shape, no `#` prefix, no colored dot. The underlying selected tag is
+  // still stored as `#<slug>` in the set so save/sync stays unchanged.
+  const projectRow = projectList.length ? `
+    <div class="tag-picker-divider"></div>
+    <div class="tag-picker-group">
+      ${renderProjectPillRow({
+        key: 'tagpicker-' + ctx,
+        items: projectList,
+        activeMatch: p => set.has('#' + projectSlug(p)),
+        onclickFn: safeName => `toggleTagPickProject('${ctx}','${safeName}')`,
+        pillClass: 'proj-pill-lg',
+      })}
+    </div>` : '';
+
   container.innerHTML = `
     ${renderPillGroup(ctx, TAG_CONTENT_BASE, set, 'content', { trailingHtml: customEl })}
-    ${renderPillGroup(ctx, projectTags,      set, 'project', { divider: true, limit: 3, truncate: 10 })}
+    ${projectRow}
     ${renderPillGroup(ctx, extras,           set, 'extras',  { divider: true })}
   `;
 }
@@ -5878,6 +5894,13 @@ window.toggleTagPick = function(ctx, tag) {
   if (set.has(tag)) set.delete(tag);
   else              set.add(tag);
   renderTagPicker(ctx);
+};
+
+// Project pills in the tag picker use the activity-log model (plain project
+// name, no '#'). The persisted tag remains `#<slug>` so existing data + sync
+// is unchanged — we just convert the display name → slug here.
+window.toggleTagPickProject = function(ctx, projectName) {
+  window.toggleTagPick(ctx, '#' + projectSlug(projectName));
 };
 
 window.openTagCustom = function(ctx) {
@@ -6179,7 +6202,7 @@ function projectsByRecency() {
   });
 }
 
-const PROJ_PILL_LIMIT = 5;
+const PROJ_PILL_LIMIT = 3;
 // Cache per-key data so the picker modal can run the original onclick when
 // a pill is tapped from inside the modal. Closures (activeMatch, onclickFn)
 // can't be serialised onto an HTML attribute, so we keep them in memory and
