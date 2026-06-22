@@ -1470,19 +1470,14 @@ body.ios-pwa #nav {
   margin-top: 0.4rem;
   padding: 0.45rem;
   background: transparent;
-  border: 1px solid var(--accent);
+  border: 1px dashed var(--border2);
   border-radius: 6px;
-  color: var(--accent);
+  color: var(--text3);
   font-size: 0.78rem;
   cursor: pointer;
-  box-shadow: 0 0 6px rgba(59, 130, 246, 0.35), 0 0 0 1px rgba(59, 130, 246, 0.15);
-  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.voice-add-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.55), 0 0 0 1px rgba(59, 130, 246, 0.3);
-}
+.voice-add-btn:hover { color: var(--accent); border-color: var(--accent); }
 .voice-add-btn.recording {
   color: var(--danger);
   border-color: var(--danger);
