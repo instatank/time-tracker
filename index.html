@@ -3956,10 +3956,8 @@ select option { background: var(--surface2); }
          capture doc's voiceNotes array. -->
     <div class="field" id="f-cap-voice-field" style="display:none">
       <div class="voice-list" id="f-cap-voice-list"></div>
-      <button type="button" class="voice-add-btn" id="f-cap-voice-add-btn"
-        onclick="toggleCaptureVoiceRecording()">🎤 Add voice note</button>
       <div class="voice-list" id="f-cap-attach-list"></div>
-      <button type="button" class="voice-add-btn" onclick="openAttachMenu('capture')">📎 Add photo or file</button>
+      <button type="button" class="voice-add-btn" onclick="openAttachMenu('capture')">➕ Add voice, photo or file</button>
     </div>
     <div class="field" id="f-project-field" style="display:none;position:relative">
       <label class="field-label">Project Tag</label>
@@ -4016,12 +4014,10 @@ select option { background: var(--surface2); }
         </div>
       </div>
       <div class="dj-section">
-        <label class="dj-section-label">VOICE NOTES</label>
+        <label class="dj-section-label">ATTACHMENTS</label>
         <div class="voice-list" id="f-daily-voice-list"></div>
-        <button type="button" class="voice-add-btn" id="f-daily-voice-add-btn"
-          onclick="toggleDailyVoiceRecording()">🎤 Add voice note</button>
         <div class="voice-list" id="f-daily-attach-list"></div>
-        <button type="button" class="voice-add-btn" onclick="openAttachMenu('daily')">📎 Add photo or file</button>
+        <button type="button" class="voice-add-btn" onclick="openAttachMenu('daily')">➕ Add voice, photo or file</button>
       </div>
     </div>
     <div class="field">
@@ -4089,10 +4085,8 @@ select option { background: var(--surface2); }
     </div>
     <div class="field">
       <div class="voice-list" id="f-learn-voice-list"></div>
-      <button type="button" class="voice-add-btn" id="f-learn-voice-add-btn"
-        onclick="toggleLearningVoiceRecording()">🎤 Add voice note</button>
       <div class="voice-list" id="f-learn-attach-list"></div>
-      <button type="button" class="voice-add-btn" onclick="openAttachMenu('learning')">📎 Add photo or file</button>
+      <button type="button" class="voice-add-btn" onclick="openAttachMenu('learning')">➕ Add voice, photo or file</button>
     </div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="closeSheets()">Close</button>
@@ -4142,10 +4136,8 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
     </div>
     <div class="field">
       <div class="voice-list" id="f-sess-voice-list"></div>
-      <button type="button" class="voice-add-btn" id="f-sess-voice-add-btn"
-        onclick="toggleSessionVoiceRecording()">🎤 Add voice note</button>
       <div class="voice-list" id="f-sess-attach-list"></div>
-      <button type="button" class="voice-add-btn" onclick="openAttachMenu('session')">📎 Add photo or file</button>
+      <button type="button" class="voice-add-btn" onclick="openAttachMenu('session')">➕ Add voice, photo or file</button>
     </div>
     <div class="field">
       <label class="session-field-label neutral">Duration</label>
@@ -4301,11 +4293,11 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 <div id="attach-menu" class="attach-menu-overlay">
   <div class="attach-menu-backdrop" onclick="closeAttachMenu()"></div>
   <div class="attach-menu-card">
-    <div class="attach-menu-title">Add attachment</div>
+    <div class="attach-menu-title">Add to entry</div>
+    <button type="button" class="opt-btn" onclick="startVoiceFromMenu()">🎤 &nbsp;Voice note</button>
     <button type="button" class="opt-btn" onclick="pickAttachmentCamera()">📷 &nbsp;Take photo</button>
     <button type="button" class="opt-btn" onclick="pickAttachmentImage()">🖼 &nbsp;Photo library</button>
     <button type="button" class="opt-btn" onclick="pickAttachmentFile()">📎 &nbsp;Attach file</button>
-    <button type="button" class="opt-btn attach-soon" disabled>✏️ &nbsp;Draw <span class="attach-soon-tag">soon</span></button>
     <button type="button" class="opt-btn" onclick="closeAttachMenu()">✕ &nbsp;Cancel</button>
   </div>
 </div>
@@ -5393,8 +5385,8 @@ function renderToday() {
         </div>`).join('')
     }</div>` : ''}
 
-    ${homeQ ? '' : `<button type="button" class="voice-add-btn home-voice-tight" id="home-voice-add-btn"
-      onclick="toggleHomeVoiceRecording()">🎤 Add voice note</button>`}
+    ${homeQ ? '' : `<button type="button" class="voice-add-btn home-voice-tight" id="home-add-btn"
+      onclick="onHomeAddClick()">➕ Add voice, photo or file</button>`}
 
     <div class="section">
       <div class="sec-hdr"><span class="sec-title">Rate Your Day</span></div>
@@ -11052,29 +11044,36 @@ window.toggleCaptureVoiceRecording = async function() {
   else await startCaptureVoiceRecording();
 };
 
-// Today-page quick voice-note button. Single tap → start recording, tap
-// again → stop + upload + save as a brand-new Quick Note capture (no body
-// text). Lets the user offload a thought with one tap from the home page.
-function renderHomeVoiceBtn() {
-  const btn = document.getElementById('home-voice-add-btn');
+// Today-page unified "Add" button. Tap → open the attach menu (voice / photo /
+// file). While a home voice note is recording the same button turns into a
+// tap-to-stop control and shows the live timer.
+function renderHomeAddBtn() {
+  const btn = document.getElementById('home-add-btn');
   if (!btn) return;
   if (_voiceRec) {
     const sec = Math.round((Date.now() - _voiceRec.startedAt) / 1000);
-    btn.textContent = `■ Stop recording · ${fmtVoiceDuration(sec)}`;
+    btn.textContent = `■ Recording… · ${fmtVoiceDuration(sec)} · tap to stop`;
     btn.classList.add('recording');
   } else if (_voiceUploading) {
     btn.textContent = '⏳ Uploading…';
     btn.classList.remove('recording');
   } else {
-    btn.textContent = '🎤 Add voice note';
+    btn.textContent = '➕ Add voice, photo or file';
     btn.classList.remove('recording');
   }
 }
 
+// Single entry point for the Today "Add" button: stop an in-progress recording,
+// otherwise open the attach menu in the 'home' context.
+window.onHomeAddClick = function() {
+  if (_voiceRec) { stopActiveVoiceRecording(); return; }
+  openAttachMenu('home');
+};
+
 window.toggleHomeVoiceRecording = async function() {
   if (_voiceRec) { await stopVoiceRecording(); return; }
   await startVoiceRecording({
-    onTick: renderHomeVoiceBtn,
+    onTick: renderHomeAddBtn,
     onStop: async (note) => {
       const c = {
         id: uid(), timestamp: nowISTIso(), type: 'note',
@@ -11108,9 +11107,9 @@ function renderCaptureVoiceList() {
   let extra = '';
   if (_voiceRec) {
     const sec = Math.round((Date.now() - _voiceRec.startedAt) / 1000);
-    extra = `<div class="voice-row recording">
+    extra = `<div class="voice-row recording" onclick="stopActiveVoiceRecording()" title="Tap to stop" style="cursor:pointer">
       <span class="voice-icon pulsing">●</span>
-      <span class="voice-title">Recording…</span>
+      <span class="voice-title">Recording… <span style="opacity:.65">tap to stop</span></span>
       <span class="voice-dur">${fmtVoiceDuration(sec)}</span>
     </div>`;
   } else if (_voiceUploading) {
@@ -11148,9 +11147,9 @@ function renderVoiceListEditable(listId, addBtnId, draftArr, ctx) {
   let extra = '';
   if (_voiceRec) {
     const sec = Math.round((Date.now() - _voiceRec.startedAt) / 1000);
-    extra = `<div class="voice-row recording">
+    extra = `<div class="voice-row recording" onclick="stopActiveVoiceRecording()" title="Tap to stop" style="cursor:pointer">
       <span class="voice-icon pulsing">●</span>
-      <span class="voice-title">Recording…</span>
+      <span class="voice-title">Recording… <span style="opacity:.65">tap to stop</span></span>
       <span class="voice-dur">${fmtVoiceDuration(sec)}</span>
     </div>`;
   } else if (_voiceUploading) {
@@ -11634,19 +11633,34 @@ window.pickAttachmentImage  = function() { _clickPicker('attach-image-input'); }
 window.pickAttachmentCamera = function() { _clickPicker('attach-camera-input'); };
 
 // Shared upload runner for every modality: shows the progress row, uploads,
-// pushes the new attachment onto the active form draft, persists, re-renders.
+// then attaches the result. For form contexts it pushes onto the active draft
+// + persists; for the Today page ('home') it spins up a brand-new Quick Note
+// capture carrying the single item (same default as the old quick-voice strip).
 async function _runAttachUpload(ctx, blob, ext, mime, kind, title) {
   _attachUploading = true;
   _attachUploadPct = 0;
-  _attachRenderFor(ctx)();
+  if (ctx === 'home') toast('Uploading…');
+  else _attachRenderFor(ctx)();
   try {
     const uploaded = await uploadBlobAttachment(blob, ext, mime, (pct) => {
       _attachUploadPct = pct;
-      _attachRenderFor(ctx)();
+      if (ctx !== 'home') _attachRenderFor(ctx)();
     });
-    const draft = _attachDraftFor(ctx);
-    draft.push({ ...uploaded, kind, title, createdAt: nowISTIso() });
-    _attachPersistFor(ctx)();
+    const item = { ...uploaded, kind, title, createdAt: nowISTIso() };
+    if (ctx === 'home') {
+      const c = {
+        id: uid(), timestamp: nowISTIso(), type: 'note',
+        body: '', project_tag: '', tags: [],
+        voiceNotes: [], attachments: [item], _synced: false,
+      };
+      captures.push(c);
+      saveLocal(SK.CAPTURES, captures);
+      syncCaptureDoc(c);
+    } else {
+      const draft = _attachDraftFor(ctx);
+      draft.push(item);
+      _attachPersistFor(ctx)();
+    }
     toast(kind === 'image' ? 'Photo added' : 'File attached');
   } catch (e) {
     console.error('attachment upload failed', e);
@@ -11654,7 +11668,8 @@ async function _runAttachUpload(ctx, blob, ext, mime, kind, title) {
   }
   _attachUploading = false;
   _attachUploadPct = 0;
-  _attachRenderFor(ctx)();
+  if (ctx === 'home') render();
+  else _attachRenderFor(ctx)();
 }
 
 window.onAttachFileChosen = async function(inputEl) {
@@ -11671,16 +11686,15 @@ window.onAttachFileChosen = async function(inputEl) {
     file.name || `File ${_attachDraftFor(ctx).length + 1}`);
 };
 
-// Photo from library or camera: compress to JPEG (falls back to the original
-// on decode failure), then upload as a kind:'image' attachment.
-window.onAttachImageChosen = async function(inputEl) {
-  const file = inputEl.files && inputEl.files[0];
-  if (!file) return;
-  const ctx = _attachCtx;
+// Photo from library / camera / clipboard paste: compress to JPEG (falls back
+// to the original on decode failure), then upload as a kind:'image' attachment.
+async function _processImageFile(ctx, file, defaultTitle) {
+  if (!ctx || !file) return;
   if (file.size > ATTACH_MAX_BYTES) {
     toast(`Image too large — max ${fmtFileSize(ATTACH_MAX_BYTES)}`, 4000);
     return;
   }
+  _attachCtx = ctx; // keep the inline progress row pointed at the right list
   let blob = file, ext = 'jpg', mime = 'image/jpeg';
   try {
     const c = await compressImage(file);
@@ -11691,9 +11705,56 @@ window.onAttachImageChosen = async function(inputEl) {
     ext = parts.length > 1 ? parts.pop().toLowerCase().replace(/[^a-z0-9]/g, '') : 'jpg';
     mime = file.type || 'image/jpeg';
   }
-  const base = (file.name || 'Photo').replace(/\.[^.]+$/, '').trim();
-  await _runAttachUpload(ctx, blob, ext, mime, 'image', base || 'Photo');
+  const base = (file.name || defaultTitle || 'Photo').replace(/\.[^.]+$/, '').trim();
+  await _runAttachUpload(ctx, blob, ext, mime, 'image', base || defaultTitle || 'Photo');
+}
+window.onAttachImageChosen = async function(inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+  await _processImageFile(_attachCtx, file, 'Photo');
 };
+
+// ── Voice note via the unified attach menu ───────────────────
+// The menu dispatches to the existing per-context recording toggle (start);
+// the live "Recording…" row in the voice list is tappable to stop + upload.
+window.startVoiceFromMenu = function() {
+  const ctx = _attachCtx;
+  closeAttachMenu();
+  if (ctx === 'home')      toggleHomeVoiceRecording();
+  else if (ctx === 'capture')  toggleCaptureVoiceRecording();
+  else if (ctx === 'session')  toggleSessionVoiceRecording();
+  else if (ctx === 'learning') toggleLearningVoiceRecording();
+  else if (ctx === 'daily')    toggleDailyVoiceRecording();
+};
+window.stopActiveVoiceRecording = async function() {
+  if (_voiceRec) await stopVoiceRecording();
+};
+
+// ── Clipboard paste (images) ─────────────────────────────────
+// When an entry sheet (or the Today page) is the active surface, pasting an
+// image from the clipboard routes it through the same image pipeline. Text
+// pastes fall through untouched (we only preventDefault on an image file).
+function _activePasteCtx() {
+  const isOpen = id => document.getElementById(id)?.classList.contains('open');
+  if (isOpen('sheet-capture'))  return selCapType === 'daily' ? 'daily' : 'capture';
+  if (isOpen('sheet-session'))  return 'session';
+  if (isOpen('sheet-learning')) return 'learning';
+  if (document.querySelector('.sheet.open')) return null; // some other sheet — ignore
+  if (activeTab === 'today') return 'home';
+  return null;
+}
+document.addEventListener('paste', (e) => {
+  const ctx = _activePasteCtx();
+  if (!ctx) return;
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  let file = null;
+  for (const it of items) {
+    if (it.kind === 'file' && (it.type || '').startsWith('image/')) { file = it.getAsFile(); break; }
+  }
+  if (!file) return;
+  e.preventDefault();
+  _processImageFile(ctx, file, 'Pasted image');
+});
 
 window.openAttachment = function(url) {
   try { window.open(url, '_blank', 'noopener'); }
