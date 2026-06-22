@@ -11506,16 +11506,30 @@ function fileIconFor(mime, ext) {
 
 const liveAttachments = (arr) => (arr || []).filter(notTrashed);
 
-// Resumable upload to users/{uid}/attachments/{id}.{ext} with progress.
+// True for types a browser can render in a tab (so we preview them); anything
+// else is served as a download so clicking it actually does something.
+function _isPreviewableAttachment(mime, ext) {
+  const m = (mime || '').toLowerCase();
+  const e = (ext || '').toLowerCase();
+  return m.startsWith('image/') || m === 'application/pdf' || e === 'pdf';
+}
+
 // Generic resumable upload of any Blob/File to users/{uid}/attachments/{id}.{ext}.
-function uploadBlobAttachment(blob, ext, mime, onProgress) {
+// Non-previewable files (Word/Excel/zip/…) get a Content-Disposition:attachment
+// so the browser downloads them on click instead of opening a blank tab.
+function uploadBlobAttachment(blob, ext, mime, onProgress, downloadName) {
   return new Promise((resolve, reject) => {
     if (!user) { reject(new Error('not signed in')); return; }
     const id = uid();
     const safeExt = (ext || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
     const path = `users/${user.uid}/attachments/${id}.${safeExt}`;
     const r = storageRef(storage, path);
-    const task = uploadBytesResumable(r, blob, { contentType: mime || 'application/octet-stream' });
+    const metadata = { contentType: mime || 'application/octet-stream' };
+    if (!_isPreviewableAttachment(mime, safeExt)) {
+      const safeName = (downloadName || `file.${safeExt}`).replace(/[\r\n"\\]/g, '').slice(0, 120);
+      metadata.contentDisposition = `attachment; filename="${safeName}"`;
+    }
+    const task = uploadBytesResumable(r, blob, metadata);
     task.on('state_changed',
       (snap) => { if (onProgress && snap.totalBytes) onProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)); },
       (err) => reject(err),
@@ -11645,7 +11659,7 @@ async function _runAttachUpload(ctx, blob, ext, mime, kind, title) {
     const uploaded = await uploadBlobAttachment(blob, ext, mime, (pct) => {
       _attachUploadPct = pct;
       if (ctx !== 'home') _attachRenderFor(ctx)();
-    });
+    }, title);
     const item = { ...uploaded, kind, title, createdAt: nowISTIso() };
     if (ctx === 'home') {
       const c = {
@@ -11756,9 +11770,19 @@ document.addEventListener('paste', (e) => {
   _processImageFile(ctx, file, 'Pasted image');
 });
 
+// Anchor-click is more reliable than window.open inside an installed PWA.
+// Previewable types open in a new tab; download-disposition files (set at
+// upload) trigger a download regardless of the target.
 window.openAttachment = function(url) {
-  try { window.open(url, '_blank', 'noopener'); }
-  catch { location.href = url; }
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch { location.href = url; }
 };
 
 window.editAttachTitleIn = function(ctx, ev, attId) {
