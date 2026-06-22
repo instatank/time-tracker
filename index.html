@@ -11558,17 +11558,25 @@ function fileIconFor(mime, ext) {
 
 const liveAttachments = (arr) => (arr || []).filter(notTrashed);
 
-// True for types a browser can render in a tab (so we preview them); anything
-// else is served as a download so clicking it actually does something.
+// Types a browser can render in a tab itself (preview rather than download).
 function _isPreviewableAttachment(mime, ext) {
   const m = (mime || '').toLowerCase();
   const e = (ext || '').toLowerCase();
   return m.startsWith('image/') || m === 'application/pdf' || e === 'pdf';
 }
 
+// Types Google's embedded viewer can render in an in-app iframe. Notably this
+// does NOT include Apple iWork (.numbers/.pages/.key) — only iOS Quick Look can
+// preview those, so they fall through to a native (external) open.
+function _isViewerEmbeddable(mime, ext) {
+  const e = (ext || '').toLowerCase();
+  return ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'rtf'].includes(e);
+}
+
 // Generic resumable upload of any Blob/File to users/{uid}/attachments/{id}.{ext}.
-// Non-previewable files (Word/Excel/zip/…) get a Content-Disposition:attachment
-// so the browser downloads them on click instead of opening a blank tab.
+// Files are stored INLINE (no forced Content-Disposition) so iOS Safari/Quick
+// Look can preview them when opened natively; desktop downloads are handled
+// client-side via fetch instead.
 function uploadBlobAttachment(blob, ext, mime, onProgress, downloadName) {
   return new Promise((resolve, reject) => {
     if (!user) { reject(new Error('not signed in')); return; }
@@ -11577,10 +11585,6 @@ function uploadBlobAttachment(blob, ext, mime, onProgress, downloadName) {
     const path = `users/${user.uid}/attachments/${id}.${safeExt}`;
     const r = storageRef(storage, path);
     const metadata = { contentType: mime || 'application/octet-stream' };
-    if (!_isPreviewableAttachment(mime, safeExt)) {
-      const safeName = (downloadName || `file.${safeExt}`).replace(/[\r\n"\\]/g, '').slice(0, 120);
-      metadata.contentDisposition = `attachment; filename="${safeName}"`;
-    }
     const task = uploadBytesResumable(r, blob, metadata);
     task.on('state_changed',
       (snap) => { if (onProgress && snap.totalBytes) onProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)); },
@@ -11896,9 +11900,17 @@ window.closeAttachViewer = function() {
 };
 
 window.openAttachment = function(url, mime, ext, title) {
-  // Installed iOS PWA can't host a new tab in-app and can't download via
-  // fetch/iframe — so preview everything inside our own overlay.
-  if (_isIOS) { openAttachViewer(url, mime, ext, title); return; }
+  if (_isIOS) {
+    // Images + viewer-embeddable docs (pdf/office) preview inside the app.
+    // iWork (.numbers/.pages/.key) and anything else can only be rendered by
+    // iOS Quick Look, so hand those to a native open.
+    if (_isImageAttachment(mime, ext) || _isViewerEmbeddable(mime, ext)) {
+      openAttachViewer(url, mime, ext, title);
+    } else {
+      _openInTab(url);
+    }
+    return;
+  }
   // Desktop / Android: images + PDFs preview in a new tab, other files download.
   if (_isPreviewableAttachment(mime, ext)) { _openInTab(url); return; }
   const name = title && /\.[a-z0-9]+$/i.test(title) ? title : `${title || 'file'}.${(ext || 'bin')}`;
