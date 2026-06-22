@@ -11607,12 +11607,12 @@ function renderAttachListEditable(listId, draftArr, ctx) {
   const images = live.filter(a => a.kind === 'image');
   const files  = live.filter(a => a.kind !== 'image');
   const thumbs = images.length ? `<div class="attach-thumbs">${images.map(a => `
-    <div class="attach-thumb" onclick="openAttachment('${esc(a.url)}')">
+    <div class="attach-thumb" onclick="openAttachment('${esc(a.url)}','${esc(a.mime || '')}','${esc(a.ext || '')}')">
       <img src="${esc(a.url)}" loading="lazy" alt="${esc(a.title)}" />
       <button class="attach-thumb-del" data-delkey="attach-${esc(a.id)}" onclick="event.stopPropagation();deleteAttachIn('${ctx}', '${esc(a.id)}')" title="Delete">×</button>
     </div>`).join('')}</div>` : '';
   const rows = files.map(a => `
-    <div class="voice-row" id="at-${ctx}-${esc(a.id)}" onclick="openAttachment('${esc(a.url)}')">
+    <div class="voice-row" id="at-${ctx}-${esc(a.id)}" onclick="openAttachment('${esc(a.url)}','${esc(a.mime || '')}','${esc(a.ext || '')}','${esc(a.title || '')}')">
       <span class="voice-icon">${fileIconFor(a.mime, a.ext)}</span>
       <span class="voice-title" ondblclick="editAttachTitleIn('${ctx}', event, '${esc(a.id)}')" title="Double-tap to rename">${esc(a.title)}</span>
       <span class="voice-dur">${esc(fmtFileSize(a.size))}</span>
@@ -11770,19 +11770,42 @@ document.addEventListener('paste', (e) => {
   _processImageFile(ctx, file, 'Pasted image');
 });
 
-// Anchor-click is more reliable than window.open inside an installed PWA.
-// Previewable types open in a new tab; download-disposition files (set at
-// upload) trigger a download regardless of the target.
-window.openAttachment = function(url) {
+// Images / PDFs open in a new tab to preview. Everything else is downloaded:
+// we fetch the bytes and save them via a same-origin object URL (so the file
+// keeps its name and never shows a blank tab). If the fetch is blocked (CORS)
+// we fall back to a hidden iframe, which downloads via the upload-time
+// Content-Disposition:attachment header. The page never navigates away.
+async function _downloadAttachment(url, filename) {
   try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('http ' + resp.status);
+    const blob = await resp.blob();
+    const objUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } catch { location.href = url; }
+    a.href = objUrl; a.download = filename || 'download';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(objUrl), 10000);
+  } catch (e) {
+    console.warn('blob download failed, falling back to iframe', e);
+    let f = document.getElementById('_attach-dl-frame');
+    if (!f) {
+      f = document.createElement('iframe');
+      f.id = '_attach-dl-frame';
+      f.style.display = 'none';
+      document.body.appendChild(f);
+    }
+    f.src = url;
+  }
+}
+window.openAttachment = function(url, mime, ext, title) {
+  if (_isPreviewableAttachment(mime, ext)) {
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
+  const name = title && /\.[a-z0-9]+$/i.test(title) ? title : `${title || 'file'}.${(ext || 'bin')}`;
+  _downloadAttachment(url, name);
 };
 
 window.editAttachTitleIn = function(ctx, ev, attId) {
@@ -11834,12 +11857,12 @@ function renderAttachmentsReadonly(attachments, parentKind, parentId) {
     ? `<button class="${cls}" data-delkey="attach-${esc(a.id)}" onclick="event.stopPropagation();deleteAttachmentFromParent('${parentKind}', '${esc(String(parentId))}', '${esc(a.id)}')" title="Delete">×</button>`
     : '';
   const thumbs = images.length ? `<div class="attach-thumbs">${images.map(a => `
-    <div class="attach-thumb" onclick="event.stopPropagation();openAttachment('${esc(a.url)}')">
+    <div class="attach-thumb" onclick="event.stopPropagation();openAttachment('${esc(a.url)}','${esc(a.mime || '')}','${esc(a.ext || '')}')">
       <img src="${esc(a.url)}" loading="lazy" alt="${esc(a.title)}" />
       ${delBtn(a, 'attach-thumb-del')}
     </div>`).join('')}</div>` : '';
   const rows = files.length ? `<div class="voice-list readonly">${files.map(a => `
-    <div class="voice-row" onclick="event.stopPropagation();openAttachment('${esc(a.url)}')">
+    <div class="voice-row" onclick="event.stopPropagation();openAttachment('${esc(a.url)}','${esc(a.mime || '')}','${esc(a.ext || '')}','${esc(a.title || '')}')">
       <span class="voice-icon">${fileIconFor(a.mime, a.ext)}</span>
       <span class="voice-title">${esc(a.title)}</span>
       <span class="voice-dur">${esc(fmtFileSize(a.size))}</span>

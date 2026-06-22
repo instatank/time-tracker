@@ -1,0 +1,11 @@
+[
+  {
+    "origin": [
+      "https://time-tracker-7a7l.vercel.app",
+      "http://localhost"
+    ],
+    "method": ["GET"],
+    "responseHeader": ["Content-Type", "Content-Disposition"],
+    "maxAgeSeconds": 3600
+  }
+]
