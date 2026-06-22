@@ -5790,9 +5790,15 @@ function setTagCustomOpen(ctx, v) {
   else                         captureTagCustomOpen  = v;
 }
 
-function renderPickPill(ctx, t, selected) {
-  return `<button type="button" class="tag-pick-pill ${tagClassFor(t)} ${selected ? 'selected' : ''}"
-    onclick="toggleTagPick('${ctx}','${esc(t).replace(/'/g, "\\'")}')">${esc(t)}</button>`;
+function renderPickPill(ctx, t, selected, opts = {}) {
+  // Optional display-only truncation — keeps the full tag in the onclick + title
+  // so behaviour is unchanged, but the visible label stays compact.
+  const max = opts.truncate || 0;
+  const truncated = max && t.length > max;
+  const shown = truncated ? t.slice(0, max) + '…' : t;
+  const titleAttr = truncated ? ` title="${esc(t)}"` : '';
+  return `<button type="button" class="tag-pick-pill ${tagClassFor(t)} ${selected ? 'selected' : ''}"${titleAttr}
+    onclick="toggleTagPick('${ctx}','${esc(t).replace(/'/g, "\\'")}')">${esc(shown)}</button>`;
 }
 
 // One-line pill rendering with truncation. Groups longer than the limit
@@ -5803,25 +5809,27 @@ const PICKER_GROUP_LIMIT = 5;
 let _pickerExpanded = {}; // { 'capture:project': true, ... }
 
 function renderPillGroup(ctx, items, selectedSet, groupKey, opts = {}) {
-  if (!items.length) return '';
+  if (!items.length && !opts.trailingHtml) return '';
+  const limit    = opts.limit || PICKER_GROUP_LIMIT;
   const expandKey = ctx + ':' + groupKey;
   const expanded = !!_pickerExpanded[expandKey];
-  const showAll  = expanded || items.length <= PICKER_GROUP_LIMIT;
-  const visible  = showAll ? items : items.slice(0, PICKER_GROUP_LIMIT);
+  const showAll  = expanded || items.length <= limit;
+  const visible  = showAll ? items : items.slice(0, limit);
   const hidden   = items.length - visible.length;
 
   const pillsHtml = visible
-    .map(t => renderPickPill(ctx, t, selectedSet.has(t)))
+    .map(t => renderPickPill(ctx, t, selectedSet.has(t), { truncate: opts.truncate }))
     .join('');
 
   let trailHtml = '';
   if (hidden > 0) {
     trailHtml = `<button type="button" class="tag-pick-pill more-pill" onclick="togglePickerExpand('${ctx}','${groupKey}')">▾ more (${hidden})</button>`;
-  } else if (expanded && items.length > PICKER_GROUP_LIMIT) {
+  } else if (expanded && items.length > limit) {
     trailHtml = `<button type="button" class="tag-pick-pill more-pill" onclick="togglePickerExpand('${ctx}','${groupKey}')">▴ less</button>`;
   }
   const dividerHtml = opts.divider ? `<div class="tag-picker-divider"></div>` : '';
-  return `${dividerHtml}<div class="tag-picker-group">${pillsHtml}${trailHtml}</div>`;
+  const extraHtml = opts.trailingHtml || '';
+  return `${dividerHtml}<div class="tag-picker-group">${pillsHtml}${trailHtml}${extraHtml}</div>`;
 }
 
 window.togglePickerExpand = function(ctx, groupKey) {
@@ -5859,10 +5867,9 @@ function renderTagPicker(ctx) {
     : `<button type="button" class="tag-pick-pill custom-pill" onclick="openTagCustom('${ctx}')"># custom</button>`;
 
   container.innerHTML = `
-    ${renderPillGroup(ctx, TAG_CONTENT_BASE, set, 'content')}
-    ${renderPillGroup(ctx, projectTags,      set, 'project', { divider: true })}
+    ${renderPillGroup(ctx, TAG_CONTENT_BASE, set, 'content', { trailingHtml: customEl })}
+    ${renderPillGroup(ctx, projectTags,      set, 'project', { divider: true, limit: 3, truncate: 10 })}
     ${renderPillGroup(ctx, extras,           set, 'extras',  { divider: true })}
-    <div class="tag-picker-group" style="margin-top:4px">${customEl}</div>
   `;
 }
 
