@@ -855,6 +855,14 @@ body.ios-pwa #nav {
   margin: 2px 0;
   opacity: 0.6;
 }
+/* Project pills inside the tag picker share the activity-log look but
+   the sheet is narrower than the Log-Activity scroller, so we compress
+   padding + font slightly to keep "3 + more" on a single row. */
+.tag-picker-projects { gap: 4px; }
+.tag-picker-projects .proj-pill-lg {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+}
 .tag-pick-pill.custom-pill {
   background: transparent;
   border: 1px dashed var(--border2);
@@ -5873,13 +5881,14 @@ function renderTagPicker(ctx) {
   // still stored as `#<slug>` in the set so save/sync stays unchanged.
   const projectRow = projectList.length ? `
     <div class="tag-picker-divider"></div>
-    <div class="tag-picker-group">
+    <div class="tag-picker-group tag-picker-projects">
       ${renderProjectPillRow({
         key: 'tagpicker-' + ctx,
         items: projectList,
         activeMatch: p => set.has('#' + projectSlug(p)),
         onclickFn: safeName => `toggleTagPickProject('${ctx}','${safeName}')`,
         pillClass: 'proj-pill-lg',
+        truncate: 10,
       })}
     </div>` : '';
 
@@ -6210,7 +6219,7 @@ const PROJ_PILL_LIMIT = 3;
 // reach for them by key.
 let _projPillData = {}; // { key: { items, activeMatch, onclickFn, pillClass, title } }
 
-function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 'proj-pill-lg', title }) {
+function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 'proj-pill-lg', title, truncate = 0 }) {
   // Cache for the modal — even when nothing's overflowing right now, the row
   // may grow before the next render and the modal needs the latest data.
   _projPillData[key] = { items, activeMatch, onclickFn, pillClass, title: title || 'Pick a project' };
@@ -6234,7 +6243,10 @@ function renderProjectPillRow({ key, items, activeMatch, onclickFn, pillClass = 
 
   const pills = visible.map(p => {
     const safeName = esc(p).replace(/'/g, "\\'");
-    return `<button class="${pillClass} ${activeMatch(p) ? 'active' : ''}" onclick="${onclickFn(safeName)}">${esc(p)}</button>`;
+    const truncated = truncate && p.length > truncate;
+    const shown = truncated ? p.slice(0, truncate) + '…' : p;
+    const titleAttr = truncated ? ` title="${esc(p)}"` : '';
+    return `<button class="${pillClass} ${activeMatch(p) ? 'active' : ''}"${titleAttr} onclick="${onclickFn(safeName)}">${esc(shown)}</button>`;
   }).join('');
 
   // Tap "more" → opens a vertical-list dropdown modal of all items. User
