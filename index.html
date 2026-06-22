@@ -14765,7 +14765,7 @@ async function aiCall(task, input, ctx = {}) {
 // the user explicitly confirms.
 let _aiProposedBlocks = [];
 
-function openAiBlocksSheet() {
+window.openAiBlocksSheet = function openAiBlocksSheet() {
   _aiProposedBlocks = [];
   const t = document.getElementById('f-ai-blocks-input');
   if (t) t.value = '';
