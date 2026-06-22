@@ -1565,6 +1565,47 @@ body.ios-pwa #nav {
   display: flex; align-items: center; justify-content: center;
 }
 .attach-thumb-del.armed { background: var(--danger); }
+/* In-app attachment viewer overlay */
+.attach-viewer-overlay {
+  position: fixed; inset: 0;
+  z-index: 300;
+  display: none;
+  flex-direction: column;
+  background: #000;
+}
+.attach-viewer-overlay.open { display: flex; }
+.attach-viewer-bar {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: calc(env(safe-area-inset-top) + 0.5rem) 0.9rem 0.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border2);
+}
+.attach-viewer-title {
+  flex: 1;
+  font-size: 0.85rem; font-weight: 600;
+  color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.attach-viewer-ext {
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0.2rem 0.5rem;
+}
+.attach-viewer-close {
+  border: none; background: none;
+  color: var(--text2);
+  font-size: 1.2rem; line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+}
+.attach-viewer-body {
+  flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: auto;
+}
+.attach-viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.attach-viewer-frame { width: 100%; height: 100%; border: 0; background: #fff; }
 /* Today-page voice-only strip — voice quick notes captured here show up
    as a flat list right above the Add voice note button. Tight spacing
    to match the rest of the page rhythm. */
@@ -4300,6 +4341,17 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
     <button type="button" class="opt-btn" onclick="pickAttachmentFile()">📎 &nbsp;Attach file</button>
     <button type="button" class="opt-btn" onclick="closeAttachMenu()">✕ &nbsp;Cancel</button>
   </div>
+</div>
+<!-- In-app attachment viewer. Keeps file previews inside the installed PWA
+     (instead of bouncing to Safari): images render directly, PDFs/Office docs
+     via an embedded viewer. "Open ↗" is the external fallback. -->
+<div id="attach-viewer" class="attach-viewer-overlay">
+  <div class="attach-viewer-bar">
+    <span class="attach-viewer-title" id="attach-viewer-title"></span>
+    <a class="attach-viewer-ext" id="attach-viewer-ext" target="_blank" rel="noopener">Open ↗</a>
+    <button type="button" class="attach-viewer-close" onclick="closeAttachViewer()" aria-label="Close">✕</button>
+  </div>
+  <div class="attach-viewer-body" id="attach-viewer-body" onclick="if(event.target===this)closeAttachViewer()"></div>
 </div>
 <!-- Trends-tab zoom modal (D3) — reused by Time by Category, Time by Project,
      and the Over-Time line charts. Stays in the DOM, toggled via .open. -->
@@ -11810,11 +11862,45 @@ function _openInTab(url) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-window.openAttachment = function(url, mime, ext, title) {
-  if (_isIOS || _isPreviewableAttachment(mime, ext)) {
-    _openInTab(url);
-    return;
+function _isImageAttachment(mime, ext) {
+  return (mime || '').toLowerCase().startsWith('image/')
+    || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'svg'].includes((ext || '').toLowerCase());
+}
+
+// In-app viewer — keeps previews inside the installed PWA instead of bouncing
+// out to Safari. Images render in an <img>; everything else (PDF + Office) goes
+// through Google's embedded viewer, which renders them as pages in an iframe.
+// "Open ↗" in the bar is the external fallback if a format won't embed.
+window.openAttachViewer = function(url, mime, ext, title) {
+  const overlay = document.getElementById('attach-viewer');
+  const body = document.getElementById('attach-viewer-body');
+  const titleEl = document.getElementById('attach-viewer-title');
+  const extEl = document.getElementById('attach-viewer-ext');
+  if (!overlay || !body) { _openInTab(url); return; }
+  if (titleEl) titleEl.textContent = title || 'Attachment';
+  if (extEl) extEl.href = url;
+  if (_isImageAttachment(mime, ext)) {
+    body.innerHTML = `<img class="attach-viewer-img" src="${esc(url)}" alt="${esc(title || '')}" />`;
+  } else {
+    const viewer = `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(url)}`;
+    body.innerHTML = `<iframe class="attach-viewer-frame" src="${esc(viewer)}" referrerpolicy="no-referrer"></iframe>`;
   }
+  overlay.classList.add('open');
+};
+window.closeAttachViewer = function() {
+  const overlay = document.getElementById('attach-viewer');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  const body = document.getElementById('attach-viewer-body');
+  if (body) body.innerHTML = ''; // stop any media / free the iframe
+};
+
+window.openAttachment = function(url, mime, ext, title) {
+  // Installed iOS PWA can't host a new tab in-app and can't download via
+  // fetch/iframe — so preview everything inside our own overlay.
+  if (_isIOS) { openAttachViewer(url, mime, ext, title); return; }
+  // Desktop / Android: images + PDFs preview in a new tab, other files download.
+  if (_isPreviewableAttachment(mime, ext)) { _openInTab(url); return; }
   const name = title && /\.[a-z0-9]+$/i.test(title) ? title : `${title || 'file'}.${(ext || 'bin')}`;
   _downloadAttachment(url, name);
 };
