@@ -664,6 +664,73 @@ body.ios-pwa #nav {
 .btn-log:active, .btn-cap:active { opacity: 0.8; }
 
 /* ── Block item ─────────────────────────────────────────────── */
+/* ── Day Timeline (experiment) ──────────────────────────────── */
+.day-timeline {
+  margin: 0 0 0.75rem;
+  padding: 0.25rem 0;
+}
+.tl-row { display: flex; align-items: stretch; gap: 0.5rem; }
+.tl-rail {
+  min-width: 52px;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 1px;
+}
+.tl-time {
+  font-size: 0.68rem;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tl-block { cursor: pointer; }
+.tl-block .tl-bar {
+  width: 4px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  align-self: stretch;
+  margin: 1px 0;
+}
+.tl-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  padding: 1px 0 4px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.tl-block:hover .tl-body { border-color: var(--border2); }
+.tl-cat { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.tl-dur {
+  font-size: 0.68rem;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+.tl-label {
+  flex-basis: 100%;
+  font-size: 0.74rem;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Gap band: faint dashed zone standing in for unlogged time. */
+.tl-gap-fill {
+  flex: 1;
+  margin-left: 12px; /* aligns under the 4px bar + its gap */
+  display: flex;
+  align-items: center;
+  border-left: 2px dashed var(--border2);
+  padding-left: 0.6rem;
+}
+.tl-gap-label {
+  font-size: 0.68rem;
+  color: var(--text3);
+  font-style: italic;
+}
+
 .block-item {
   display: flex;
   gap: 0.75rem;
@@ -4504,10 +4571,17 @@ const LEGACY_CTYPES = {
   journal: { id: 'journal', label: 'Journal', icon: '📓' },
 };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1', TOMBSTONES_PROJECTS: 'dayos_tombstones_projects_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', EXPERIMENTS: 'dayos_experiments_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1', TOMBSTONES_PROJECTS: 'dayos_tombstones_projects_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
+
+// ── Experiments (local-only feature flags) ───────────────────
+// Opt-in previews of unfinished features. Local to this device, NOT
+// synced — so trying something here never touches other devices. Each
+// flag defaults OFF; toggled from Settings → Experiments.
+let experiments = loadLocal(SK.EXPERIMENTS, {});
+function expEnabled(key) { return !!(experiments && experiments[key]); }
 
 // ── State ─────────────────────────────────────────────────────
 let blocks      = loadLocal(SK.BLOCKS, []);
@@ -5397,6 +5471,7 @@ function renderToday() {
         <span class="sec-title">Today's Log</span>
         <span class="sec-meta">${sc.totalHrs > 0 ? sc.totalHrs.toFixed(1) + 'h logged' : ''}</span>
       </div>
+      ${expEnabled('timeline') && bks.length ? renderTodayTimeline(bks) : ''}
       ${bks.length
         ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
         : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
@@ -5487,6 +5562,80 @@ function renderBlock(b) {
         </div>
       </div>
     </div>`;
+}
+
+// ── Day Timeline (experiment: 'timeline') ─────────────────────
+// A vertical, proportional ribbon of the day's logged blocks so the
+// SHAPE of the day reads at a glance — where deep work clustered, where
+// the leaks were, and the unlogged gaps in between. Pure read of the
+// same block data the list uses; no new state. Heights scale with
+// duration (clamped so a 5-min block is still tappable and a 4-hour
+// block doesn't dominate). Gaps between consecutive blocks render as a
+// faint dashed "unlogged" band, capped so an overnight gap stays compact.
+const TL_PX_PER_MIN = 0.55;   // vertical scale
+const TL_MIN_H      = 30;     // floor so labels + tap target survive
+const TL_MAX_H      = 150;    // ceiling so long blocks don't run away
+const TL_GAP_MIN_H  = 22;
+const TL_GAP_MAX_H  = 46;
+const TL_GAP_THRESHOLD = 10;  // only show a gap band if > 10 min unlogged
+
+function hhmmToMin(t) {
+  const [h, m] = (t || '0:0').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+function minToHHMM(mins) {
+  const m = ((mins % 1440) + 1440) % 1440; // wrap within a day
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+function fmtMins(mins) {
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+
+function renderTodayTimeline(bks) {
+  // Only blocks with a real start time can be placed; sort ascending.
+  const placed = bks
+    .filter(b => b.start_time && b.duration_min)
+    .sort((a, b) => hhmmToMin(a.start_time) - hhmmToMin(b.start_time));
+  if (placed.length < 1) return '';
+
+  const date = placed[0].date;
+  const rows = [];
+  let prevEnd = null;
+
+  placed.forEach(b => {
+    const start = hhmmToMin(b.start_time);
+    const end   = start + b.duration_min;
+
+    // Gap band between the previous block's end and this block's start.
+    if (prevEnd != null && start - prevEnd > TL_GAP_THRESHOLD) {
+      const gapMin = start - prevEnd;
+      const gh = Math.max(TL_GAP_MIN_H, Math.min(TL_GAP_MAX_H, gapMin * TL_PX_PER_MIN));
+      rows.push(`
+        <div class="tl-row tl-gap" style="height:${gh}px">
+          <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + minToHHMM(prevEnd))}</span></div>
+          <div class="tl-gap-fill"><span class="tl-gap-label">${fmtMins(gapMin)} unlogged</span></div>
+        </div>`);
+    }
+
+    const cat = b.category === 'sleep' ? SLEEP_CAT : catById(b.category);
+    const h = Math.max(TL_MIN_H, Math.min(TL_MAX_H, b.duration_min * TL_PX_PER_MIN));
+    const label = b.note ? `${b.label} — ${b.note}` : b.label;
+    rows.push(`
+      <div class="tl-row tl-block" style="height:${h}px" onclick="openLogBlock('${b.id}')" title="${esc(label || cat.label)} · ${b.duration_min}m">
+        <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + b.start_time)}</span></div>
+        <div class="tl-bar" style="background:${cat.color}"></div>
+        <div class="tl-body">
+          <span class="tl-cat" style="color:${cat.color}">${cat.icon} ${cat.label}</span>
+          <span class="tl-dur">${b.duration_min}m</span>
+          ${label ? `<div class="tl-label">${esc(label)}</div>` : ''}
+        </div>
+      </div>`);
+
+    prevEnd = Math.max(prevEnd == null ? end : prevEnd, end);
+  });
+
+  return `<div class="day-timeline">${rows.join('')}</div>`;
 }
 
 // Compact read-only rendering of the voice notes attached to a capture
@@ -13162,7 +13311,15 @@ const SETTINGS_SECTIONS = [
   { id: 'sync',       icon: '☁️', label: 'Sync',            sub: 'Push · Pull · sign-out'                 },
   { id: 'notify',     icon: '🔔', label: 'Notifications',   sub: 'Daily reminders · per-device toggle'    },
   { id: 'trash',      icon: '🗑',  label: 'Trash',           sub: 'Recover deleted entries · 7-day window' },
+  { id: 'experiments',icon: '🧪', label: 'Experiments',     sub: 'Try preview features · this device only' },
   { id: 'about',      icon: 'ℹ️', label: 'About',           sub: 'DayOS · version · feedback'             },
+];
+
+// Preview features surfaced in Settings → Experiments. Each flag is a
+// local-only boolean (see `experiments` state). Add a row here to expose
+// a new in-progress feature for opt-in testing.
+const EXPERIMENTS_CATALOG = [
+  { key: 'timeline', label: 'Day Timeline', desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
 ];
 
 window.openSettings = function() {
@@ -13195,6 +13352,7 @@ window.openSettingsSection = function(id) {
     case 'dayscore':   return openSettingsDayScore();
     case 'lifecheck':  return openSettingsLifeCheck();
     case 'trash':      return openSettingsTrash();
+    case 'experiments':return openSettingsExperiments();
     case 'notify':     return openSettingsNotify();
     default: {
       const s = SETTINGS_SECTIONS.find(x => x.id === id);
@@ -13990,6 +14148,35 @@ function openSettingsDayScore() {
   `;
   openSheet('sheet-settings');
 }
+
+function openSettingsExperiments() {
+  const body = document.getElementById('settings-body');
+  const rows = EXPERIMENTS_CATALOG.map(e => {
+    const on = expEnabled(e.key);
+    return `
+      <div class="settings-row" style="cursor:default">
+        <button class="hdr-icon-btn" onclick="toggleExperiment('${e.key}')" aria-label="${on ? 'Turn off' : 'Turn on'}" style="padding:2px 6px;font-size:1.1rem">${on ? '☑' : '☐'}</button>
+        <div class="settings-row-text">
+          <div class="settings-row-label">${esc(e.label)}${on ? ' · on' : ''}</div>
+          <div class="settings-row-sub">${esc(e.desc)}</div>
+        </div>
+      </div>`;
+  }).join('');
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Experiments')}
+    <p class="auth-desc">Early previews of features still being refined. These settings live only on this device and aren't synced — turning one on here won't affect your other devices.</p>
+    <div class="settings-list">${rows}</div>
+  `;
+  openSheet('sheet-settings');
+}
+
+window.toggleExperiment = function(key) {
+  experiments = experiments || {};
+  experiments[key] = !experiments[key];
+  saveLocal(SK.EXPERIMENTS, experiments);
+  openSettingsExperiments();
+  if (activeTab === 'today') renderMain(true);
+};
 
 window.toggleDayScoreTile = function(idx) {
   const t = (dayScoreConfig.tiles || [])[idx];
