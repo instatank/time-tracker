@@ -731,6 +731,52 @@ body.ios-pwa #nav {
   font-style: italic;
 }
 
+/* ── Quick Capture Bar (experiment) ────────────────────────── */
+.quick-cap-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.quick-cap-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+.quick-cap-icon {
+  font-size: 0.95rem;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.quick-cap-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font-size: 16px; /* iOS focus-zoom guard */
+  padding: 0.35rem 0;
+}
+.quick-cap-input::placeholder { color: var(--text3); }
+.quick-cap-attach {
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text2);
+  font-size: 1.05rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.quick-cap-attach:hover { background: var(--surface2); color: var(--accent); }
+.quick-cap-attach:active { transform: scale(0.92); }
+
 /* ── Journal Heatmap (experiment) ──────────────────────────── */
 .heatmap-strip {
   display: flex;
@@ -5531,6 +5577,7 @@ function renderToday() {
     ${bannersStack}
     ${actionRowHtml}
 
+    ${expEnabled('capturebar') ? renderQuickCaptureBar() : ''}
     ${expEnabled('onthisday') ? renderOnThisDay(d) : ''}
 
     ${(() => {
@@ -5735,6 +5782,82 @@ function renderTodayTimeline(bks) {
   });
 
   return `<div class="day-timeline">${rows.join('')}</div>`;
+}
+
+// ── Quick Capture Bar (experiment: 'capturebar') ──────────────
+// A pinned single-line input on the Today page. Type → Enter → saved
+// as a Quick Note with zero modals. Reuses the canonical save path
+// (extractTags + syncCaptureDoc + projectRefs) so an entry made here
+// is indistinguishable from one made via the full Capture sheet —
+// just without the form. The trailing button delegates to the same
+// home-context attach menu the existing Today-page voice/photo
+// button uses, so voice/photo/file capture stays one tap away.
+function renderQuickCaptureBar() {
+  return `
+    <div class="quick-cap-bar" id="quick-cap-bar">
+      <span class="quick-cap-icon">💭</span>
+      <input type="text" id="quick-cap-input"
+        class="quick-cap-input"
+        placeholder="Capture a thought… (Enter to save)"
+        autocomplete="off"
+        onkeydown="onQuickCapKey(event)" />
+      <button type="button" class="quick-cap-attach" onclick="onHomeAddClick()" aria-label="Voice, photo or file">🎤</button>
+    </div>`;
+}
+
+window.onQuickCapKey = function(e) {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  e.preventDefault();
+  const el = document.getElementById('quick-cap-input');
+  if (!el) return;
+  const body = (el.value || '').trim();
+  if (!body) return;
+  saveQuickCaptureBarEntry(body);
+  el.value = '';
+};
+
+function saveQuickCaptureBarEntry(body) {
+  // Same tag handling as the full Capture sheet: pull inline #hashtags
+  // from the body, normalize + dedupe, push into tag history. No
+  // pill-selected tags / project-tag field — this bar is intentionally
+  // single-line. Users who need a project tag can type `#myproj` inline.
+  const tags = [...new Set(extractTags(body).map(normalizeTag).filter(Boolean))];
+  addToTagHistory(tags);
+  const c = {
+    id: uid(),
+    timestamp: nowISTIso(),
+    type: 'note',
+    body,
+    project_tag: '',
+    tags,
+    voiceNotes: [],
+    attachments: [],
+    _synced: false,
+  };
+  captures.push(c);
+  saveLocal(SK.CAPTURES, captures);
+  try { syncCaptureDoc(c); } catch {}
+  try {
+    syncProjectRefsForEntry({
+      sourceType: 'journal', sourceId: c.id, tags, prev: [],
+      preview: body, date: capDateIST(c), createdAt: c.timestamp,
+    });
+  } catch {}
+  toast('Captured');
+  // Re-render so the new capture appears in Today's Captures section
+  // immediately — but DON'T blow away the focused input by re-rendering
+  // the whole page synchronously while it's still focused. Save focus +
+  // caret first; re-render; restore.
+  if (activeTab === 'today') {
+    renderMain(true);
+    // Refocus the bar so a follow-up thought can be typed without
+    // tapping again — the whole point of the experiment is rapid-fire
+    // sequential capture.
+    requestAnimationFrame(() => {
+      const next = document.getElementById('quick-cap-input');
+      if (next) next.focus();
+    });
+  }
 }
 
 // ── Journal Heatmap (experiment: 'heatmap') ───────────────────
@@ -13528,6 +13651,7 @@ const EXPERIMENTS_CATALOG = [
   { key: 'timeline',  label: 'Day Timeline',   desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
   { key: 'heatmap',   label: 'Journal Heatmap',desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
   { key: 'onthisday', label: 'On This Day',    desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
+  { key: 'capturebar',label: 'Quick Capture Bar', desc: 'A pinned single-line input on the Today page — type a thought and hit Enter to save as a Quick Note without opening a modal. Voice + photo button on the right.' },
 ];
 
 window.openSettings = function() {
