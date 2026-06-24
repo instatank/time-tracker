@@ -731,6 +731,103 @@ body.ios-pwa #nav {
   font-style: italic;
 }
 
+/* ── Journal Heatmap (experiment) ──────────────────────────── */
+.heatmap-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+  margin: 0 -1rem 0.25rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  scrollbar-width: none;
+}
+.heatmap-strip::-webkit-scrollbar { display: none; }
+.heatmap-cell {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.62rem;
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  transition: transform 0.08s, border-color 0.12s;
+}
+.heatmap-cell:active { transform: scale(0.92); }
+.heatmap-cell.hm-empty { background: transparent; border-color: var(--border); }
+.heatmap-cell.hm-has   { background: var(--surface2); border-color: var(--border2); color: var(--text2); }
+.heatmap-cell.hm-r1    { background: rgba(59, 130, 246, 0.20); color: var(--text); }
+.heatmap-cell.hm-r2    { background: rgba(59, 130, 246, 0.38); color: var(--text); }
+.heatmap-cell.hm-r3    { background: rgba(59, 130, 246, 0.58); color: #fff; }
+.heatmap-cell.hm-r4    { background: rgba(59, 130, 246, 0.78); color: #fff; }
+.heatmap-cell.hm-r5    { background: rgba(59, 130, 246, 0.95); color: #fff; }
+.heatmap-cell.hm-today { box-shadow: 0 0 0 2px var(--accent); }
+
+/* ── On This Day (experiment) ──────────────────────────────── */
+.otd-section { margin-top: 0.25rem; }
+.otd-strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.2rem 0 0.5rem;
+  margin: 0 -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  scrollbar-width: none;
+}
+.otd-strip::-webkit-scrollbar { display: none; }
+.otd-card {
+  flex-shrink: 0;
+  width: 200px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.6rem 0.7rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: border-color 0.12s, transform 0.08s;
+}
+.otd-card:hover { border-color: var(--border2); }
+.otd-card:active { transform: scale(0.98); }
+.otd-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+.otd-when {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.otd-stars { font-size: 0.72rem; color: var(--accent); letter-spacing: 0.05em; }
+.otd-snippet {
+  font-size: 0.82rem;
+  color: var(--text2);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.otd-date {
+  font-size: 0.66rem;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+
 .block-item {
   display: flex;
   gap: 0.75rem;
@@ -5434,6 +5531,8 @@ function renderToday() {
     ${bannersStack}
     ${actionRowHtml}
 
+    ${expEnabled('onthisday') ? renderOnThisDay(d) : ''}
+
     ${(() => {
       // Day Score — config-driven via DAYSCORE_TILE_CATALOG. Each tile id
       // has a hardcoded read of state (computed in `dayCtx` below). The
@@ -5636,6 +5735,112 @@ function renderTodayTimeline(bks) {
   });
 
   return `<div class="day-timeline">${rows.join('')}</div>`;
+}
+
+// ── Journal Heatmap (experiment: 'heatmap') ───────────────────
+// 30-day horizontal strip at the top of Journal. Each cell is a day;
+// fill intensity reflects that day's star rating, with a neutral fill
+// for days that have content but no rating, and a faint outline for
+// empty days. Tap → jump to Trends → Calendar for that date (reuses
+// the existing pickDateAndOpenTrends navigation primitive).
+const HEATMAP_DAYS = 30;
+
+function _dayHasContent(date) {
+  if (ratings && ratings[date]) return true;
+  if ((blocks || []).some(b => b.date === date)) return true;
+  if ((captures || []).some(c => notTrashed(c) && capDateIST(c) === date)) return true;
+  if ((dailyJournals || []).some(j => j && notTrashed(j) && j.date === date && !isDailyEntryEmpty(j))) return true;
+  return false;
+}
+
+function renderJournalHeatmap() {
+  const today = todayStr();
+  const cells = [];
+  // Oldest → newest so the strip reads left-to-right as time-forward.
+  for (let i = HEATMAP_DAYS - 1; i >= 0; i--) {
+    const d = addDays(today, -i);
+    const r = (ratings && ratings[d]) || 0;
+    const has = _dayHasContent(d);
+    const cls = ['heatmap-cell'];
+    if (r > 0)             cls.push('hm-r' + r);
+    else if (has)          cls.push('hm-has');
+    else                   cls.push('hm-empty');
+    if (d === today)       cls.push('hm-today');
+    const dayNum = parseInt(d.slice(8, 10), 10);
+    const titleBits = [fmtDate(d)];
+    if (r > 0) titleBits.push(r + '★');
+    else if (has) titleBits.push('entries');
+    else titleBits.push('no entries');
+    cells.push(`<button class="${cls.join(' ')}" onclick="pickDateAndOpenTrends('${d}')" title="${esc(titleBits.join(' · '))}">${dayNum}</button>`);
+  }
+  return `<div class="heatmap-strip" aria-label="Last ${HEATMAP_DAYS} days">${cells.join('')}</div>`;
+}
+
+// ── On This Day (experiment: 'onthisday') ─────────────────────
+// Surfaces past entries from the same calendar day (1mo, 3mo, 6mo, 1y,
+// 2y, 3y ago). Each interval that has any content becomes a small
+// card; tap → jump to Trends → Calendar for that date. Renders nothing
+// if there are no past entries for any interval — so the section stays
+// invisible until you've used DayOS long enough to have memories.
+const OTD_INTERVALS = [
+  { months:  1,  label: '1 month ago'  },
+  { months:  3,  label: '3 months ago' },
+  { months:  6,  label: '6 months ago' },
+  { months: 12,  label: '1 year ago'   },
+  { months: 24,  label: '2 years ago'  },
+  { months: 36,  label: '3 years ago'  },
+];
+
+// Same month/day, N months earlier. Falls back gracefully if that
+// calendar date doesn't exist (e.g. Mar 31 − 1 month = Feb 28/29).
+function _shiftByMonths(dateStr, monthsBack) {
+  const [y, m, day] = dateStr.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1 - monthsBack, day));
+  return target.toISOString().slice(0, 10);
+}
+
+// One-line teaser of what that day held — prefer Daily Journal thoughts,
+// then the first capture body, else a metadata fallback ("3 blocks · 2 entries").
+function _otdSnippet(date) {
+  const dj = (dailyJournals || []).find(j => j && notTrashed(j) && j.date === date && !isDailyEntryEmpty(j));
+  if (dj) {
+    const txt = (dj.thoughts || dj.reflection || '').trim();
+    if (txt) return txt;
+  }
+  const cap = (captures || []).find(c => notTrashed(c) && capDateIST(c) === date && (c.body || '').trim());
+  if (cap) return cap.body.trim();
+  const bCount = (blocks || []).filter(b => b.date === date).length;
+  const cCount = (captures || []).filter(c => notTrashed(c) && capDateIST(c) === date).length;
+  const parts = [];
+  if (bCount) parts.push(`${bCount} block${bCount === 1 ? '' : 's'}`);
+  if (cCount) parts.push(`${cCount} entr${cCount === 1 ? 'y' : 'ies'}`);
+  return parts.join(' · ');
+}
+
+function renderOnThisDay(today) {
+  const cards = [];
+  for (const iv of OTD_INTERVALS) {
+    const past = _shiftByMonths(today, iv.months);
+    if (!_dayHasContent(past)) continue;
+    const snippet = _otdSnippet(past);
+    if (!snippet) continue;
+    const r = (ratings && ratings[past]) || 0;
+    cards.push(`
+      <button class="otd-card" onclick="pickDateAndOpenTrends('${past}')" title="${esc(fmtDate(past))}">
+        <div class="otd-hdr">
+          <span class="otd-when">${esc(iv.label)}</span>
+          ${r > 0 ? `<span class="otd-stars">${'★'.repeat(r)}</span>` : ''}
+        </div>
+        <div class="otd-snippet">${esc(snippet)}</div>
+        <div class="otd-date">${esc(fmtDate(past))}</div>
+      </button>`);
+  }
+  if (!cards.length) return '';
+  return `
+    <div class="section otd-section">
+      <div class="sec-hdr"><span class="sec-title">On this day</span></div>
+      <div class="otd-strip">${cards.join('')}</div>
+    </div>`;
 }
 
 // Compact read-only rendering of the voice notes attached to a capture
@@ -5867,6 +6072,7 @@ function renderJournal() {
 
   return `<div class="view">
     ${row1}
+    ${expEnabled('heatmap') ? renderJournalHeatmap() : ''}
     ${row2}
 
     ${projectSubTabs}
@@ -13319,7 +13525,9 @@ const SETTINGS_SECTIONS = [
 // local-only boolean (see `experiments` state). Add a row here to expose
 // a new in-progress feature for opt-in testing.
 const EXPERIMENTS_CATALOG = [
-  { key: 'timeline', label: 'Day Timeline', desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
+  { key: 'timeline',  label: 'Day Timeline',   desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
+  { key: 'heatmap',   label: 'Journal Heatmap',desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
+  { key: 'onthisday', label: 'On This Day',    desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
 ];
 
 window.openSettings = function() {
