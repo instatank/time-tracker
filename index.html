@@ -731,6 +731,45 @@ body.ios-pwa #nav {
   font-style: italic;
 }
 
+/* ── 3-Button Add Bar (experiment) ─────────────────────────── */
+/* When the threeAdd flag is on, the Today action row holds 5 elements
+   (search · DFT · ⏱ · 📓 · 📝). The 3 add buttons are icon-only and
+   sized down so the whole row still fits comfortably on a phone. */
+.proj-top-row.has-three-add { gap: 0.4rem; }
+.three-add-btn {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1.05rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, transform 0.08s;
+}
+.three-add-btn:hover { background: var(--accent); color: var(--on-accent); }
+.three-add-btn:active { transform: scale(0.94); }
+/* Use margin to "anchor" the 3-button cluster to the right edge — the
+   DFT pill, when present, expands and pushes the cluster naturally;
+   when absent, this margin still keeps the cluster right-aligned. */
+.three-add-activity { margin-left: auto; }
+
+/* ── Long-Press + (experiment) ─────────────────────────────── */
+/* iOS callout suppression: long-press would otherwise trigger the
+   system text/image callout, blocking our own gesture from firing.
+   touch-action: manipulation also prevents the double-tap-to-zoom
+   ambiguity that delays single taps by ~300ms. */
+.long-press-add {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
 /* ── Quick Capture Bar (experiment) ────────────────────────── */
 .quick-cap-bar {
   display: flex;
@@ -4506,6 +4545,50 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
   </div>
 </div>
 
+<!-- Sheet: Note sub-picker (experiment: 'threeAdd' — the Note button on
+     the Today action row opens this 4-option list instead of the full
+     7-option add-picker. Each row reuses dispatchAdd so the underlying
+     open paths are unchanged. -->
+<div id="sheet-note-picker" class="sheet">
+  <div class="sheet-handle"></div>
+  <button class="sheet-close-btn" onclick="closeSheets()" aria-label="Close">×</button>
+  <div class="sheet-title">Note</div>
+  <div class="sheet-body">
+    <button class="add-pick-row" onclick="dispatchAdd('note')">
+      <span class="add-pick-icon">📝</span>
+      <div class="add-pick-text">
+        <div class="add-pick-label">Quick Note</div>
+        <div class="add-pick-sub">A fast capture, any tags</div>
+      </div>
+      <span class="add-pick-chev">›</span>
+    </button>
+    <button class="add-pick-row" onclick="dispatchAdd('projectNote')">
+      <span class="add-pick-icon">📁</span>
+      <div class="add-pick-text">
+        <div class="add-pick-label">Project Note</div>
+        <div class="add-pick-sub">Tagged to a specific project</div>
+      </div>
+      <span class="add-pick-chev">›</span>
+    </button>
+    <button class="add-pick-row" onclick="dispatchAdd('session')">
+      <span class="add-pick-icon">🎯</span>
+      <div class="add-pick-text">
+        <div class="add-pick-label">Project Session</div>
+        <div class="add-pick-sub">Before / during / after for a project block</div>
+      </div>
+      <span class="add-pick-chev">›</span>
+    </button>
+    <button class="add-pick-row" onclick="dispatchAdd('learning')">
+      <span class="add-pick-icon">📚</span>
+      <div class="add-pick-text">
+        <div class="add-pick-label">Learning</div>
+        <div class="add-pick-sub">Source · takeaway · notes</div>
+      </div>
+      <span class="add-pick-chev">›</span>
+    </button>
+  </div>
+</div>
+
 <!-- Sheet: AI Activity Log (paste / dictate → Claude extracts → confirm cards) -->
 <div id="sheet-ai-blocks" class="sheet">
   <div class="sheet-handle"></div>
@@ -5555,10 +5638,10 @@ function renderToday() {
           <button class="search-clear visible" onclick="closeHomeSearch()" aria-label="Close search">&times;</button>
         </div>
       </div>`
-    : `<div class="proj-top-row">
+    : `<div class="proj-top-row ${expEnabled('threeAdd') ? 'has-three-add' : ''}">
         <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search">&#128269;</button>
         ${renderDftInline(d)}
-        <button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
+        ${renderTodayAddControl()}
       </div>`;
 
   // Active search query → keep the page's top context (banners + action-row)
@@ -5782,6 +5865,83 @@ function renderTodayTimeline(bks) {
   });
 
   return `<div class="day-timeline">${rows.join('')}</div>`;
+}
+
+// ── 3-Button Add Bar (experiment: 'threeAdd') ─────────────────
+// Replaces the single + on the Today page with three buttons that map
+// to the three natural modalities of entry in DayOS:
+//   ⏱ Activity → Log Activity (1 tap)
+//   📓 Journal → Daily Journal (1 tap)
+//   📝 Note    → small sub-picker (Quick / Project / Session / Learning)
+// AI Log Activities is reachable from inside the Log Activity sheet
+// via the switcher we added earlier, so no separate top-level button
+// is needed for it.
+function renderThreeAddBar() {
+  return `
+    <button class="three-add-btn three-add-activity" onclick="dispatchAdd('activity')" aria-label="Log Activity" title="Log Activity">⏱</button>
+    <button class="three-add-btn three-add-journal"  onclick="dispatchAdd('daily')"    aria-label="Daily Journal" title="Daily Journal">📓</button>
+    <button class="three-add-btn three-add-note"     onclick="openNotePicker()"        aria-label="Note" title="Note (Quick / Project / Session / Learning)">📝</button>
+  `;
+}
+
+// Lightweight sub-picker for the Note button — same row shape as the
+// main add-picker, just four note-shaped entries. Reuses dispatchAdd
+// so the underlying open paths are unchanged.
+window.openNotePicker = function() {
+  openSheet('sheet-note-picker');
+};
+
+// ── Long-Press + (experiment: 'longPressAdd') ─────────────────
+// A single + button whose short tap creates a Quick Note in one go,
+// and whose long press opens the full 7-option add picker. iOS callout
+// is suppressed via CSS (-webkit-touch-callout: none + user-select).
+const LONG_PRESS_MS = 420;
+let _lpAddTimer = null;
+let _lpAddFired = false;
+
+window.lpAddDown = function(_e) {
+  _lpAddFired = false;
+  if (_lpAddTimer) clearTimeout(_lpAddTimer);
+  _lpAddTimer = setTimeout(() => {
+    _lpAddFired = true;
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch {}
+    openAddPicker();
+  }, LONG_PRESS_MS);
+};
+window.lpAddUp = function(e) {
+  if (_lpAddTimer) { clearTimeout(_lpAddTimer); _lpAddTimer = null; }
+  if (_lpAddFired) { e && e.preventDefault && e.preventDefault(); return; }
+  // Short tap → default action: Quick Note. The user's most common
+  // structured-entry case is small text, so this matches the capture-
+  // bar experiment's bias toward minimum-friction text capture.
+  openCapture('note');
+};
+window.lpAddCancel = function(_e) {
+  if (_lpAddTimer) { clearTimeout(_lpAddTimer); _lpAddTimer = null; }
+  _lpAddFired = false;
+};
+
+function renderLongPressAddBtn() {
+  // Note: NOT using onclick — pointer events handle both quick tap and
+  // long press. Inline pointer handlers survive re-renders without us
+  // having to re-attach listeners after every renderMain.
+  return `<button class="add-fab-square long-press-add"
+    onpointerdown="lpAddDown(event)"
+    onpointerup="lpAddUp(event)"
+    onpointercancel="lpAddCancel(event)"
+    onpointerleave="lpAddCancel(event)"
+    aria-label="Add new entry (tap = Quick Note, hold = options)"
+    title="Tap to capture · hold for options">+</button>`;
+}
+
+// Decides which add control the Today page renders. Order matters:
+// the 3-button experiment fully replaces the + (and is mutually
+// exclusive with long-press for the Today page); long-press only
+// changes the existing + button's gesture handling.
+function renderTodayAddControl() {
+  if (expEnabled('threeAdd'))     return renderThreeAddBar();
+  if (expEnabled('longPressAdd')) return renderLongPressAddBtn();
+  return `<button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>`;
 }
 
 // ── Quick Capture Bar (experiment: 'capturebar') ──────────────
@@ -13648,10 +13808,12 @@ const SETTINGS_SECTIONS = [
 // local-only boolean (see `experiments` state). Add a row here to expose
 // a new in-progress feature for opt-in testing.
 const EXPERIMENTS_CATALOG = [
-  { key: 'timeline',  label: 'Day Timeline',   desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
-  { key: 'heatmap',   label: 'Journal Heatmap',desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
-  { key: 'onthisday', label: 'On This Day',    desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
-  { key: 'capturebar',label: 'Quick Capture Bar', desc: 'A pinned single-line input on the Today page — type a thought and hit Enter to save as a Quick Note without opening a modal. Voice + photo button on the right.' },
+  { key: 'timeline',     label: 'Day Timeline',     desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
+  { key: 'heatmap',      label: 'Journal Heatmap',  desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
+  { key: 'onthisday',    label: 'On This Day',      desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
+  { key: 'capturebar',   label: 'Quick Capture Bar',desc: 'A pinned single-line input on the Today page — type a thought and hit Enter to save as a Quick Note without opening a modal. Voice + photo button on the right.' },
+  { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Replaces the single + on the Today page with three direct buttons — Activity ⏱, Journal 📓, Note 📝 — so the two most-common structured entries open in one tap. Note opens a small sub-picker for Quick / Project / Session / Learning." },
+  { key: 'longPressAdd', label: 'Long-Press +',     desc: 'Single tap on + opens a Quick Note immediately. Long-press (~0.4s) opens the full 7-option picker. Keeps the chrome minimal while keeping every option one gesture away.' },
 ];
 
 window.openSettings = function() {
