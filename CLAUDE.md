@@ -52,6 +52,7 @@ State lives in three places, in this order of truth: module-level `let` vars →
 - `dayos_dfts_v1` — `{ 'YYYY-MM-DD': { text, status } }` status ∈ `pending | done | skipped`
 - `dayos_weekly_reviews_v1` / monthly reviews — structured review objects keyed by period
 - `dayos_tag_history_v1` — user's custom tag history
+- `dayos_experiments_v1` — `{ [flagKey]: true }` opt-in feature flags. **Local-only / NOT synced** by design (so a half-baked experiment on phone never leaks to laptop). Surfaced in Settings → Experiments. See `docs/experiments.md`.
 - `dayos_default_blocks_config_v1` — `{ templates: [{ id, enabled, start_time, duration_min, category, label, projectTag? }] }` user-defined daily auto-blocks (Settings → Daily defaults). Synced to `users/{uid}/meta/defaultBlocks`. The auto-creator runs at the top of every `renderToday` and uses deterministic block IDs (`default-{tplId}-{date}`) so two devices racing produce one Firestore document, not two.
 - `dayos_default_blocks_skips_v1` — `{ 'YYYY-MM-DD': { templateId: 'deleted'|'manual' } }` per-day skip record. `'deleted'` = user deleted today's auto-block (deletion sticks). `'manual'` = user manually logged an equivalent block before auto-creator ran. Synced to `users/{uid}/meta/defaultBlockSkips`.
 - `dayos_tombstones_*_v1` — hard-delete tombstones per collection (blocks/captures/sessions/learning/projects)
@@ -93,6 +94,24 @@ Daily Journal, Project Sessions, and Learning entries autosave (no Save button):
 
 Stored in `dayos_dfts_v1`. States: `pending` → tick (`done`) or skip (`skipped`). Both auto-create a journal capture with `#dft` tag. `sweepOldDfts()` auto-skips pending DFTs from previous days on init. The Today-page DFT control is an inline strip between the search icon and + button: single tap toggles the ✓/✕ actions, double tap edits.
 
+### Experiments (local-only feature flags)
+
+Opt-in previews of unfinished features. State lives in `experiments` (storage key `dayos_experiments_v1`), gated via `expEnabled(key)`. **Flags are local-only — deliberately NOT synced** so trying something on phone never leaks to laptop. Catalog lives in `EXPERIMENTS_CATALOG`; toggles render under Settings → Experiments via `openSettingsExperiments`. **House rules:** experiments must be read-only by default (no new fields/collections), have one injection site where possible, and graduate-or-kill within ~4 weeks to avoid dead branches. Every active flag is tracked in `docs/experiments.md` with its exact functions, CSS block, sheet, and wiring sites so removal is a checklist, not an archaeology dig. A feature that *needs* a new field or collection is NOT an experiment — it's a real architecture change and should be built as such (see Daily Defaults below for the canonical pattern).
+
+### Daily defaults (auto-blocks) — duplicate-proof pattern
+
+User-defined templates that auto-create a matching block every day. Configured in Settings → Daily defaults. The interesting engineering bit is **how it avoids duplicates across devices** — this is the canonical pattern to reuse for any future "auto-create something every day/period" feature, because the previous auto-sleep feature got this wrong and the user is allergic to duplicates.
+
+Five overlapping defenses (any one alone would prevent duplicates; together they're structural):
+
+1. **Deterministic block IDs**: `default-{templateId}-{YYYY-MM-DD}`. Same on every device. If phone + laptop race to create today's block, Firestore `setDoc` merges identical fields into one document. Local `blocks` is keyed by id so onSnapshot replays don't dupe either. This is the load-bearing defense.
+2. **Skip-if-exists**: before creating, scan `blocks` for the deterministic id and bail if present.
+3. **Skip-if-manual-fulfilled**: if the user already logged a block today with the same `start_time` + `label`, mark the template as fulfilled for that date in `defaultBlocksSkips[date][tplId] = 'manual'` so we never reconsider.
+4. **Per-session latch**: `_defaultBlocksLastRunDate` module var gates the creator (`maybeCreateDefaultBlocksForToday`) to one pass per date per page session. Reset to `null` at the end of `initialSync` so a fresh sign-in gets one shot.
+5. **Deletion sticks**: when `deleteBlock` removes a block with `_templateId` set, it records `defaultBlocksSkips[block.date][tplId] = 'deleted'` and syncs the skip. No device will re-create that block for that date, ever.
+
+Auto-created blocks carry `_default: true` and `_templateId: <id>` flags. They're otherwise indistinguishable from manual blocks (editable, syncable, counted everywhere). Removing the feature later = delete `maybeCreateDefaultBlocksForToday` + its hook in `renderToday` + the `_templateId`-detection branch in `deleteBlock`. Existing auto-blocks stay as inert normal blocks — no migration needed.
+
 ### Firebase Sync
 
 Firestore paths: `users/{uid}/{blocks|captures|sessions|learning|dailyJournal}/{id}`, plus `users/{uid}/meta/*`, `users/{uid}/devices/{deviceId}` (push tokens), and top-level `projectRefs/{uid}/...`.
@@ -125,6 +144,7 @@ Respects `env(safe-area-inset-*)` for status bar + home indicator. `apple-mobile
 - `docs/session-handoff.md` — current branch state, what's shipped vs pending, open items. **Read at session start.**
 - `docs/ai-features.md` — full AI architecture + prompt locations + tuning.
 - `docs/sync-lessons.md` — Firestore sync gotchas (paste-ready for other projects).
+- `docs/experiments.md` — per-flag tracker for everything under Settings → Experiments. Lists exact functions, CSS blocks, sheets, and wiring sites to delete when graduating or killing each experiment.
 - `docs/dayos-sop.md` — the user's own plain-English founder-learnings doc.
 
 ## End of Session Learning Recap
