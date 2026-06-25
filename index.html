@@ -4851,7 +4851,7 @@ const LEGACY_CTYPES = {
   journal: { id: 'journal', label: 'Journal', icon: '📓' },
 };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', EXPERIMENTS: 'dayos_experiments_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1', TOMBSTONES_PROJECTS: 'dayos_tombstones_projects_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', EXPERIMENTS: 'dayos_experiments_v1', DEFAULT_BLOCKS_CONFIG: 'dayos_default_blocks_config_v1', DEFAULT_BLOCKS_SKIPS: 'dayos_default_blocks_skips_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1', TOMBSTONES_PROJECTS: 'dayos_tombstones_projects_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -4862,6 +4862,20 @@ const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilo
 // flag defaults OFF; toggled from Settings → Experiments.
 let experiments = loadLocal(SK.EXPERIMENTS, {});
 function expEnabled(key) { return !!(experiments && experiments[key]); }
+
+// ── Daily default blocks ────────────────────────────────────
+// Templates the user defines once; the auto-creator inserts a matching
+// block for each enabled template on the first Today render of each
+// day. Duplicate-proof via deterministic IDs (`default-{tplId}-{date}`)
+// so two devices racing produce the same Firestore document, not two.
+// Deletion of an auto-created block records a skip for that
+// (date, templateId) so the deletion sticks.
+let defaultBlocksConfig = loadLocal(SK.DEFAULT_BLOCKS_CONFIG, { templates: [] });
+let defaultBlocksSkips  = loadLocal(SK.DEFAULT_BLOCKS_SKIPS, {});
+// Module-level latch: each day, the auto-creator runs at most once
+// per page session. Nulled on initial sync completion so a fresh
+// signed-in load gets one shot at creation.
+let _defaultBlocksLastRunDate = null;
 
 // ── State ─────────────────────────────────────────────────────
 let blocks      = loadLocal(SK.BLOCKS, []);
@@ -5535,6 +5549,12 @@ window.openWinSource = function(srcType, id, project) {
 };
 
 function renderToday() {
+  // Idempotent auto-creator for daily default blocks (sleep / night
+  // routine / etc.). Latched per-date so it runs at most once per day
+  // per session; duplicate-proof via deterministic IDs even if it runs
+  // simultaneously on phone + laptop.
+  try { maybeCreateDefaultBlocksForToday(); } catch (e) { console.error('[DayOS] default blocks creator error:', e); }
+
   // Global search now filters inline — caps + dailies are narrowed below;
   // blocks are excluded from search per spec. Day-Score / DFT / Wins stay
   // visible so the page reads as the user's current day with results
@@ -8763,6 +8783,52 @@ async function loadDayScoreConfigFromCloud(uid) {
   }
 }
 
+// ── Daily Default Blocks cloud sync ──────────────────────────
+async function syncDefaultBlocksConfig() {
+  if (!user) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'meta', 'defaultBlocks'), defaultBlocksConfig); }
+  catch (err) { console.error('[DayOS] Default blocks config sync error:', err); }
+}
+async function loadDefaultBlocksConfigFromCloud(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'meta', 'defaultBlocks'));
+    if (snap.exists()) {
+      const remote = snap.data();
+      if (remote && Array.isArray(remote.templates)) {
+        defaultBlocksConfig = { templates: remote.templates };
+        saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig);
+        return;
+      }
+    }
+    syncDefaultBlocksConfig();
+  } catch (err) {
+    console.error('[DayOS] Default blocks config load error:', err);
+  }
+}
+async function syncDefaultBlocksSkips() {
+  if (!user) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'meta', 'defaultBlockSkips'), defaultBlocksSkips); }
+  catch (err) { console.error('[DayOS] Default blocks skips sync error:', err); }
+}
+async function loadDefaultBlocksSkipsFromCloud(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'meta', 'defaultBlockSkips'));
+    if (snap.exists()) {
+      const remote = snap.data();
+      if (remote && typeof remote === 'object') {
+        // Merge cloud into local so device-local skips made while offline
+        // aren't overwritten by a stale cloud doc. Cloud wins per-date-per-tpl.
+        defaultBlocksSkips = { ...(defaultBlocksSkips || {}), ...remote };
+        saveLocal(SK.DEFAULT_BLOCKS_SKIPS, defaultBlocksSkips);
+        return;
+      }
+    }
+    syncDefaultBlocksSkips();
+  } catch (err) {
+    console.error('[DayOS] Default blocks skips load error:', err);
+  }
+}
+
 // ── Daily Check-in config cloud sync ─────────────────────────
 async function syncLifeCheckConfig() {
   if (!user) return;
@@ -11630,6 +11696,18 @@ window.openCapOpts = function(id) {
 
 // ── CRUD ──────────────────────────────────────────────────────
 window.deleteBlock = function(id) {
+  // If this was an auto-created default block, record a per-day skip
+  // for its template so the auto-creator doesn't re-insert it. This is
+  // how "deletion sticks" — both on this device and (after sync) on
+  // every other device for the same date.
+  const _toDelete = blocks.find(b => b.id === id);
+  if (_toDelete && _toDelete._templateId && _toDelete.date) {
+    defaultBlocksSkips[_toDelete.date] = defaultBlocksSkips[_toDelete.date] || {};
+    defaultBlocksSkips[_toDelete.date][_toDelete._templateId] = 'deleted';
+    saveLocal(SK.DEFAULT_BLOCKS_SKIPS, defaultBlocksSkips);
+    if (user) { try { syncDefaultBlocksSkips(); } catch {} }
+  }
+
   blocks = blocks.filter(b => b.id !== id);
   saveLocal(SK.BLOCKS, blocks);
   // Tombstone so the item can't resurrect from cloud on refresh even if deleteDoc fails.
@@ -12823,6 +12901,80 @@ window.clearDft = function() {
   renderMain();
 };
 
+// ── Daily default blocks: auto-creator ───────────────────────
+// Runs at the top of every Today render. Latched per-date so it does
+// at most one creation pass per day per page session. Duplicate-proof
+// by construction:
+//   1. Deterministic block ID `default-{tplId}-{date}` — if any device
+//      has already created today's block (or another tab in this
+//      session), it'll already be in `blocks` by ID and we skip.
+//   2. If the user manually logged an equivalent block (same start_time
+//      + label) before this ran, treat the template as fulfilled for
+//      today and don't auto-create.
+//   3. Per-day skips map: if the user deleted today's auto-block, the
+//      delete handler records `skips[date][tplId] = true`, and we
+//      respect that on every subsequent run.
+function defaultBlockId(tplId, dateStr) { return `default-${tplId}-${dateStr}`; }
+function getEnabledDefaultTemplates() {
+  return ((defaultBlocksConfig && defaultBlocksConfig.templates) || [])
+    .filter(t => t && t.id && t.enabled !== false);
+}
+
+function maybeCreateDefaultBlocksForToday() {
+  const d = todayStr();
+  if (_defaultBlocksLastRunDate === d) return;
+  const templates = getEnabledDefaultTemplates();
+  if (!templates.length) { _defaultBlocksLastRunDate = d; return; }
+
+  const skipsToday = { ...(defaultBlocksSkips[d] || {}) };
+  let createdAny = false;
+  let skipsChanged = false;
+
+  for (const t of templates) {
+    if (skipsToday[t.id]) continue;
+    const eid = defaultBlockId(t.id, d);
+    if (blocks.some(b => b.id === eid)) continue;
+    // Manual-fulfillment check: same start + label (case-insensitive),
+    // same date, any block id. Treat as fulfilled and never re-create.
+    const tplLabel = (t.label || '').trim().toLowerCase();
+    const fulfilled = blocks.some(b =>
+      b.date === d &&
+      b.start_time === t.start_time &&
+      ((b.label || '').trim().toLowerCase() === tplLabel)
+    );
+    if (fulfilled) { skipsToday[t.id] = 'manual'; skipsChanged = true; continue; }
+
+    const newBlock = {
+      id: eid,
+      date: d,
+      start_time: t.start_time,
+      duration_min: t.duration_min,
+      category: t.category,
+      label: t.label || '',
+      note: '',
+      energy_level: '',
+      projectTag: t.projectTag || '',
+      tags: [],
+      _default: true,
+      _templateId: t.id,
+      _synced: false,
+    };
+    blocks.push(newBlock);
+    if (typeof user !== 'undefined' && user) {
+      try { syncBlockDoc(newBlock); } catch (e) { console.error('[DayOS] default block sync error:', e); }
+    }
+    createdAny = true;
+  }
+
+  if (skipsChanged) {
+    defaultBlocksSkips[d] = skipsToday;
+    saveLocal(SK.DEFAULT_BLOCKS_SKIPS, defaultBlocksSkips);
+    if (typeof user !== 'undefined' && user) { try { syncDefaultBlocksSkips(); } catch {} }
+  }
+  if (createdAny) saveLocal(SK.BLOCKS, blocks);
+  _defaultBlocksLastRunDate = d;
+}
+
 function sweepOldDfts() {
   const today = todayStr();
   let changed = false;
@@ -13957,6 +14109,7 @@ const SETTINGS_SECTIONS = [
   { id: 'appearance', icon: '🎨', label: 'Appearance',      sub: 'System · Light · Dark'                  },
   { id: 'sync',       icon: '☁️', label: 'Sync',            sub: 'Push · Pull · sign-out'                 },
   { id: 'notify',     icon: '🔔', label: 'Notifications',   sub: 'Daily reminders · per-device toggle'    },
+  { id: 'defaults',   icon: '🔁', label: 'Daily defaults',  sub: 'Auto-create blocks each day (e.g. sleep, night routine)' },
   { id: 'trash',      icon: '🗑',  label: 'Trash',           sub: 'Recover deleted entries · 7-day window' },
   { id: 'experiments',icon: '🧪', label: 'Experiments',     sub: 'Try preview features · this device only' },
   { id: 'about',      icon: 'ℹ️', label: 'About',           sub: 'DayOS · version · feedback'             },
@@ -14004,6 +14157,7 @@ window.openSettingsSection = function(id) {
     case 'tags':       return openSettingsTags();
     case 'dayscore':   return openSettingsDayScore();
     case 'lifecheck':  return openSettingsLifeCheck();
+    case 'defaults':   return openSettingsDefaults();
     case 'trash':      return openSettingsTrash();
     case 'experiments':return openSettingsExperiments();
     case 'notify':     return openSettingsNotify();
@@ -14801,6 +14955,164 @@ function openSettingsDayScore() {
   `;
   openSheet('sheet-settings');
 }
+
+// ── Settings → Daily defaults ────────────────────────────────
+// Template list (add / edit / delete / toggle). Each template carries:
+//   { id, enabled, start_time ('HH:MM'), duration_min, category, label, projectTag? }
+// Editing or removing a template only affects future auto-creation
+// runs — already-created auto-blocks for past dates stay as normal
+// editable blocks in the data.
+let _defaultsAction = null; // { mode: 'menu' | 'edit' | 'add' | 'delete-confirm', idx? , draft? }
+
+function _defaultsRowSub(t) {
+  const cat = catById(t.category);
+  return `${esc(t.start_time)} · ${t.duration_min}m · ${esc(cat.label)}`;
+}
+
+function openSettingsDefaults() {
+  _defaultsAction = null;
+  const body = document.getElementById('settings-body');
+  const list = ((defaultBlocksConfig && defaultBlocksConfig.templates) || []);
+  const rows = list.map((t, i) => {
+    const on = t.enabled !== false;
+    return `
+      <div class="settings-row" style="cursor:default">
+        <button class="hdr-icon-btn" onclick="toggleDefaultTpl(${i})" aria-label="${on ? 'Disable' : 'Enable'}" style="padding:2px 6px;font-size:1.1rem">${on ? '☑' : '☐'}</button>
+        <div class="settings-row-text" onclick="editDefaultTpl(${i})">
+          <div class="settings-row-label">${esc(t.label || '(no label)')}${on ? '' : ' · disabled'}</div>
+          <div class="settings-row-sub">${_defaultsRowSub(t)}</div>
+        </div>
+        <button class="hdr-icon-btn" onclick="editDefaultTpl(${i})" aria-label="Edit" style="padding:2px 6px;font-size:1rem">⋯</button>
+      </div>`;
+  }).join('');
+
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Daily defaults')}
+    <p class="auth-desc">Templates that auto-create a block every day. Duplicate-proof: the same template never creates two blocks on the same day, even across devices. Deleting an auto-created block on the Today page makes that deletion stick — the template won't recreate it for that day.</p>
+    ${rows ? `<div class="settings-list">${rows}</div>` : `<div class="proj-empty" style="padding:1rem 0.5rem;text-align:center;color:var(--text3);font-size:0.85rem">No defaults yet. Tap "+ Add default" to create your first one (e.g. a sleep block from 02:00 for 8h).</div>`}
+    <div class="btn-row" style="margin-top:0.85rem">
+      <button class="btn-primary" onclick="addDefaultTpl()">+ Add default</button>
+    </div>
+  `;
+  openSheet('sheet-settings');
+}
+
+window.toggleDefaultTpl = function(idx) {
+  const t = (defaultBlocksConfig.templates || [])[idx];
+  if (!t) return;
+  t.enabled = t.enabled === false ? true : false;
+  saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig);
+  if (user) syncDefaultBlocksConfig();
+  openSettingsDefaults();
+  // Re-render Today so disabling instantly stops future creation and
+  // enabling triggers a fresh creator pass (the latch will fire).
+  _defaultBlocksLastRunDate = null;
+  if (activeTab === 'today') renderMain(true);
+};
+
+window.addDefaultTpl = function() {
+  _defaultsAction = {
+    mode: 'add',
+    draft: { id: '', enabled: true, start_time: '02:00', duration_min: 480, category: 'routine', label: '', projectTag: '' },
+  };
+  renderDefaultTplEditor();
+};
+window.editDefaultTpl = function(idx) {
+  const t = (defaultBlocksConfig.templates || [])[idx];
+  if (!t) return;
+  _defaultsAction = { mode: 'edit', idx, draft: { ...t } };
+  renderDefaultTplEditor();
+};
+
+function renderDefaultTplEditor() {
+  if (!_defaultsAction) { openSettingsDefaults(); return; }
+  const body = document.getElementById('settings-body');
+  const { mode, draft } = _defaultsAction;
+  const title = mode === 'add' ? 'Add daily default' : 'Edit daily default';
+
+  const back = `
+    <div class="settings-subhdr">
+      <button class="settings-back-btn" onclick="openSettingsDefaults()" aria-label="Back">‹</button>
+      <span class="settings-subhdr-title">${esc(title)}</span>
+    </div>`;
+  const catOpts = CATS.map(c => `<option value="${c.id}" ${draft.category === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+  const delBtn = mode === 'edit'
+    ? `<button class="btn-ghost" style="color:var(--danger);border-color:var(--danger)" onclick="deleteDefaultTplFromEditor()">Delete</button>`
+    : '';
+
+  body.innerHTML = `
+    ${back}
+    <p class="auth-desc">${mode === 'add' ? 'A block matching this template will auto-create every day at the chosen start time.' : 'Changes only affect future days. Already-created blocks for past dates stay editable as normal blocks.'}</p>
+    <div class="field">
+      <label class="field-label">Label</label>
+      <input type="text" id="def-tpl-label" class="mr-input" value="${esc(draft.label || '')}" placeholder="e.g. Sleep / Night Routine" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label class="field-label">Start time</label>
+      <input type="time" id="def-tpl-start" class="mr-input" value="${esc(draft.start_time || '02:00')}" />
+    </div>
+    <div class="field">
+      <label class="field-label">Duration (minutes)</label>
+      <input type="number" id="def-tpl-dur" class="mr-input" value="${draft.duration_min || 60}" min="1" max="1440" />
+    </div>
+    <div class="field">
+      <label class="field-label">Category</label>
+      <select id="def-tpl-cat" class="mr-input">${catOpts}</select>
+    </div>
+    <div class="btn-row" style="margin-top:0.6rem">
+      <button class="btn-primary" onclick="saveDefaultTplFromEditor()">Save</button>
+      <button class="btn-ghost" onclick="openSettingsDefaults()">Cancel</button>
+      ${delBtn}
+    </div>
+  `;
+  openSheet('sheet-settings');
+  setTimeout(() => {
+    const el = document.getElementById('def-tpl-label');
+    if (el) { el.focus(); if (mode === 'add') el.select(); }
+  }, 50);
+}
+
+window.saveDefaultTplFromEditor = function() {
+  if (!_defaultsAction) return;
+  const label = (document.getElementById('def-tpl-label').value || '').trim();
+  const start = (document.getElementById('def-tpl-start').value || '').trim();
+  const dur   = parseInt(document.getElementById('def-tpl-dur').value || '0', 10);
+  const cat   = (document.getElementById('def-tpl-cat').value || 'routine').trim();
+  if (!label) { toast('Label is required'); return; }
+  if (!/^\d{2}:\d{2}$/.test(start)) { toast('Start time must be HH:MM'); return; }
+  if (!Number.isFinite(dur) || dur <= 0 || dur > 1440) { toast('Duration must be 1–1440 minutes'); return; }
+  if (!CATS.find(c => c.id === cat)) { toast('Pick a category'); return; }
+
+  defaultBlocksConfig.templates = defaultBlocksConfig.templates || [];
+  const next = { ..._defaultsAction.draft, label, start_time: start, duration_min: dur, category: cat };
+  if (_defaultsAction.mode === 'add') {
+    // Deterministic-ish template id: random short id. Stable for the
+    // lifetime of the template; auto-block IDs derive from it.
+    next.id = 'tpl-' + uid().slice(0, 8);
+    defaultBlocksConfig.templates.push(next);
+  } else {
+    defaultBlocksConfig.templates[_defaultsAction.idx] = next;
+  }
+  saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig);
+  if (user) syncDefaultBlocksConfig();
+  // Allow the auto-creator to run once more today now that the
+  // template list has changed.
+  _defaultBlocksLastRunDate = null;
+  if (activeTab === 'today') renderMain(true);
+  openSettingsDefaults();
+  toast(_defaultsAction.mode === 'add' ? 'Default added' : 'Default saved');
+};
+
+window.deleteDefaultTplFromEditor = function() {
+  if (!_defaultsAction || _defaultsAction.mode !== 'edit') return;
+  if (!confirm('Delete this default template? Already-created blocks for past dates will stay as normal editable blocks.')) return;
+  const idx = _defaultsAction.idx;
+  defaultBlocksConfig.templates.splice(idx, 1);
+  saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig);
+  if (user) syncDefaultBlocksConfig();
+  openSettingsDefaults();
+  toast('Default deleted');
+};
 
 function openSettingsExperiments() {
   const body = document.getElementById('settings-body');
@@ -16526,6 +16838,8 @@ window.forcePullFromCloud = async function() {
       loadDftsFromCloud(user.uid),
       loadDayScoreConfigFromCloud(user.uid),
       loadLifeCheckConfigFromCloud(user.uid),
+      loadDefaultBlocksConfigFromCloud(user.uid),
+      loadDefaultBlocksSkipsFromCloud(user.uid),
     ]);
 
     setSyncStatus('ok');
@@ -16680,7 +16994,13 @@ async function initialSync(uid) {
     loadDftsFromCloud(uid),
     loadDayScoreConfigFromCloud(uid),
     loadLifeCheckConfigFromCloud(uid),
+    loadDefaultBlocksConfigFromCloud(uid),
+    loadDefaultBlocksSkipsFromCloud(uid),
   ]);
+  // Reset the daily-creator latch so the post-sync state gets one shot
+  // at creating today's default blocks (with deterministic IDs — safe
+  // even if another device just did the same).
+  _defaultBlocksLastRunDate = null;
   // Daily Journal uses live onSnapshot — initial doc batch arrives via the listener.
   // Defensive try/catch: a runtime error here used to throw out of initialSync
   // BEFORE the critical-read try block was entered, leaving the watchdog to

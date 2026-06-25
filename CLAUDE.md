@@ -52,6 +52,8 @@ State lives in three places, in this order of truth: module-level `let` vars →
 - `dayos_dfts_v1` — `{ 'YYYY-MM-DD': { text, status } }` status ∈ `pending | done | skipped`
 - `dayos_weekly_reviews_v1` / monthly reviews — structured review objects keyed by period
 - `dayos_tag_history_v1` — user's custom tag history
+- `dayos_default_blocks_config_v1` — `{ templates: [{ id, enabled, start_time, duration_min, category, label, projectTag? }] }` user-defined daily auto-blocks (Settings → Daily defaults). Synced to `users/{uid}/meta/defaultBlocks`. The auto-creator runs at the top of every `renderToday` and uses deterministic block IDs (`default-{tplId}-{date}`) so two devices racing produce one Firestore document, not two.
+- `dayos_default_blocks_skips_v1` — `{ 'YYYY-MM-DD': { templateId: 'deleted'|'manual' } }` per-day skip record. `'deleted'` = user deleted today's auto-block (deletion sticks). `'manual'` = user manually logged an equivalent block before auto-creator ran. Synced to `users/{uid}/meta/defaultBlockSkips`.
 - `dayos_tombstones_*_v1` — hard-delete tombstones per collection (blocks/captures/sessions/learning/projects)
 
 **Block categories** (`CATS`): `deep_work`, `learning`, `practice`, `routine`, `leisure`, `leaks`
