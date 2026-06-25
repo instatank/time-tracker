@@ -38,6 +38,7 @@ Each cleanup should be 5–15 minutes and confined to `index.html` (+ sometimes 
 | `capturebar` | Quick Capture Bar | **Yes** — writes `captures` via canonical save path | `renderQuickCaptureBar`, handler `onQuickCapKey`, save `saveQuickCaptureBarEntry` | `/* Quick Capture Bar (experiment) */` | — | `renderToday` (below action row, above OTD) |
 | `threeAdd` | 3-Button Add Bar | **No** (just routes to existing dispatchAdd) | `renderThreeAddBar`, `openNotePicker` | `/* 3-Button Add Bar (experiment) */` | `<div id="sheet-note-picker">` | `renderToday` — own row below action row (action row + stays untouched) |
 | `longPressAdd` | Long-Press + | **No** (just routes to existing entry points) | `renderLongPressAddBtn`, `renderTodayAddControl`, handlers `lpAddDown` / `lpAddUp` / `lpAddCancel`, const `LONG_PRESS_MS`, state `_lpAddTimer` / `_lpAddFired` | `/* Long-Press + (experiment) */` | — | `renderToday` action row (replaces the `+`'s gesture handling) |
+| `daybar` | Day Ratio Bar | **No** (read-only) | `renderDayRatioBar`, helper `_nowMinutesIST`, consts `DAYBAR_WAKE_START_MIN` / `DAYBAR_WAKE_TOTAL_MIN` | `/* Day Ratio Bar (experiment) */` | — | `renderToday` (between Day Score and Wins) |
 
 > **Data-touching experiments are flagged in bold.** These leave normal entries behind on disk even after removal — that's intentional (entries the user created via the experiment should survive cleanup). What needs deleting is just the *entry surface*, not the data.
 
