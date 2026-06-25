@@ -732,31 +732,31 @@ body.ios-pwa #nav {
 }
 
 /* ── 3-Button Add Bar (experiment) ─────────────────────────── */
-/* When the threeAdd flag is on, the Today action row holds 5 elements
-   (search · DFT · ⏱ · 📓 · 📝). The 3 add buttons are icon-only and
-   sized down so the whole row still fits comfortably on a phone. */
-.proj-top-row.has-three-add { gap: 0.4rem; }
-.three-add-btn {
-  flex-shrink: 0;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 1.05rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, border-color 0.15s, transform 0.08s;
+/* Dedicated row of three equal-width blue tabs under the action row.
+   Same visual weight as the Save/+New/Cancel cluster inside Log
+   Activity — see .btn-primary. Flex:1 on each tab guarantees equal
+   sizing regardless of label length. */
+.three-add-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0.6rem;
 }
-.three-add-btn:hover { background: var(--accent); color: var(--on-accent); }
-.three-add-btn:active { transform: scale(0.94); }
-/* Use margin to "anchor" the 3-button cluster to the right edge — the
-   DFT pill, when present, expands and pushes the cluster naturally;
-   when absent, this margin still keeps the cluster right-aligned. */
-.three-add-activity { margin-left: auto; }
+.three-add-tab {
+  flex: 1;
+  padding: 0.65rem 0.5rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, transform 0.08s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+.three-add-tab:hover { box-shadow: 0 1px 6px rgba(59, 130, 246, 0.35); }
+.three-add-tab:active { transform: scale(0.97); }
 
 /* ── Long-Press + (experiment) ─────────────────────────────── */
 /* iOS callout suppression: long-press would otherwise trigger the
@@ -5638,7 +5638,7 @@ function renderToday() {
           <button class="search-clear visible" onclick="closeHomeSearch()" aria-label="Close search">&times;</button>
         </div>
       </div>`
-    : `<div class="proj-top-row ${expEnabled('threeAdd') ? 'has-three-add' : ''}">
+    : `<div class="proj-top-row">
         <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search">&#128269;</button>
         ${renderDftInline(d)}
         ${renderTodayAddControl()}
@@ -5660,6 +5660,7 @@ function renderToday() {
     ${bannersStack}
     ${actionRowHtml}
 
+    ${expEnabled('threeAdd') ? renderThreeAddBar() : ''}
     ${expEnabled('capturebar') ? renderQuickCaptureBar() : ''}
     ${expEnabled('onthisday') ? renderOnThisDay(d) : ''}
 
@@ -5868,19 +5869,23 @@ function renderTodayTimeline(bks) {
 }
 
 // ── 3-Button Add Bar (experiment: 'threeAdd') ─────────────────
-// Replaces the single + on the Today page with three buttons that map
-// to the three natural modalities of entry in DayOS:
-//   ⏱ Activity → Log Activity (1 tap)
-//   📓 Journal → Daily Journal (1 tap)
-//   📝 Note    → small sub-picker (Quick / Project / Session / Learning)
+// A dedicated row of three equal-width blue tabs sitting just below
+// the Today action row. Each tab maps to one of DayOS's three natural
+// entry modalities:
+//   + Activity → Log Activity (1 tap)
+//   + Journal  → Daily Journal (1 tap)
+//   + Note     → small sub-picker (Quick / Project / Session / Learning)
 // AI Log Activities is reachable from inside the Log Activity sheet
-// via the switcher we added earlier, so no separate top-level button
-// is needed for it.
+// via the switcher we added earlier. Because this is a row of its own,
+// the existing + (and search / DFT) stay untouched on the action row —
+// the + remains as a fallback into the full 7-option picker.
 function renderThreeAddBar() {
   return `
-    <button class="three-add-btn three-add-activity" onclick="dispatchAdd('activity')" aria-label="Log Activity" title="Log Activity">⏱</button>
-    <button class="three-add-btn three-add-journal"  onclick="dispatchAdd('daily')"    aria-label="Daily Journal" title="Daily Journal">📓</button>
-    <button class="three-add-btn three-add-note"     onclick="openNotePicker()"        aria-label="Note" title="Note (Quick / Project / Session / Learning)">📝</button>
+    <div class="three-add-row">
+      <button class="three-add-tab" onclick="dispatchAdd('activity')" aria-label="Add Activity">+ Activity</button>
+      <button class="three-add-tab" onclick="dispatchAdd('daily')"    aria-label="Add Journal">+ Journal</button>
+      <button class="three-add-tab" onclick="openNotePicker()"        aria-label="Add Note">+ Note</button>
+    </div>
   `;
 }
 
@@ -5934,12 +5939,11 @@ function renderLongPressAddBtn() {
     title="Tap to capture · hold for options">+</button>`;
 }
 
-// Decides which add control the Today page renders. Order matters:
-// the 3-button experiment fully replaces the + (and is mutually
-// exclusive with long-press for the Today page); long-press only
-// changes the existing + button's gesture handling.
+// Decides which + control the action row renders. Note: this is now
+// only about the small round + on the action row — the 3-button
+// experiment lives on its OWN row below (see renderThreeAddBar) and
+// no longer replaces the +.
 function renderTodayAddControl() {
-  if (expEnabled('threeAdd'))     return renderThreeAddBar();
   if (expEnabled('longPressAdd')) return renderLongPressAddBtn();
   return `<button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>`;
 }
