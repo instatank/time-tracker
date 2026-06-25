@@ -742,7 +742,11 @@ body.ios-pwa #nav {
   background: var(--surface2);
   border: 1px solid var(--border);
   margin: 0.35rem 0 0.5rem;
+  cursor: pointer;
 }
+/* Collapsed render lives outside a .section wrapper, so it carries its
+   own top/bottom margin to keep breathing room from Day Score and Wins. */
+.day-ratio-bar.daybar-collapsed { margin: 0.6rem 0 0.9rem; }
 .db-seg {
   height: 100%;
   min-width: 2px; /* avoid invisible slivers from very short blocks */
@@ -5852,79 +5856,94 @@ function renderBlock(b) {
 // waking minutes" — not the full 24h — so the bar reflects what's
 // actually had a chance to happen yet:
 //
-//   waking window  = 8:00 → midnight  (16h)
-//   elapsed waking = clamp(now − 08:00, 0, 16h)
-//   numerator      = today's non-sleep block minutes, by category
+//   waking window  = 10:00 → 02:00 next day  (16h)
+//   elapsed waking = clamp(now − 10:00, 0, 16h)
+//   numerator      = today's non-sleep block minutes, by category,
+//                    EXCLUDING blocks whose start_time is before
+//                    10:00 (the 00:00→02:00 night-routine tail is
+//                    deliberately not represented in the ratio bar
+//                    per spec — those blocks still appear in the
+//                    normal Today log).
 //   remainder      = elapsed − total → muted "unlogged" segment
 //
-// If now < 8:00 or there are no blocks yet, the bar self-hides — there
-// would be nothing meaningful to show. Sleep blocks are excluded since
-// the model already removes 8h of sleep up front; counting them again
-// would double-bias the ratio toward sleep.
-const DAYBAR_WAKE_START_MIN = 8 * 60;   // 8:00 IST
+// Self-hides before 10am or before any qualifying block is logged.
+// The bar is collapsed-by-default (just the colored pill); tapping
+// it expands a header + legend.
+const DAYBAR_WAKE_START_MIN = 10 * 60;  // 10:00 IST
 const DAYBAR_WAKE_TOTAL_MIN = 16 * 60;  // 16h waking window
+let _daybarExpanded = false;
 
 function _nowMinutesIST() {
   const now = nowIST();
   return now.getHours() * 60 + now.getMinutes();
 }
 
+window.toggleDaybarExpanded = function() {
+  _daybarExpanded = !_daybarExpanded;
+  if (activeTab === 'today') renderMain(true);
+};
+
 function renderDayRatioBar(bks) {
   const elapsedWaking = Math.max(0, Math.min(DAYBAR_WAKE_TOTAL_MIN, _nowMinutesIST() - DAYBAR_WAKE_START_MIN));
-  if (elapsedWaking < 5) return ''; // pre-8am or first few minutes — nothing to show
+  if (elapsedWaking < 5) return ''; // pre-10am or first few minutes — nothing to show
 
-  // Bucket today's non-sleep block minutes by category.
+  // Bucket today's non-sleep block minutes by category, EXCLUDING
+  // blocks whose start_time is before 10:00 (the night-routine tail).
   const byCat = {};
   let loggedTotal = 0;
   for (const b of bks) {
     if (!b || b.category === 'sleep') continue;
+    if (!b.start_time || hhmmToMin(b.start_time) < DAYBAR_WAKE_START_MIN) continue;
     const m = b.duration_min || 0;
     if (m <= 0) continue;
     byCat[b.category] = (byCat[b.category] || 0) + m;
     loggedTotal += m;
   }
-  if (loggedTotal === 0) return ''; // nothing logged yet
+  if (loggedTotal === 0) return ''; // nothing waking-window-logged yet
 
   // Edge case: user has logged MORE than elapsed waking time (e.g., long
   // sessions or stale entries). Use the bigger number as the denominator
   // so the bar still totals 100% and ratios stay accurate.
   const denom = Math.max(elapsedWaking, loggedTotal);
 
-  // Stable segment order: follow CATS order so the bar's visual order
-  // doesn't jump around as the user logs new categories.
-  const segments = [];
-  for (const cat of CATS) {
-    const mins = byCat[cat.id] || 0;
-    if (mins <= 0) continue;
+  // Sort segments by duration descending so the biggest slice is always
+  // leftmost — most scannable read of the day's shape.
+  const ordered = CATS
+    .map(cat => ({ cat, mins: byCat[cat.id] || 0 }))
+    .filter(x => x.mins > 0)
+    .sort((a, b) => b.mins - a.mins);
+
+  const segments = ordered.map(({ cat, mins }) => {
     const pct = (mins / denom) * 100;
-    segments.push(`<div class="db-seg" style="width:${pct}%;background:${cat.color}" title="${esc(cat.label)} · ${fmtMins(mins)} · ${pct.toFixed(0)}%"></div>`);
-  }
+    return `<div class="db-seg" style="width:${pct}%;background:${cat.color}" title="${esc(cat.label)} · ${fmtMins(mins)} · ${pct.toFixed(0)}%"></div>`;
+  });
   const unlogged = Math.max(0, denom - loggedTotal);
   if (unlogged > 0) {
     const pct = (unlogged / denom) * 100;
     segments.push(`<div class="db-seg db-seg-unlogged" style="width:${pct}%" title="Unlogged · ${fmtMins(unlogged)} · ${pct.toFixed(0)}%"></div>`);
   }
 
-  // Compact legend: only categories with > 0 minutes, in CATS order.
-  // Each chip: colored dot + label + total. Tap-targets are wide enough
-  // that the title tooltips also work as long-press read on mobile.
-  const legend = CATS.filter(c => (byCat[c.id] || 0) > 0).map(c => `
-    <span class="db-chip">
-      <span class="db-chip-dot" style="background:${c.color}"></span>
-      <span class="db-chip-label">${esc(c.label)}</span>
-      <span class="db-chip-val">${fmtMins(byCat[c.id])}</span>
-    </span>`).join('');
+  // Default render: just the bar (tap to expand). Expanded render adds
+  // a section header and the per-category legend.
+  if (!_daybarExpanded) {
+    return `
+      <div class="day-ratio-bar daybar-collapsed" onclick="toggleDaybarExpanded()" title="Tap for breakdown" aria-label="Day so far — tap for breakdown">${segments.join('')}</div>`;
+  }
 
-  const elapsedLabel = fmtMins(elapsedWaking);
-  const loggedLabel  = fmtMins(loggedTotal);
+  const legend = ordered.map(({ cat, mins }) => `
+    <span class="db-chip">
+      <span class="db-chip-dot" style="background:${cat.color}"></span>
+      <span class="db-chip-label">${esc(cat.label)}</span>
+      <span class="db-chip-val">${fmtMins(mins)}</span>
+    </span>`).join('');
 
   return `
     <div class="section daybar-section">
       <div class="sec-hdr">
-        <span class="sec-title">Day so far</span>
-        <span class="sec-meta">${esc(loggedLabel)} of ${esc(elapsedLabel)} elapsed</span>
+        <span class="sec-title" onclick="toggleDaybarExpanded()" style="cursor:pointer">Day so far ▾</span>
+        <span class="sec-meta">${esc(fmtMins(loggedTotal))} of ${esc(fmtMins(elapsedWaking))} elapsed</span>
       </div>
-      <div class="day-ratio-bar" aria-label="Today's time split">${segments.join('')}</div>
+      <div class="day-ratio-bar" onclick="toggleDaybarExpanded()" title="Tap to collapse">${segments.join('')}</div>
       <div class="db-legend">${legend}</div>
     </div>`;
 }
