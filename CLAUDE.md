@@ -123,6 +123,7 @@ Respects `env(safe-area-inset-*)` for status bar + home indicator. `apple-mobile
 - `docs/session-handoff.md` — current branch state, what's shipped vs pending, open items. **Read at session start.**
 - `docs/ai-features.md` — full AI architecture + prompt locations + tuning.
 - `docs/sync-lessons.md` — Firestore sync gotchas (paste-ready for other projects).
+- `docs/attachments-implementation-guide.md` — portable attachments (photo/file/screenshot/voice) guide + hard-won iOS-PWA lessons (paste-ready for other projects).
 - `docs/dayos-sop.md` — the user's own plain-English founder-learnings doc.
 
 ## End of Session Learning Recap
