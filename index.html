@@ -6098,6 +6098,7 @@ const TL_GAP_MIN_H  = 20;
 const TL_GAP_MAX_H  = 40;
 const TL_GAP_THRESHOLD = 10;  // only show a gap band if > 10 min unlogged
 const TL_COMPACT_MAX_MIN = 59; // < 60m → single-row compact layout
+const TL_DEFAULT_WINDOW_MIN = 240; // collapsed view shows the most recent 4h
 
 // Phased height curve. Compact tier sits ~32–40px (one row, ~20% taller
 // than the old flat floor so labels fit); regular tier grows gently and
@@ -6128,12 +6129,23 @@ function renderTodayTimeline(bks) {
     .sort((a, b) => hhmmToMin(a.start_time) - hhmmToMin(b.start_time));
   if (placed.length < 1) return '';
 
-  // Match the activity-log list: show the latest TODAY_PREVIEW (3) blocks,
-  // collapse the rest behind a "↓ N more" toggle. `placed` is ascending
-  // (needed for correct gap math); we slice the TAIL for the latest ones
-  // and reverse the rendered rows below so newest sits on top.
-  const hiddenCount = placed.length - TODAY_PREVIEW;
-  const visible = _timelineExpanded ? placed : placed.slice(-TODAY_PREVIEW);
+  // Default (collapsed) view = the most recent 4 HOURS of activity, not a
+  // fixed block count — so a busy stretch shows everything in it and a
+  // quiet one shows just a little. The window is anchored to the latest
+  // block's END (not wall-clock "now") so the newest activity is always
+  // visible even if you haven't logged anything in a while: any block
+  // ending after (latestEnd − 4h) shows, the rest collapses behind a
+  // "↓ N more" toggle. End-based (not start-based) so a single long block
+  // longer than the window still counts as visible. `placed` is ascending
+  // (needed for correct gap math); rows are reversed below so newest sits
+  // on top.
+  const blockEnd = b => hhmmToMin(b.start_time) + b.duration_min;
+  const latestEnd = Math.max(...placed.map(blockEnd));
+  const windowStart = latestEnd - TL_DEFAULT_WINDOW_MIN;
+  const visible = _timelineExpanded
+    ? placed
+    : placed.filter(b => blockEnd(b) > windowStart);
+  const hiddenCount = placed.length - visible.length;
 
   const date = visible[0].date;
   const rows = [];
