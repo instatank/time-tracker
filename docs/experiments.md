@@ -35,8 +35,10 @@ Each cleanup should be 5–15 minutes and confined to `index.html` (+ sometimes 
 | `timeline` | Day Timeline | **No** (read-only) | `renderTodayTimeline`, `tlBlockHeight`, handler `toggleTimeline`, state `_timelineExpanded`, consts `TL_*` (uses shared time helpers — see note) | `/* Day Timeline (experiment) */` | — | `renderToday` (Today's Log section) |
 | `heatmap` | Journal Heatmap | **No** (read-only) | `renderJournalHeatmap`, helper `_dayHasContent`, const `HEATMAP_DAYS` | `/* Journal Heatmap (experiment) */` | — | `renderJournal` (between row1 and row2) |
 | `onthisday` | On This Day | **No** (read-only) | `renderOnThisDay`, helpers `_shiftByMonths` / `_otdSnippet`, const `OTD_INTERVALS` | `/* On This Day (experiment) */` | — | `renderToday` (below action row) |
-| `capturebar` | Quick Capture Bar | **Yes** — writes `captures` via canonical save path | `renderQuickCaptureBar`, handler `onQuickCapKey`, save `saveQuickCaptureBarEntry` | `/* Quick Capture Bar (experiment) */` | — | `renderToday` (below action row, above OTD) |
 | `threeAdd` | 3-Button Add Bar | **No** (just routes to existing dispatchAdd) | `renderThreeAddBar`, `openNotePicker` | `/* 3-Button Add Bar (experiment) */` | `<div id="sheet-note-picker">` | `renderToday` — own row below action row (action row + stays untouched) |
+
+> **Graduated** (now permanent, listed here for traceability):
+> - `capturebar` — Quick Capture Bar graduated when the DFT moved into the Daily Journal modal; the bar now lives permanently in the Today action row in the slot the inline DFT used to occupy. Render fn `renderQuickCaptureBar` + `saveQuickCaptureBarEntry` are still in the codebase (now unconditional), CSS block renamed to "Quick Capture Bar (action-row compact)".
 | `longPressAdd` | Long-Press + | **No** (just routes to existing entry points) | `renderLongPressAddBtn`, `renderTodayAddControl`, handlers `lpAddDown` / `lpAddUp` / `lpAddCancel`, const `LONG_PRESS_MS`, state `_lpAddTimer` / `_lpAddFired` | `/* Long-Press + (experiment) */` | — | `renderToday` action row (replaces the `+`'s gesture handling) |
 | `daybar` | Day Ratio Bar | **No** (read-only) | `renderDayRatioBar`, handler `toggleDaybarExpanded`, state `_daybarExpanded` (uses shared time helpers — see note) | `/* Day Ratio Bar (experiment) */` | — | `renderToday` (between Day Score and Wins) |
 

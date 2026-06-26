@@ -869,13 +869,17 @@ body.ios-pwa #nav {
   touch-action: manipulation;
 }
 
-/* ── Quick Capture Bar (experiment) ────────────────────────── */
+/* ── Quick Capture Bar (action-row compact) ────────────────── */
+/* Sits inline in the Today action row in the slot the inline DFT
+   used to occupy. flex:1 so it fills the space between search icon
+   and the + button regardless of phone width. */
 .quick-cap-bar {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin: 0.4rem 0 0.6rem;
-  padding: 0.35rem 0.5rem 0.35rem 0.7rem;
+  padding: 0 0.7rem;
+  height: 38px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -885,11 +889,6 @@ body.ios-pwa #nav {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
-.quick-cap-icon {
-  font-size: 0.95rem;
-  opacity: 0.7;
-  flex-shrink: 0;
-}
 .quick-cap-input {
   flex: 1;
   min-width: 0;
@@ -898,22 +897,9 @@ body.ios-pwa #nav {
   outline: 0;
   color: var(--text);
   font-size: 16px; /* iOS focus-zoom guard */
-  padding: 0.35rem 0;
+  padding: 0;
 }
 .quick-cap-input::placeholder { color: var(--text3); }
-.quick-cap-attach {
-  flex-shrink: 0;
-  background: transparent;
-  border: 0;
-  color: var(--text2);
-  font-size: 1.05rem;
-  padding: 0.25rem 0.45rem;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.quick-cap-attach:hover { background: var(--surface2); color: var(--accent); }
-.quick-cap-attach:active { transform: scale(0.92); }
 
 /* ── Journal Heatmap (experiment) ──────────────────────────── */
 .heatmap-strip {
@@ -4362,6 +4348,12 @@ select option { background: var(--surface2); }
       </div>
       <div class="dj-section">
         <div class="dj-section-hdr">
+          <label class="dj-section-label">DAILY FOCUS TASK</label>
+        </div>
+        <div id="f-daily-dft-wrap" class="dj-dft-wrap"></div>
+      </div>
+      <div class="dj-section">
+        <div class="dj-section-hdr">
           <label class="dj-section-label">TASKS</label>
           <button type="button" class="dj-organize-btn" id="dj-extract-tasks-btn"
             onclick="openExtractTasks()" title="AI: pull tasks from a dump">✨ Add via AI</button>
@@ -5766,7 +5758,7 @@ function renderToday() {
       </div>`
     : `<div class="proj-top-row">
         <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search">&#128269;</button>
-        ${renderDftInline(d)}
+        ${renderQuickCaptureBar()}
         ${renderTodayAddControl()}
       </div>`;
 
@@ -5787,8 +5779,9 @@ function renderToday() {
     ${actionRowHtml}
 
     ${expEnabled('threeAdd') ? renderThreeAddBar() : ''}
-    ${expEnabled('capturebar') ? renderQuickCaptureBar() : ''}
     ${expEnabled('onthisday') ? renderOnThisDay(d) : ''}
+
+    ${getDft(d) ? renderDftPanel(d) : ''}
 
     ${(() => {
       // Day Score — config-driven via DAYSCORE_TILE_CATALOG. Each tile id
@@ -6268,24 +6261,23 @@ function renderTodayAddControl() {
   return `<button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>`;
 }
 
-// ── Quick Capture Bar (experiment: 'capturebar') ──────────────
-// A pinned single-line input on the Today page. Type → Enter → saved
-// as a Quick Note with zero modals. Reuses the canonical save path
-// (extractTags + syncCaptureDoc + projectRefs) so an entry made here
-// is indistinguishable from one made via the full Capture sheet —
-// just without the form. The trailing button delegates to the same
-// home-context attach menu the existing Today-page voice/photo
-// button uses, so voice/photo/file capture stays one tap away.
+// ── Quick Capture Bar ─────────────────────────────────────────
+// Compact single-line input that lives in the Today action row
+// (between the search icon and the + button — the slot the inline
+// DFT used to occupy). Type → Enter → saved as a Quick Note with
+// zero modals. Reuses the canonical save path (extractTags +
+// syncCaptureDoc + projectRefs) so an entry made here is
+// indistinguishable from one made via the full Capture sheet.
+// Graduated from the 'capturebar' experiment when the DFT moved
+// into the Daily Journal modal and this took its row slot.
 function renderQuickCaptureBar() {
   return `
     <div class="quick-cap-bar" id="quick-cap-bar">
-      <span class="quick-cap-icon">💭</span>
       <input type="text" id="quick-cap-input"
         class="quick-cap-input"
-        placeholder="Capture a thought… (Enter to save)"
+        placeholder="Capture note — Enter to save"
         autocomplete="off"
         onkeydown="onQuickCapKey(event)" />
-      <button type="button" class="quick-cap-attach" onclick="onHomeAddClick()" aria-label="Voice, photo or file">🎤</button>
     </div>`;
 }
 
@@ -11225,6 +11217,10 @@ function initDailyJournalEditor(date) {
   const r = document.getElementById('f-daily-reflection');
   if (t) t.value = dailyDraftEntry.thoughts || '';
   if (r) r.value = dailyDraftEntry.reflection || '';
+  // Populate the DFT box (lives between Thoughts and Tasks). Re-uses
+  // renderDftPanel + the existing save/done/skip/clear handlers so the
+  // DFT data path is unchanged — only the entry surface moved.
+  renderDailyDftBox();
   // Reset any AI-organize comparison panels left over from a previous open
   // (the state is in-memory only — never persisted to the entry).
   _djOrganizeState.thoughts = null;
@@ -11947,6 +11943,25 @@ function getDft(d) {
   if (!v) return null;
   if (typeof v === 'string') return { text: v, status: 'pending' };
   return v;
+}
+
+// DFT entry surface inside the Daily Journal modal. Lives in a wrapper
+// the modal HTML always provides; this just paints renderDftPanel into
+// it whenever the modal is open and the DFT state may have changed.
+function renderDailyDftBox() {
+  const wrap = document.getElementById('f-daily-dft-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = renderDftPanel(todayStr());
+}
+// Refresh both DFT surfaces after a mutation: the Today-page box (via
+// the full main re-render the mutator already triggers) AND the Daily
+// Journal modal box if it happens to be open. Without this, editing
+// the DFT inside the modal would re-render Today but leave the modal's
+// own box showing the stale state.
+function refreshAllDftSurfaces() {
+  if (document.getElementById('sheet-capture')?.classList.contains('open')) {
+    renderDailyDftBox();
+  }
 }
 
 // Compact DFT control that lives inline in the Today top row between the
@@ -12959,6 +12974,7 @@ window.saveDft = function(val) {
   saveLocal('dayos_dfts_v1', dfts);
   syncDftDoc(d);
   renderMain();
+  refreshAllDftSurfaces();
 };
 
 // Single vs double-tap dispatcher on the pending DFT row. Native ondblclick
@@ -13016,6 +13032,7 @@ window.doneDft = function() {
   });
   toast('DFT marked done ✓');
   render();
+  refreshAllDftSurfaces();
 };
 
 window.skipDft = function() {
@@ -13037,6 +13054,7 @@ window.skipDft = function() {
   });
   toast('DFT skipped');
   render();
+  refreshAllDftSurfaces();
 };
 
 window.clearDft = function() {
@@ -13045,6 +13063,7 @@ window.clearDft = function() {
   saveLocal('dayos_dfts_v1', dfts);
   deleteDftDoc(d);
   renderMain();
+  refreshAllDftSurfaces();
 };
 
 // ── Daily default blocks: auto-creator ───────────────────────
@@ -14268,7 +14287,6 @@ const EXPERIMENTS_CATALOG = [
   { key: 'timeline',     label: 'Day Timeline',     desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
   { key: 'heatmap',      label: 'Journal Heatmap',  desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
   { key: 'onthisday',    label: 'On This Day',      desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
-  { key: 'capturebar',   label: 'Quick Capture Bar',desc: 'A pinned single-line input on the Today page — type a thought and hit Enter to save as a Quick Note without opening a modal. Voice + photo button on the right.' },
   { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Replaces the single + on the Today page with three direct buttons — Activity ⏱, Journal 📓, Note 📝 — so the two most-common structured entries open in one tap. Note opens a small sub-picker for Quick / Project / Session / Learning." },
   { key: 'longPressAdd', label: 'Long-Press +',     desc: 'Single tap on + opens a Quick Note immediately. Long-press (~0.4s) opens the full 7-option picker. Keeps the chrome minimal while keeping every option one gesture away.' },
   { key: 'daybar',       label: 'Day Ratio Bar',    desc: "A single horizontal stacked bar on the Today page (between Day Score and Today's Log) showing how the elapsed waking day (8am → now, capped at 16h) has been split across categories. One glance, no scrolling." },
