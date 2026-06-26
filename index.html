@@ -6088,10 +6088,16 @@ const TL_COMPACT_MAX_MIN = 59; // < 60m → single-row compact layout
 // than the old flat floor so labels fit); regular tier grows gently and
 // caps at 120px (~20% shorter than the old 150 ceiling).
 function tlBlockHeight(mins) {
-  if (mins <= TL_COMPACT_MAX_MIN) {
-    return Math.max(32, Math.min(40, 30 + mins * 0.18));
-  }
-  return Math.max(46, Math.min(120, 44 + mins * 0.18));
+  let h = mins <= TL_COMPACT_MAX_MIN
+    ? Math.max(32, Math.min(40, 30 + mins * 0.18))
+    : Math.max(46, Math.min(120, 44 + mins * 0.18));
+  // Per-duration height tuning, calibrated by eye:
+  //   30 / 45 / 60m → −15% (felt too tall)
+  //   240m and up   → −25% (long blocks waste vertical space)
+  //   15m and 120m  → left as-is
+  if (mins >= 30 && mins <= 60)  h *= 0.85;
+  else if (mins >= 240)          h *= 0.75;
+  return h;
 }
 
 let _timelineExpanded = false;
