@@ -694,22 +694,49 @@ body.ios-pwa #nav {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 0.5rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
   padding: 1px 0 4px;
   border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
 .tl-block:hover .tl-body { border-color: var(--border2); }
-.tl-cat { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+/* Regular (≥60m) two-row layout: category + duration on top (duration
+   pushed to the right edge), label beneath. */
+.tl-body-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+/* Compact (<60m) single-row layout: category + label inline, duration
+   right-aligned. min-width:0 on the row so the label can ellipsize. */
+.tl-body-compact {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+.tl-cat { font-size: 0.78rem; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 .tl-dur {
   font-size: 0.68rem;
   color: var(--text3);
   font-variant-numeric: tabular-nums;
+  margin-left: auto;       /* right-align in both layouts */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tl-label {
-  flex-basis: 100%;
+  font-size: 0.74rem;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Inline label inside the compact single row — takes the middle, shrinks
+   and ellipsizes so the right-aligned duration always stays visible. */
+.tl-label-inline {
+  flex: 1;
+  min-width: 0;
   font-size: 0.74rem;
   color: var(--text2);
   white-space: nowrap;
@@ -5870,33 +5897,67 @@ function renderBlock(b) {
     </div>`;
 }
 
-// ── Day Ratio Bar (experiment: 'daybar') ──────────────────────
-// A single horizontal stacked bar showing how the elapsed *waking*
-// day has been split across categories. The denominator is "elapsed
-// waking minutes" — not the full 24h — so the bar reflects what's
-// actually had a chance to happen yet:
-//
-//   waking window  = 10:00 → 02:00 next day  (16h)
-//   elapsed waking = clamp(now − 10:00, 0, 16h)
-//   numerator      = today's non-sleep block minutes, by category,
-//                    EXCLUDING blocks whose start_time is before
-//                    10:00 (the 00:00→02:00 night-routine tail is
-//                    deliberately not represented in the ratio bar
-//                    per spec — those blocks still appear in the
-//                    normal Today log).
-//   remainder      = elapsed − total → muted "unlogged" segment
-//
-// Self-hides before 10am or before any qualifying block is logged.
-// The bar is collapsed-by-default (just the colored pill); tapping
-// it expands a header + legend.
-const DAYBAR_WAKE_START_MIN = 10 * 60;  // 10:00 IST
-const DAYBAR_WAKE_TOTAL_MIN = 16 * 60;  // 16h waking window
-let _daybarExpanded = false;
+// ── Shared time-math + sleep-window helpers ───────────────────
+// Used by the Day Ratio Bar AND Day Timeline experiments (promoted out
+// of either feature so killing one doesn't strip a helper the other
+// needs). The sleep window models the user's fixed 02:00→10:00 sleep:
+// blocks starting inside it are treated as "sleep" and excluded from
+// the waking-day views; the night-routine tail (00:00→02:00) is OUTSIDE
+// the window and therefore counts as waking time.
+const SLEEP_WINDOW_START_MIN = 2 * 60;    // 02:00 IST
+const SLEEP_WINDOW_END_MIN   = 10 * 60;   // 10:00 IST
+const WAKING_TOTAL_MIN       = 16 * 60;   // 24h − 8h sleep
 
+function hhmmToMin(t) {
+  const [h, m] = (t || '0:0').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+function minToHHMM(mins) {
+  const m = ((mins % 1440) + 1440) % 1440; // wrap within a day
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+function fmtMins(mins) {
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
 function _nowMinutesIST() {
   const now = nowIST();
   return now.getHours() * 60 + now.getMinutes();
 }
+// A block "belongs to sleep" if its start time falls in [02:00, 10:00).
+function isSleepWindowBlock(b) {
+  if (!b) return false;
+  if (b.category === 'sleep') return true; // legacy sleep-category blocks
+  if (!b.start_time) return false;
+  const sm = hhmmToMin(b.start_time);
+  return sm >= SLEEP_WINDOW_START_MIN && sm < SLEEP_WINDOW_END_MIN;
+}
+// Elapsed WAKING minutes today = minutes between 00:00 and now that are
+// NOT inside the sleep window. So at 18:00: (00:00–02:00 = 120) +
+// (10:00–18:00 = 480) = 600. Caps at 16h.
+function elapsedWakingMin() {
+  const now = _nowMinutesIST();
+  const beforeSleep = Math.min(now, SLEEP_WINDOW_START_MIN);
+  const afterSleep  = Math.max(0, now - SLEEP_WINDOW_END_MIN);
+  return Math.min(WAKING_TOTAL_MIN, beforeSleep + afterSleep);
+}
+
+// ── Day Ratio Bar (experiment: 'daybar') ──────────────────────
+// A single horizontal stacked bar showing how the elapsed *waking*
+// day has been split across categories. "Waking" = the day minus the
+// fixed 02:00→10:00 sleep window, so:
+//
+//   waking total   = 16h (24h − 8h sleep)
+//   elapsed waking  = minutes since 00:00 that aren't in 02:00–10:00
+//   numerator       = today's block minutes by category, EXCLUDING any
+//                     block that starts inside the sleep window (the
+//                     00:00→02:00 night-routine tail IS counted —
+//                     it's outside the sleep window)
+//   remainder       = elapsed − total → muted "unlogged" segment
+//
+// Self-hides before any qualifying block is logged. Collapsed-by-
+// default (just the colored pill); tapping it expands header + legend.
+let _daybarExpanded = false;
 
 window.toggleDaybarExpanded = function() {
   _daybarExpanded = !_daybarExpanded;
@@ -5904,22 +5965,22 @@ window.toggleDaybarExpanded = function() {
 };
 
 function renderDayRatioBar(bks) {
-  const elapsedWaking = Math.max(0, Math.min(DAYBAR_WAKE_TOTAL_MIN, _nowMinutesIST() - DAYBAR_WAKE_START_MIN));
-  if (elapsedWaking < 5) return ''; // pre-10am or first few minutes — nothing to show
+  const elapsedWaking = elapsedWakingMin();
+  if (elapsedWaking < 5) return ''; // before any waking time has elapsed
 
-  // Bucket today's non-sleep block minutes by category, EXCLUDING
-  // blocks whose start_time is before 10:00 (the night-routine tail).
+  // Bucket today's block minutes by category, EXCLUDING any block that
+  // belongs to the sleep window (02:00–10:00) or the legacy sleep
+  // category. The 00:00–02:00 night-routine tail is kept — it's waking.
   const byCat = {};
   let loggedTotal = 0;
   for (const b of bks) {
-    if (!b || b.category === 'sleep') continue;
-    if (!b.start_time || hhmmToMin(b.start_time) < DAYBAR_WAKE_START_MIN) continue;
+    if (!b || isSleepWindowBlock(b)) continue;
     const m = b.duration_min || 0;
     if (m <= 0) continue;
     byCat[b.category] = (byCat[b.category] || 0) + m;
     loggedTotal += m;
   }
-  if (loggedTotal === 0) return ''; // nothing waking-window-logged yet
+  if (loggedTotal === 0) return ''; // nothing waking logged yet
 
   // Edge case: user has logged MORE than elapsed waking time (e.g., long
   // sessions or stale entries). Use the bigger number as the denominator
@@ -5969,37 +6030,40 @@ function renderDayRatioBar(bks) {
 }
 
 // ── Day Timeline (experiment: 'timeline') ─────────────────────
-// A vertical, proportional ribbon of the day's logged blocks so the
-// SHAPE of the day reads at a glance — where deep work clustered, where
-// the leaks were, and the unlogged gaps in between. Pure read of the
-// same block data the list uses; no new state. Heights scale with
-// duration (clamped so a 5-min block is still tappable and a 4-hour
-// block doesn't dominate). Gaps between consecutive blocks render as a
-// faint dashed "unlogged" band, capped so an overnight gap stays compact.
-const TL_PX_PER_MIN = 0.55;   // vertical scale
-const TL_MIN_H      = 30;     // floor so labels + tap target survive
-const TL_MAX_H      = 150;    // ceiling so long blocks don't run away
-const TL_GAP_MIN_H  = 22;
-const TL_GAP_MAX_H  = 46;
+// A vertical ribbon of the day's logged blocks so the SHAPE of the day
+// reads at a glance. Pure read of the same block data the list uses.
+// Sleep-window blocks (02:00–10:00) are excluded — this view is about
+// waking activity. (Shared time helpers + isSleepWindowBlock live in
+// the "Shared time-math" block above renderDayRatioBar.)
+//
+// Sizing is intentionally NON-LINEAR ("phased"): short blocks get a
+// comfortable floor (so the label never clips) and long blocks grow
+// sub-linearly (so a 4h block doesn't waste half the screen). It's
+// representative of relative duration, not a literal 1:1 pixel map.
+// Layout also adapts to duration:
+//   • short blocks (< 60m) → ONE row: category + label inline, with the
+//     duration right-aligned. Keeps the label from being clipped.
+//   • long blocks (≥ 60m) → TWO rows: category + duration on top, label
+//     beneath (the original, roomier layout).
+const TL_GAP_MIN_H  = 20;
+const TL_GAP_MAX_H  = 40;
 const TL_GAP_THRESHOLD = 10;  // only show a gap band if > 10 min unlogged
+const TL_COMPACT_MAX_MIN = 59; // < 60m → single-row compact layout
 
-function hhmmToMin(t) {
-  const [h, m] = (t || '0:0').split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-function minToHHMM(mins) {
-  const m = ((mins % 1440) + 1440) % 1440; // wrap within a day
-  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
-}
-function fmtMins(mins) {
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+// Phased height curve. Compact tier sits ~32–40px (one row, ~20% taller
+// than the old flat floor so labels fit); regular tier grows gently and
+// caps at 120px (~20% shorter than the old 150 ceiling).
+function tlBlockHeight(mins) {
+  if (mins <= TL_COMPACT_MAX_MIN) {
+    return Math.max(32, Math.min(40, 30 + mins * 0.18));
+  }
+  return Math.max(46, Math.min(120, 44 + mins * 0.18));
 }
 
 function renderTodayTimeline(bks) {
-  // Only blocks with a real start time can be placed; sort ascending.
+  // Placed blocks with a real start time, excluding sleep-window blocks.
   const placed = bks
-    .filter(b => b.start_time && b.duration_min)
+    .filter(b => b.start_time && b.duration_min && !isSleepWindowBlock(b))
     .sort((a, b) => hhmmToMin(a.start_time) - hhmmToMin(b.start_time));
   if (placed.length < 1) return '';
 
@@ -6014,7 +6078,7 @@ function renderTodayTimeline(bks) {
     // Gap band between the previous block's end and this block's start.
     if (prevEnd != null && start - prevEnd > TL_GAP_THRESHOLD) {
       const gapMin = start - prevEnd;
-      const gh = Math.max(TL_GAP_MIN_H, Math.min(TL_GAP_MAX_H, gapMin * TL_PX_PER_MIN));
+      const gh = Math.max(TL_GAP_MIN_H, Math.min(TL_GAP_MAX_H, gapMin * 0.4));
       rows.push(`
         <div class="tl-row tl-gap" style="height:${gh}px">
           <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + minToHHMM(prevEnd))}</span></div>
@@ -6022,18 +6086,31 @@ function renderTodayTimeline(bks) {
         </div>`);
     }
 
-    const cat = b.category === 'sleep' ? SLEEP_CAT : catById(b.category);
-    const h = Math.max(TL_MIN_H, Math.min(TL_MAX_H, b.duration_min * TL_PX_PER_MIN));
+    const cat = catById(b.category);
+    const h = tlBlockHeight(b.duration_min);
     const label = b.note ? `${b.label} — ${b.note}` : b.label;
+    const compact = b.duration_min <= TL_COMPACT_MAX_MIN;
+    const durHtml = `<span class="tl-dur">${b.duration_min}m</span>`;
+
+    const body = compact
+      ? `<div class="tl-body tl-body-compact">
+          <span class="tl-cat" style="color:${cat.color}">${cat.icon} ${cat.label}</span>
+          ${label ? `<span class="tl-label-inline">${esc(label)}</span>` : ''}
+          ${durHtml}
+        </div>`
+      : `<div class="tl-body">
+          <div class="tl-body-top">
+            <span class="tl-cat" style="color:${cat.color}">${cat.icon} ${cat.label}</span>
+            ${durHtml}
+          </div>
+          ${label ? `<div class="tl-label">${esc(label)}</div>` : ''}
+        </div>`;
+
     rows.push(`
       <div class="tl-row tl-block" style="height:${h}px" onclick="openLogBlock('${b.id}')" title="${esc(label || cat.label)} · ${b.duration_min}m">
         <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + b.start_time)}</span></div>
         <div class="tl-bar" style="background:${cat.color}"></div>
-        <div class="tl-body">
-          <span class="tl-cat" style="color:${cat.color}">${cat.icon} ${cat.label}</span>
-          <span class="tl-dur">${b.duration_min}m</span>
-          ${label ? `<div class="tl-label">${esc(label)}</div>` : ''}
-        </div>
+        ${body}
       </div>`);
 
     prevEnd = Math.max(prevEnd == null ? end : prevEnd, end);
