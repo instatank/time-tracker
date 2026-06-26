@@ -1345,7 +1345,13 @@ body.ios-pwa #nav {
   gap: 0.5rem;
   padding: 0.45rem 0.6rem;
 }
-.dft-row-icon { flex-shrink: 0; font-size: 0.95rem; line-height: 1; }
+.dft-row-icon {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text3);
+  line-height: 1;
+}
 .dft-row-text {
   flex: 1;
   min-width: 0;
@@ -12222,15 +12228,15 @@ function renderDftPanel(d) {
   if (!dft) {
     return `
       <div class="dft-panel dft-row">
-        <span class="dft-row-icon">🎯</span>
-        <input class="dft-row-input" placeholder="Daily Focus Task — what's your #1 today?"
+        <span class="dft-row-icon">DFT:</span>
+        <input class="dft-row-input" placeholder="What's your #1 focus today?"
           onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />
       </div>`;
   }
   if (dft.status === 'pending') {
     return `
       <div class="dft-panel dft-row pending">
-        <span class="dft-row-icon">🎯</span>
+        <span class="dft-row-icon">DFT:</span>
         <span class="dft-row-text" onclick="editDft()" title="Tap to edit">${esc(dft.text)}</span>
         <button class="dft-tick-btn" onclick="doneDft()" title="Mark done">✓</button>
         <button class="dft-skip-btn" onclick="skipDft()" title="Skip">✕</button>
@@ -12240,14 +12246,14 @@ function renderDftPanel(d) {
   if (dft.status === 'done') {
     return `
       <div class="dft-panel dft-row done">
-        <span class="dft-row-icon">🎯</span>
+        <span class="dft-row-icon">DFT:</span>
         <span class="dft-row-text dft-row-text-done"><span class="dft-row-check">✓</span> ${esc(dft.text)}</span>
         <button class="dft-row-action" onclick="clearDft()" title="Set a new focus">+ Add</button>
       </div>`;
   }
   return `
     <div class="dft-panel dft-row skipped">
-      <span class="dft-row-icon">🎯</span>
+      <span class="dft-row-icon">DFT:</span>
       <span class="dft-row-text dft-row-text-skipped">${esc(dft.text)}<span class="dft-skipped-label">skipped</span></span>
       <button class="dft-row-action muted" onclick="clearDft()" title="Reset">↺ Reset</button>
     </div>`;
