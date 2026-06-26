@@ -6060,6 +6060,12 @@ function tlBlockHeight(mins) {
   return Math.max(46, Math.min(120, 44 + mins * 0.18));
 }
 
+let _timelineExpanded = false;
+window.toggleTimeline = function() {
+  _timelineExpanded = !_timelineExpanded;
+  if (activeTab === 'today') renderMain(true);
+};
+
 function renderTodayTimeline(bks) {
   // Placed blocks with a real start time, excluding sleep-window blocks.
   const placed = bks
@@ -6067,23 +6073,40 @@ function renderTodayTimeline(bks) {
     .sort((a, b) => hhmmToMin(a.start_time) - hhmmToMin(b.start_time));
   if (placed.length < 1) return '';
 
-  const date = placed[0].date;
+  // Match the activity-log list: show the first TODAY_PREVIEW (3) blocks,
+  // collapse the rest behind a "↓ N more" toggle.
+  const hiddenCount = placed.length - TODAY_PREVIEW;
+  const visible = _timelineExpanded ? placed : placed.slice(0, TODAY_PREVIEW);
+
+  const date = visible[0].date;
   const rows = [];
   let prevEnd = null;
 
-  placed.forEach(b => {
+  visible.forEach(b => {
     const start = hhmmToMin(b.start_time);
     const end   = start + b.duration_min;
 
-    // Gap band between the previous block's end and this block's start.
-    if (prevEnd != null && start - prevEnd > TL_GAP_THRESHOLD) {
-      const gapMin = start - prevEnd;
-      const gh = Math.max(TL_GAP_MIN_H, Math.min(TL_GAP_MAX_H, gapMin * 0.4));
-      rows.push(`
-        <div class="tl-row tl-gap" style="height:${gh}px">
-          <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + minToHHMM(prevEnd))}</span></div>
-          <div class="tl-gap-fill"><span class="tl-gap-label">${fmtMins(gapMin)} unlogged</span></div>
-        </div>`);
+    // Gap band between the previous block's end and this block's start —
+    // but only for the WAKING portion of the gap. Any overlap with the
+    // 02:00–10:00 sleep window is subtracted, so the nightly sleep stretch
+    // isn't drawn as "unlogged" time. If only sleep separates two blocks,
+    // no band is drawn at all.
+    if (prevEnd != null) {
+      const rawGap = start - prevEnd;
+      const sleepOverlap = Math.max(0, Math.min(start, SLEEP_WINDOW_END_MIN) - Math.max(prevEnd, SLEEP_WINDOW_START_MIN));
+      const wakingGap = rawGap - sleepOverlap;
+      if (wakingGap > TL_GAP_THRESHOLD) {
+        // Where waking resumes: if the gap straddles the sleep window,
+        // the visible unlogged stretch starts at 10:00, else at prevEnd.
+        const gapStart = (prevEnd < SLEEP_WINDOW_END_MIN && start > SLEEP_WINDOW_END_MIN)
+          ? SLEEP_WINDOW_END_MIN : prevEnd;
+        const gh = Math.max(TL_GAP_MIN_H, Math.min(TL_GAP_MAX_H, wakingGap * 0.4));
+        rows.push(`
+          <div class="tl-row tl-gap" style="height:${gh}px">
+            <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + minToHHMM(gapStart))}</span></div>
+            <div class="tl-gap-fill"><span class="tl-gap-label">${fmtMins(wakingGap)} unlogged</span></div>
+          </div>`);
+      }
     }
 
     const cat = catById(b.category);
@@ -6116,7 +6139,8 @@ function renderTodayTimeline(bks) {
     prevEnd = Math.max(prevEnd == null ? end : prevEnd, end);
   });
 
-  return `<div class="day-timeline">${rows.join('')}</div>`;
+  const more = hiddenCount > 0 ? moreBtn(_timelineExpanded, hiddenCount, 'toggleTimeline') : '';
+  return `<div class="day-timeline">${rows.join('')}</div>${more}`;
 }
 
 // ── 3-Button Add Bar (experiment: 'threeAdd') ─────────────────

@@ -32,7 +32,7 @@ Each cleanup should be 5–15 minutes and confined to `index.html` (+ sometimes 
 
 | Key | Label | Touches data? | Render fn(s) | CSS block | HTML | Wired in |
 |---|---|---|---|---|---|---|
-| `timeline` | Day Timeline | **No** (read-only) | `renderTodayTimeline`, `tlBlockHeight`, consts `TL_*` (uses shared time helpers — see note) | `/* Day Timeline (experiment) */` | — | `renderToday` (Today's Log section) |
+| `timeline` | Day Timeline | **No** (read-only) | `renderTodayTimeline`, `tlBlockHeight`, handler `toggleTimeline`, state `_timelineExpanded`, consts `TL_*` (uses shared time helpers — see note) | `/* Day Timeline (experiment) */` | — | `renderToday` (Today's Log section) |
 | `heatmap` | Journal Heatmap | **No** (read-only) | `renderJournalHeatmap`, helper `_dayHasContent`, const `HEATMAP_DAYS` | `/* Journal Heatmap (experiment) */` | — | `renderJournal` (between row1 and row2) |
 | `onthisday` | On This Day | **No** (read-only) | `renderOnThisDay`, helpers `_shiftByMonths` / `_otdSnippet`, const `OTD_INTERVALS` | `/* On This Day (experiment) */` | — | `renderToday` (below action row) |
 | `capturebar` | Quick Capture Bar | **Yes** — writes `captures` via canonical save path | `renderQuickCaptureBar`, handler `onQuickCapKey`, save `saveQuickCaptureBarEntry` | `/* Quick Capture Bar (experiment) */` | — | `renderToday` (below action row, above OTD) |
