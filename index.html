@@ -6210,9 +6210,10 @@ window.openNotePicker = function() {
 };
 
 // ── Long-Press + (experiment: 'longPressAdd') ─────────────────
-// A single + button whose short tap creates a Quick Note in one go,
-// and whose long press opens the full 7-option add picker. iOS callout
-// is suppressed via CSS (-webkit-touch-callout: none + user-select).
+// A single + button whose short tap opens the full 7-option add picker,
+// and whose long press jumps straight into today's Daily Journal entry.
+// iOS callout is suppressed via CSS (-webkit-touch-callout: none +
+// user-select).
 const LONG_PRESS_MS = 420;
 let _lpAddTimer = null;
 let _lpAddFired = false;
@@ -6223,16 +6224,17 @@ window.lpAddDown = function(_e) {
   _lpAddTimer = setTimeout(() => {
     _lpAddFired = true;
     try { if (navigator.vibrate) navigator.vibrate(15); } catch {}
-    openAddPicker();
+    // Long press → default action: today's Daily Journal entry. Mirrors
+    // the add picker's 'daily' branch (openCapture('daily')) so a journal
+    // started here is indistinguishable from one started via the picker.
+    openCapture('daily');
   }, LONG_PRESS_MS);
 };
 window.lpAddUp = function(e) {
   if (_lpAddTimer) { clearTimeout(_lpAddTimer); _lpAddTimer = null; }
   if (_lpAddFired) { e && e.preventDefault && e.preventDefault(); return; }
-  // Short tap → default action: Quick Note. The user's most common
-  // structured-entry case is small text, so this matches the capture-
-  // bar experiment's bias toward minimum-friction text capture.
-  openCapture('note');
+  // Short tap → reveal the full 7-option add picker.
+  openAddPicker();
 };
 window.lpAddCancel = function(_e) {
   if (_lpAddTimer) { clearTimeout(_lpAddTimer); _lpAddTimer = null; }
@@ -6248,8 +6250,8 @@ function renderLongPressAddBtn() {
     onpointerup="lpAddUp(event)"
     onpointercancel="lpAddCancel(event)"
     onpointerleave="lpAddCancel(event)"
-    aria-label="Add new entry (tap = Quick Note, hold = options)"
-    title="Tap to capture · hold for options">+</button>`;
+    aria-label="Add new entry (tap = options, hold = Daily Journal)"
+    title="Tap for options · hold for Daily Journal">+</button>`;
 }
 
 // Decides which + control the action row renders. Note: this is now
@@ -14288,7 +14290,7 @@ const EXPERIMENTS_CATALOG = [
   { key: 'heatmap',      label: 'Journal Heatmap',  desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
   { key: 'onthisday',    label: 'On This Day',      desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
   { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Replaces the single + on the Today page with three direct buttons — Activity ⏱, Journal 📓, Note 📝 — so the two most-common structured entries open in one tap. Note opens a small sub-picker for Quick / Project / Session / Learning." },
-  { key: 'longPressAdd', label: 'Long-Press +',     desc: 'Single tap on + opens a Quick Note immediately. Long-press (~0.4s) opens the full 7-option picker. Keeps the chrome minimal while keeping every option one gesture away.' },
+  { key: 'longPressAdd', label: 'Long-Press +',     desc: 'Single tap on + reveals the full 7-option add picker. Long-press (~0.4s) jumps straight into today\'s Daily Journal entry. Keeps the chrome minimal while keeping every option one gesture away.' },
   { key: 'daybar',       label: 'Day Ratio Bar',    desc: "A single horizontal stacked bar on the Today page (between Day Score and Today's Log) showing how the elapsed waking day (8am → now, capped at 16h) has been split across categories. One glance, no scrolling." },
 ];
 
