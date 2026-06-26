@@ -6142,10 +6142,14 @@ function renderTodayTimeline(bks) {
   const blockEnd = b => hhmmToMin(b.start_time) + b.duration_min;
   const latestEnd = Math.max(...placed.map(blockEnd));
   const windowStart = latestEnd - TL_DEFAULT_WINDOW_MIN;
-  const visible = _timelineExpanded
-    ? placed
-    : placed.filter(b => blockEnd(b) > windowStart);
-  const hiddenCount = placed.length - visible.length;
+  // The collapsed window is what defines how many blocks are hidden. Compute
+  // it independently of the current expand state so `hiddenCount` stays the
+  // SAME whether expanded or not — otherwise expanding drops hiddenCount to
+  // 0 and the toggle (which becomes "↑ show less" when expanded) disappears,
+  // leaving no way to collapse back.
+  const windowVisible = placed.filter(b => blockEnd(b) > windowStart);
+  const hiddenCount = placed.length - windowVisible.length;
+  const visible = _timelineExpanded ? placed : windowVisible;
 
   const date = visible[0].date;
   const rows = [];
