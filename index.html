@@ -6073,10 +6073,12 @@ function renderTodayTimeline(bks) {
     .sort((a, b) => hhmmToMin(a.start_time) - hhmmToMin(b.start_time));
   if (placed.length < 1) return '';
 
-  // Match the activity-log list: show the first TODAY_PREVIEW (3) blocks,
-  // collapse the rest behind a "↓ N more" toggle.
+  // Match the activity-log list: show the latest TODAY_PREVIEW (3) blocks,
+  // collapse the rest behind a "↓ N more" toggle. `placed` is ascending
+  // (needed for correct gap math); we slice the TAIL for the latest ones
+  // and reverse the rendered rows below so newest sits on top.
   const hiddenCount = placed.length - TODAY_PREVIEW;
-  const visible = _timelineExpanded ? placed : placed.slice(0, TODAY_PREVIEW);
+  const visible = _timelineExpanded ? placed : placed.slice(-TODAY_PREVIEW);
 
   const date = visible[0].date;
   const rows = [];
@@ -6139,6 +6141,9 @@ function renderTodayTimeline(bks) {
     prevEnd = Math.max(prevEnd == null ? end : prevEnd, end);
   });
 
+  // Rows were built ascending (for gap math); reverse for reverse-chrono
+  // display so the latest block sits on top.
+  rows.reverse();
   const more = hiddenCount > 0 ? moreBtn(_timelineExpanded, hiddenCount, 'toggleTimeline') : '';
   return `<div class="day-timeline">${rows.join('')}</div>${more}`;
 }
