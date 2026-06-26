@@ -2586,6 +2586,20 @@ body.ios-pwa #nav {
 .card-swipe-wrap.swiped > .block-item,
 .card-swipe-wrap.swiped > .capture-item { transform: translateX(-88px); }
 
+/* Timeline rows reuse the swipe mechanism. The colored bar + body card
+   carry their own background, so we deliberately DON'T paint the whole
+   row — the time rail stays transparent, matching the un-swiped look. */
+.card-swipe-wrap.tl-swipe { margin-bottom: 6px; }
+.day-timeline > .card-swipe-wrap.tl-swipe:last-child { margin-bottom: 0; }
+.card-swipe-wrap > .tl-block {
+  margin-bottom: 0;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.22s cubic-bezier(.2,.8,.2,1);
+  will-change: transform;
+}
+.card-swipe-wrap.swiped > .tl-block { transform: translateX(-88px); }
+
 .card-swipe-actions {
   position: absolute;
   top: 0; right: 0; bottom: 0;
@@ -5827,9 +5841,10 @@ function renderToday() {
         <span class="sec-title">Today's Log</span>
         <span class="sec-meta">${sc.totalHrs > 0 ? sc.totalHrs.toFixed(1) + 'h logged' : ''}</span>
       </div>
-      ${expEnabled('timeline') && bks.length ? renderTodayTimeline(bks) : ''}
       ${bks.length
-        ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
+        ? (expEnabled('classicLog')
+            ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
+            : renderTodayTimeline(bks))
         : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
     </div>`}
 
@@ -6061,9 +6076,11 @@ function renderDayRatioBar(bks) {
     </div>`;
 }
 
-// ── Day Timeline (experiment: 'timeline') ─────────────────────
+// ── Day Timeline (now the default Today's Log view) ───────────
 // A vertical ribbon of the day's logged blocks so the SHAPE of the day
-// reads at a glance. Pure read of the same block data the list uses.
+// reads at a glance. Graduated from the 'timeline' experiment to the
+// default; the old stacked-card list lives behind the 'classicLog' flag.
+// Pure read of the same block data the list uses.
 // Sleep-window blocks (02:00–10:00) are excluded — this view is about
 // waking activity. (Shared time helpers + isSleepWindowBlock live in
 // the "Shared time-math" block above renderDayRatioBar.)
@@ -6170,10 +6187,22 @@ function renderTodayTimeline(bks) {
         </div>`;
 
     rows.push(`
-      <div class="tl-row tl-block" style="height:${h}px" onclick="openLogBlock('${b.id}')" title="${esc(label || cat.label)} · ${b.duration_min}m">
-        <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + b.start_time)}</span></div>
-        <div class="tl-bar" style="background:${cat.color}"></div>
-        ${body}
+      <div class="card-swipe-wrap tl-swipe">
+        <div class="card-swipe-actions">
+          <button class="card-swipe-edit" onclick="openLogBlock('${b.id}')" title="Edit block" aria-label="Edit">${ICON_PENCIL}</button>
+          <button class="card-swipe-delete" data-delkey="block-${b.id}" onclick="deleteBlock('${b.id}')" title="Delete block" aria-label="Delete">${ICON_TRASH}</button>
+        </div>
+        <div class="tl-row tl-block" style="height:${h}px"
+          onpointerdown="tlBlockDown(event,'${b.id}')"
+          onpointerup="tlBlockUp(event)"
+          onpointermove="tlBlockMove(event)"
+          onpointercancel="tlBlockCancel(event)"
+          onpointerleave="tlBlockCancel(event)"
+          title="${esc(label || cat.label)} · ${b.duration_min}m — hold to edit, swipe for options">
+          <div class="tl-rail"><span class="tl-time">${fmtTime(date + 'T' + b.start_time)}</span></div>
+          <div class="tl-bar" style="background:${cat.color}"></div>
+          ${body}
+        </div>
       </div>`);
 
     prevEnd = Math.max(prevEnd == null ? end : prevEnd, end);
@@ -6185,6 +6214,44 @@ function renderTodayTimeline(bks) {
   const more = hiddenCount > 0 ? moreBtn(_timelineExpanded, hiddenCount, 'toggleTimeline') : '';
   return `<div class="day-timeline">${rows.join('')}</div>${more}`;
 }
+
+// ── Timeline row gestures ─────────────────────────────────────
+// A single tap on a timeline block does nothing (it used to open the
+// edit modal — too easy to trigger by accident). Edit is now a long
+// press (~0.4s, reusing LONG_PRESS_MS); swipe-left still reveals the
+// Edit/Delete actions via the shared card-swipe mechanism. A horizontal
+// drag (the swipe) moves the finger past the move-threshold and cancels
+// the long-press timer, so the two gestures never fight.
+let _tlPressTimer = null;
+let _tlPressFired = false;
+let _tlPressStart = null;
+
+window.tlBlockDown = function(e, id) {
+  _tlPressFired = false;
+  _tlPressStart = { x: e.clientX, y: e.clientY };
+  if (_tlPressTimer) clearTimeout(_tlPressTimer);
+  _tlPressTimer = setTimeout(() => {
+    _tlPressFired = true;
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch {}
+    openLogBlock(id);
+  }, LONG_PRESS_MS);
+};
+window.tlBlockMove = function(e) {
+  if (!_tlPressTimer || !_tlPressStart) return;
+  // Any real movement = a swipe/scroll, not a hold → abort the long press.
+  if (Math.abs(e.clientX - _tlPressStart.x) > 8 || Math.abs(e.clientY - _tlPressStart.y) > 8) {
+    clearTimeout(_tlPressTimer); _tlPressTimer = null;
+  }
+};
+window.tlBlockUp = function(e) {
+  if (_tlPressTimer) { clearTimeout(_tlPressTimer); _tlPressTimer = null; }
+  // Long press already opened the editor → swallow the tap. Short tap →
+  // no action at all (per spec).
+  if (_tlPressFired) { e && e.preventDefault && e.preventDefault(); }
+};
+window.tlBlockCancel = function(_e) {
+  if (_tlPressTimer) { clearTimeout(_tlPressTimer); _tlPressTimer = null; }
+};
 
 // ── 3-Button Add Bar (experiment: 'threeAdd') ─────────────────
 // A dedicated row of three equal-width blue tabs sitting just below
@@ -14335,7 +14402,7 @@ const SETTINGS_SECTIONS = [
 // local-only boolean (see `experiments` state). Add a row here to expose
 // a new in-progress feature for opt-in testing.
 const EXPERIMENTS_CATALOG = [
-  { key: 'timeline',     label: 'Day Timeline',     desc: "A vertical, proportional ribbon of today's blocks on the Today page — see the shape of your day and where time leaked." },
+  { key: 'classicLog',   label: 'Classic Activity Log', desc: "Revert Today's Log from the new vertical timeline back to the original stacked block cards. The timeline is now the default — turn this on only if you want the old list back." },
   { key: 'heatmap',      label: 'Journal Heatmap',  desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
   { key: 'onthisday',    label: 'On This Day',      desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
   { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Replaces the single + on the Today page with three direct buttons — Activity ⏱, Journal 📓, Note 📝 — so the two most-common structured entries open in one tap. Note opens a small sub-picker for Quick / Project / Session / Learning." },
@@ -17514,7 +17581,7 @@ applyTheme(_themePref);
   const onDown = (e) => {
     // Don't start a new swipe if the press is on the action buttons themselves
     if (e.target.closest('.card-swipe-actions')) return;
-    const card = e.target.closest('.session-card, .learning-card, .block-item, .capture-item');
+    const card = e.target.closest('.session-card, .learning-card, .block-item, .capture-item, .tl-block');
     if (!card) return;
     const wrap = card.parentElement;
     if (!wrap || !wrap.classList.contains('card-swipe-wrap')) return;

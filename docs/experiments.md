@@ -32,17 +32,18 @@ Each cleanup should be 5–15 minutes and confined to `index.html` (+ sometimes 
 
 | Key | Label | Touches data? | Render fn(s) | CSS block | HTML | Wired in |
 |---|---|---|---|---|---|---|
-| `timeline` | Day Timeline | **No** (read-only) | `renderTodayTimeline`, `tlBlockHeight`, handler `toggleTimeline`, state `_timelineExpanded`, consts `TL_*` (uses shared time helpers — see note) | `/* Day Timeline (experiment) */` | — | `renderToday` (Today's Log section) |
+| `classicLog` | Classic Activity Log | **No** (read-only) | `renderBlock` (the original stacked-card list + `visBks`/`moreBks` paging — all still in `renderToday`) | — (reuses existing block-card CSS) | — | `renderToday` (Today's Log section — swaps the default timeline for the old card list when ON) |
 | `heatmap` | Journal Heatmap | **No** (read-only) | `renderJournalHeatmap`, helper `_dayHasContent`, const `HEATMAP_DAYS` | `/* Journal Heatmap (experiment) */` | — | `renderJournal` (between row1 and row2) |
 | `onthisday` | On This Day | **No** (read-only) | `renderOnThisDay`, helpers `_shiftByMonths` / `_otdSnippet`, const `OTD_INTERVALS` | `/* On This Day (experiment) */` | — | `renderToday` (below action row) |
 | `threeAdd` | 3-Button Add Bar | **No** (just routes to existing dispatchAdd) | `renderThreeAddBar`, `openNotePicker` | `/* 3-Button Add Bar (experiment) */` | `<div id="sheet-note-picker">` | `renderToday` — own row below action row (action row + stays untouched) |
 
 > **Graduated** (now permanent, listed here for traceability):
 > - `capturebar` — Quick Capture Bar graduated when the DFT moved into the Daily Journal modal; the bar now lives permanently in the Today action row in the slot the inline DFT used to occupy. Render fn `renderQuickCaptureBar` + `saveQuickCaptureBarEntry` are still in the codebase (now unconditional), CSS block renamed to "Quick Capture Bar (action-row compact)".
+> - `timeline` — Day Timeline graduated to the DEFAULT Today's Log view. `renderTodayTimeline` / `tlBlockHeight` / `toggleTimeline` / `_timelineExpanded` / `TL_*` are now unconditional. Timeline rows reuse the shared card-swipe mechanism for Edit/Delete (`.tl-block` added to the swipe selector + CSS) and use long-press-to-edit handlers `tlBlockDown`/`tlBlockMove`/`tlBlockUp`/`tlBlockCancel`. The inverse `classicLog` flag (above) brings back the old card list.
 | `longPressAdd` | Long-Press + | **No** (just routes to existing entry points) | `renderLongPressAddBtn`, `renderTodayAddControl`, handlers `lpAddDown` / `lpAddUp` / `lpAddCancel`, const `LONG_PRESS_MS`, state `_lpAddTimer` / `_lpAddFired` | `/* Long-Press + (experiment) */` | — | `renderToday` action row (replaces the `+`'s gesture handling) |
 | `daybar` | Day Ratio Bar | **No** (read-only) | `renderDayRatioBar`, handler `toggleDaybarExpanded`, state `_daybarExpanded` (uses shared time helpers — see note) | `/* Day Ratio Bar (experiment) */` | — | `renderToday` (between Day Score and Wins) |
 
-> **Shared time helpers:** `timeline` and `daybar` both depend on the "Shared time-math + sleep-window helpers" block above `renderDayRatioBar` — `hhmmToMin`, `minToHHMM`, `fmtMins`, `_nowMinutesIST`, `isSleepWindowBlock`, `elapsedWakingMin`, and consts `SLEEP_WINDOW_START_MIN` / `SLEEP_WINDOW_END_MIN` / `WAKING_TOTAL_MIN`. If you kill **both** experiments, delete that block too; if you kill only one, leave it.
+> **Shared time helpers:** the Day Timeline (now default) and `daybar` both depend on the "Shared time-math + sleep-window helpers" block above `renderDayRatioBar` — `hhmmToMin`, `minToHHMM`, `fmtMins`, `_nowMinutesIST`, `isSleepWindowBlock`, `elapsedWakingMin`, and consts `SLEEP_WINDOW_START_MIN` / `SLEEP_WINDOW_END_MIN` / `WAKING_TOTAL_MIN`. The timeline is permanent now, so this block stays regardless of `daybar`.
 
 > **Data-touching experiments are flagged in bold.** These leave normal entries behind on disk even after removal — that's intentional (entries the user created via the experiment should survive cleanup). What needs deleting is just the *entry surface*, not the data.
 
