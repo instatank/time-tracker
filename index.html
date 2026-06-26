@@ -6596,21 +6596,28 @@ function renderVoiceNotesReadonly(voiceNotes, parentKind, parentId) {
 function renderCapPreview(c) {
   const ct = ctypeById(c.type);
   const delKey = 'cap-' + c.id;
+  // Quick Notes / Project Notes expand inline on tap, exactly like the
+  // Daily Journal card: collapsed shows a 3-line clamp of the body (via
+  // the `.capture-item[data-capture-id] .cap-body` CSS), and `.expanded`
+  // lifts the clamp to reveal the full text. capCardTap() owns the tap
+  // (single = toggle, double = edit) and the outside-click-to-collapse.
+  const expanded = expandedCaptures.has(c.id);
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
         <button class="card-swipe-edit" onclick="openCaptureEdit('${c.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
         <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteCapture('${c.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="capture-item" onclick="capCardTap('${c.id}')">
+      <div class="capture-item ${expanded ? 'expanded' : ''}" data-capture-id="${c.id}" onclick="capCardTap('${c.id}')">
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
           <span class="cap-time">${fmtTime(c.timestamp)}</span>
         </div>
-        ${c.body ? `<div class="cap-body-preview">${esc(c.body)}</div>` : ''}
+        ${c.body ? `<div class="cap-body">${esc(c.body)}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
         ${renderAttachmentsReadonly(c.attachments, 'capture', c.id)}
+        ${renderTagPills(c.tags)}
       </div>
     </div>`;
 }
