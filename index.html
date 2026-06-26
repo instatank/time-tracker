@@ -1337,6 +1337,71 @@ body.ios-pwa #nav {
   margin-top: 0.3rem;
 }
 
+/* ── DFT one-row layout ────────────────────────────────────── */
+/* Collapses the old header/body/hint stack into a single line. */
+.dft-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+}
+.dft-row-icon { flex-shrink: 0; font-size: 0.95rem; line-height: 1; }
+.dft-row-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dft-row.pending .dft-tick-btn,
+.dft-row.pending .dft-skip-btn { width: 26px; height: 26px; font-size: 0.78rem; flex-shrink: 0; }
+.dft-row-clear {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.dft-row-action {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.dft-row-action.muted { color: var(--text3); font-weight: 400; }
+.dft-row-text-done { color: var(--tick-color); cursor: default; }
+.dft-row-check { color: var(--tick-color); font-weight: 700; }
+.dft-row-text-skipped { color: var(--text3); text-decoration: line-through; cursor: default; }
+.dft-row-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  height: 36px;
+  padding: 0 0.7rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.dft-row-input:focus { border-color: var(--accent); }
+.dft-row-input::placeholder { color: var(--text3); }
+
 /* ── EOD Review ─────────────────────────────────────────────── */
 /* ── Daily Journal editor (capture sheet + inline expand) ──── */
 .dj-section { margin-bottom: 0.85rem; }
@@ -12147,39 +12212,44 @@ function renderDftInline(d) {
 }
 
 function renderDftPanel(d) {
+  // Single compact row for every state — the 🎯 icon stands in for the
+  // "Daily Focus Task" label, the task text flexes + ellipsizes, and the
+  // controls sit on the right. Keeps all behaviour (tap text → edit, ✓ →
+  // done, ✕ → skip, clear/add/reset) but collapses the old 3-row panel
+  // (header + body + hint) into one line. Used both on Today and in the
+  // Daily Journal modal's DFT box.
   const dft = getDft(d);
-  const headerExtra = dft && dft.status === 'pending'
-    ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="clearDft()">clear</button>`
-    : dft && dft.status === 'done'
-    ? `<button style="background:none;border:none;color:var(--accent);font-size:0.7rem;font-weight:600;cursor:pointer;padding:2px 6px" onclick="clearDft()">+ Add</button>`
-    : dft && dft.status === 'skipped'
-    ? `<button style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;padding:2px 6px" onclick="clearDft()">↺ Reset</button>`
-    : '';
-  let body;
   if (!dft) {
-    body = `<input class="dft-panel-input" placeholder="What's your #1 focus today?" onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />`;
-  } else if (dft.status === 'pending') {
-    body = `
-      <div class="dft-body">
-        <div class="dft-display" onclick="editDft()">${esc(dft.text)}</div>
-        <div class="dft-actions">
-          <button class="dft-tick-btn" onclick="doneDft()" title="Mark done">✓</button>
-          <button class="dft-skip-btn" onclick="skipDft()" title="Skip">✕</button>
-        </div>
-      </div>
-      <div class="dft-hint">Tap task to edit · ✓ done logs to journal · ✕ skips</div>`;
-  } else if (dft.status === 'done') {
-    body = `<div class="dft-status-done">✓ ${esc(dft.text)}</div>`;
-  } else {
-    body = `<div class="dft-status-skipped">${esc(dft.text)}<span class="dft-skipped-label">skipped</span></div>`;
+    return `
+      <div class="dft-panel dft-row">
+        <span class="dft-row-icon">🎯</span>
+        <input class="dft-row-input" placeholder="Daily Focus Task — what's your #1 today?"
+          onkeydown="if(event.key==='Enter'){saveDft(this.value)}" />
+      </div>`;
+  }
+  if (dft.status === 'pending') {
+    return `
+      <div class="dft-panel dft-row pending">
+        <span class="dft-row-icon">🎯</span>
+        <span class="dft-row-text" onclick="editDft()" title="Tap to edit">${esc(dft.text)}</span>
+        <button class="dft-tick-btn" onclick="doneDft()" title="Mark done">✓</button>
+        <button class="dft-skip-btn" onclick="skipDft()" title="Skip">✕</button>
+        <button class="dft-row-clear" onclick="clearDft()" title="Clear">×</button>
+      </div>`;
+  }
+  if (dft.status === 'done') {
+    return `
+      <div class="dft-panel dft-row done">
+        <span class="dft-row-icon">🎯</span>
+        <span class="dft-row-text dft-row-text-done"><span class="dft-row-check">✓</span> ${esc(dft.text)}</span>
+        <button class="dft-row-action" onclick="clearDft()" title="Set a new focus">+ Add</button>
+      </div>`;
   }
   return `
-    <div class="dft-panel">
-      <div class="dft-panel-hdr">
-        <span class="dft-panel-title">🎯 Daily Focus Task</span>
-        ${headerExtra}
-      </div>
-      ${body}
+    <div class="dft-panel dft-row skipped">
+      <span class="dft-row-icon">🎯</span>
+      <span class="dft-row-text dft-row-text-skipped">${esc(dft.text)}<span class="dft-skipped-label">skipped</span></span>
+      <button class="dft-row-action muted" onclick="clearDft()" title="Reset">↺ Reset</button>
     </div>`;
 }
 
