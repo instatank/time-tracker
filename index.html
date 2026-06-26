@@ -514,6 +514,17 @@ body.ios-pwa #nav {
 }
 .sec-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; color: var(--text2); text-transform: uppercase; }
 .sec-meta  { font-size: 0.72rem; color: var(--text3); }
+.sec-hdr-expandable { cursor: pointer; }
+/* Expand chevron next to a section title. Points right (›) when
+   collapsed, rotates to point down when the section is open. */
+.sec-expand-chev {
+  display: inline-block;
+  margin-left: 0.15rem;
+  color: var(--text3);
+  font-weight: 700;
+  transition: transform 0.15s;
+}
+.sec-expand-chev.open { transform: rotate(90deg); }
 
 /* ── More divider ───────────────────────────────────────────── */
 .more-btn {
@@ -5114,6 +5125,13 @@ function metricSlug(s) {
 
 let todayBksExpanded = false;
 let todayCapsExpanded = false;
+// Daily Check-in metrics collapse under an expandable header on Today;
+// "Rate your day" stays always-visible. Default collapsed.
+let _dailyCheckinExpanded = false;
+window.toggleDailyCheckin = function() {
+  _dailyCheckinExpanded = !_dailyCheckinExpanded;
+  if (activeTab === 'today') renderMain(true);
+};
 const TODAY_PREVIEW = 3;
 // Projects-tab list expansion — show only current-month entries by default,
 // fold older ones behind a "↓ N more" button. Resets on every render.
@@ -5837,24 +5855,23 @@ function renderToday() {
     ${homeQ ? '' : `<button type="button" class="voice-add-btn home-voice-tight" id="home-add-btn"
       onclick="onHomeAddClick()">➕ Add voice, photo or file</button>`}
 
-    <div class="section">
-      <div class="sec-hdr"><span class="sec-title">Rate Your Day</span></div>
-      <div class="star-row">
-        ${[1,2,3,4,5].map(i => `
-          <button class="star-btn ${r >= i ? 'filled' : ''}" onclick="setRating('${d}', ${i})">★</button>
-        `).join('')}
-      </div>
-    </div>
-
     ${(() => {
-      // Daily Check-in — config-driven. Reads the per-user metric list from
-      // lifeCheckConfig. Each metric's id is the storage key in lifeRatings,
-      // so renaming a label preserves history. Hidden / deleted metrics
-      // simply don't render a row; their data on disk is untouched.
+      // Daily Check-in — "Rate your day" is ALWAYS visible as the first
+      // row (single row: label + inline stars). The configured life-check
+      // metrics collapse under an expandable header (default collapsed),
+      // toggled by the › chevron. All rows share the life-rating-row format.
       const metrics = (lifeCheckConfig.metrics || DEFAULT_LIFECHECK_METRICS)
         .filter(m => m && m.id && m.enabled !== false);
-      if (!metrics.length) return '';
-      const rows = metrics.map(m => {
+
+      const dayStars = [1,2,3,4,5].map(i =>
+        `<button class="life-star-btn ${r >= i ? 'filled' : ''}" onclick="setRating('${d}', ${i})">★</button>`
+      ).join('');
+      const rateRow = `<div class="life-rating-row">
+        <span class="life-rating-label">Rate your day</span>
+        <div class="life-star-row">${dayStars}</div>
+      </div>`;
+
+      const metricRows = metrics.map(m => {
         const val = (lifeRatings[d] || {})[m.id] || 0;
         const stars = [1,2,3,4,5].map(i =>
           `<button class="life-star-btn ${val >= i ? 'filled' : ''}" onclick="setLifeRating('${d}','${m.id}',${i})">★</button>`
@@ -5864,9 +5881,19 @@ function renderToday() {
           <div class="life-star-row">${stars}</div>
         </div>`;
       }).join('');
+
+      const hasMetrics = metrics.length > 0;
+      const titleChev = hasMetrics
+        ? `<span class="sec-title">Daily Check-in <span class="sec-expand-chev ${_dailyCheckinExpanded ? 'open' : ''}">›</span></span>`
+        : `<span class="sec-title">Daily Check-in</span>`;
+      const hdr = `<div class="sec-hdr ${hasMetrics ? 'sec-hdr-expandable' : ''}" ${hasMetrics ? 'onclick="toggleDailyCheckin()"' : ''}>${titleChev}</div>`;
+
       return `<div class="section">
-        <div class="sec-hdr"><span class="sec-title">Daily Check-in</span></div>
-        <div class="life-ratings-grid">${rows}</div>
+        ${hdr}
+        <div class="life-ratings-grid">
+          ${rateRow}
+          ${hasMetrics && _dailyCheckinExpanded ? metricRows : ''}
+        </div>
       </div>`;
     })()}
 
