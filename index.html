@@ -898,6 +898,11 @@ body.ios-pwa #nav {
   color: var(--text);
   font-size: 16px; /* iOS focus-zoom guard */
   padding: 0;
+  /* Suppress the iOS long-press callout/selection loupe so our own
+     long-press gesture (→ full Quick Note modal) fires cleanly. The
+     field stays editable; only the native long-press menu is blocked. */
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 .quick-cap-input::placeholder { color: var(--text3); }
 
@@ -6278,10 +6283,54 @@ function renderQuickCaptureBar() {
       <input type="text" id="quick-cap-input"
         class="quick-cap-input"
         placeholder="Capture note — Enter to save"
+        title="Type to capture · hold to open the full Quick Note"
         autocomplete="off"
-        onkeydown="onQuickCapKey(event)" />
+        onkeydown="onQuickCapKey(event)"
+        onpointerdown="lpCapDown(event)"
+        onpointerup="lpCapUp(event)"
+        onpointercancel="lpCapCancel(event)"
+        onpointerleave="lpCapCancel(event)" />
     </div>`;
 }
+
+// ── Long-press the Quick Capture bar → full Quick Note modal ──
+// Short tap = focus + type inline (auto-saves as a Quick Note on Enter,
+// the existing behavior). Long press (~0.4s, reusing LONG_PRESS_MS)
+// promotes into the full Quick Note sheet so the user can add tags,
+// files, voice, a project tag, etc. Any text already typed in the bar is
+// carried into the modal body so the gesture never loses a thought.
+// pointerleave/pointercancel abort the timer if the finger drags away.
+let _lpCapTimer = null;
+let _lpCapFired = false;
+
+window.lpCapDown = function(_e) {
+  _lpCapFired = false;
+  if (_lpCapTimer) clearTimeout(_lpCapTimer);
+  _lpCapTimer = setTimeout(() => {
+    _lpCapFired = true;
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch {}
+    const el = document.getElementById('quick-cap-input');
+    const carried = el ? (el.value || '') : '';
+    if (el) { el.value = ''; el.blur(); }
+    openCapture('note');
+    // openCapture clears f-cap-body synchronously, so re-set the carried
+    // text afterward (and after its 300ms focus timer it stays put).
+    if (carried.trim()) {
+      const body = document.getElementById('f-cap-body');
+      if (body) body.value = carried;
+    }
+  }, LONG_PRESS_MS);
+};
+window.lpCapUp = function(e) {
+  if (_lpCapTimer) { clearTimeout(_lpCapTimer); _lpCapTimer = null; }
+  // Long press already opened the modal → swallow the tap so the bar
+  // doesn't refocus behind the sheet. Short tap → fall through to normal
+  // input focus/typing (no action taken here).
+  if (_lpCapFired) { e && e.preventDefault && e.preventDefault(); }
+};
+window.lpCapCancel = function(_e) {
+  if (_lpCapTimer) { clearTimeout(_lpCapTimer); _lpCapTimer = null; }
+};
 
 window.onQuickCapKey = function(e) {
   if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
