@@ -908,6 +908,27 @@ body.ios-pwa #nav {
   touch-action: manipulation;
 }
 .quick-cap-input::placeholder { color: var(--text3); }
+/* Send button — always present (guaranteed save path for dictation / paste,
+   not just the Enter key), muted until there's text, then brightens. */
+.quick-cap-send {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 0.35rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface2);
+  color: var(--text3);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.quick-cap-bar.has-text .quick-cap-send { background: var(--accent); color: #fff; }
+.quick-cap-send:active { transform: scale(0.94); }
 
 /* ── Journal Heatmap (experiment) ──────────────────────────── */
 .heatmap-strip {
@@ -6455,11 +6476,15 @@ function renderQuickCaptureBar() {
         placeholder="Capture note — Enter to save"
         title="Type to capture · hold to open the full Quick Note"
         autocomplete="off"
+        oninput="onQuickCapInput(event)"
         onkeydown="onQuickCapKey(event)"
+        onkeyup="onQuickCapKey(event)"
         onpointerdown="lpCapDown(event)"
         onpointerup="lpCapUp(event)"
         onpointercancel="lpCapCancel(event)"
         onpointerleave="lpCapCancel(event)" />
+      <button type="button" class="quick-cap-send" id="quick-cap-send"
+        onclick="saveQuickCapFromBar()" aria-label="Save note" title="Save note">→</button>
     </div>`;
 }
 
@@ -6503,14 +6528,40 @@ window.lpCapCancel = function(_e) {
 };
 
 window.onQuickCapKey = function(e) {
-  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  // Dictation / transcription tools (e.g. Wispr Flow) often leave the field
+  // in a composition state, so the Enter KEYDOWN arrives with isComposing
+  // (or keyCode 229) set — the old handler bailed there and the note could
+  // never be saved with Enter. Skip ONLY the keydown while composing; the
+  // same Enter's KEYUP fires once composition has ended (isComposing=false),
+  // so we save on that instead. Normal typing still saves on keydown and the
+  // keyup is a harmless no-op (input already cleared below).
+  if (e.type === 'keydown' && (e.isComposing || e.keyCode === 229)) return;
   e.preventDefault();
+  saveQuickCapFromBar();
+};
+
+// Shared save path for the quick-capture bar — used by Enter and the send
+// button, so the note saves regardless of how the text got there (typing,
+// dictation, paste) or how the save is triggered.
+window.saveQuickCapFromBar = function() {
   const el = document.getElementById('quick-cap-input');
   if (!el) return;
   const body = (el.value || '').trim();
   if (!body) return;
   saveQuickCaptureBarEntry(body);
   el.value = '';
+  document.getElementById('quick-cap-bar')?.classList.remove('has-text');
+};
+
+// Toggle a 'has-text' class so the send button brightens when there's
+// something to save. Fires on real input events (dictation tools emit these
+// as they insert text), but the button stays clickable either way.
+window.onQuickCapInput = function(e) {
+  const bar = document.getElementById('quick-cap-bar');
+  if (!bar) return;
+  const has = !!(e.target && e.target.value.trim());
+  bar.classList.toggle('has-text', has);
 };
 
 function saveQuickCaptureBarEntry(body) {
