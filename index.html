@@ -1138,22 +1138,30 @@ body.ios-pwa #nav {
    sets `.expanded` on the container which lifts the clamp. Scoped to capture
    cards via [data-capture-id] so block-in-journal cards (which use the same
    .capture-item class) keep their existing full-text rendering. */
-/* Collapsed previews — both Quick Note / capture cards (data-capture-id)
-   AND the Daily Journal card (data-daily-date) get the same 3-line cap. */
-.capture-item[data-capture-id]:not(.expanded) .cap-body,
-.capture-item[data-daily-date]:not(.expanded) .cap-body {
+/* Collapsed previews. The REAL cap is an explicit height (line-height ×
+   N lines) + overflow:hidden, because -webkit-line-clamp proved unreliable
+   here (newline-heavy / dictated notes spilled past the limit); the clamp
+   is kept too for the ellipsis where it does engage. white-space:normal so
+   wrapping is predictable for the height math.
+   Quick Notes / Project Notes / other captures → 2 lines; Daily Journal
+   gets more room → 4 lines. */
+.capture-item[data-capture-id]:not(.expanded) .cap-body {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  /* -webkit-line-clamp proved unreliable here (newline-heavy / dictated
-     notes spilled past 3 lines), so the REAL cap is an explicit height:
-     line-height × 3. overflow:hidden then physically clips anything past
-     the 3rd line, regardless of whether -webkit-line-clamp engages.
-     white-space:normal so wrapping is predictable for the height math. */
   white-space: normal;
   line-height: 1.45;
-  max-height: 4.35em; /* 1.45em × 3 lines */
+  max-height: 2.9em; /* 1.45em × 2 lines */
+}
+.capture-item[data-daily-date]:not(.expanded) .cap-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  line-height: 1.45;
+  max-height: 5.8em; /* 1.45em × 4 lines */
 }
 .capture-item[data-capture-id].expanded .cap-body {
   display: block;
