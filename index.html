@@ -1133,6 +1133,9 @@ body.ios-pwa #nav {
 }
 .cap-type { font-size: 0.72rem; font-weight: 600; color: var(--text2); }
 .cap-time { font-size: 0.7rem; color: var(--text3); margin-left: auto; }
+/* Tags ride on the meta line (always visible, collapsed or expanded) — drop
+   the stacked top margin so they sit inline next to the type label. */
+.cap-meta .tag-pills { margin-top: 0; }
 .cap-body { font-size: 0.88rem; color: var(--text); white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
 /* Collapsed capture cards line-clamp the body to 3 lines; tapping the card
    sets `.expanded` on the container which lifts the clamp. Scoped to capture
@@ -6778,12 +6781,12 @@ function renderCapPreview(c) {
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
+          ${renderTagPills(c.tags)}
           <span class="cap-time">${fmtTime(c.timestamp)}</span>
         </div>
         ${c.body ? `<div class="cap-body">${esc(c.body)}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
         ${renderAttachmentsReadonly(c.attachments, 'capture', c.id)}
-        ${expanded ? renderTagPills(c.tags) : ''}
       </div>
     </div>`;
 }
@@ -7350,8 +7353,7 @@ function renderDailyJournalCard(d) {
   // doesn't accidentally collapse the card.
   const body = expanded
     ? renderDailyExpandedPreview(d)
-    : `<div class="cap-body" style="margin-top:0.25rem">${esc(preview)}</div>
-       ${renderTagPills(d.tags)}`;
+    : `<div class="cap-body" style="margin-top:0.25rem">${esc(preview)}</div>`;
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
@@ -7362,6 +7364,7 @@ function renderDailyJournalCard(d) {
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
+          ${renderTagPills(d.tags)}
           ${expanded ? '' : taskMeta}
           <span class="cap-time">${dateLabel}</span>
         </div>
@@ -7405,7 +7408,6 @@ function renderDailyExpandedPreview(d) {
         <label class="dj-section-label">REFLECTION</label>
         ${reflectionBlock}
       </div>
-      ${renderTagPills(d.tags)}
       <div class="dj-expand-hint">Tap to collapse · double-tap to edit</div>
     </div>`;
 }
