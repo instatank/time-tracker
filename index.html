@@ -1138,7 +1138,10 @@ body.ios-pwa #nav {
    sets `.expanded` on the container which lifts the clamp. Scoped to capture
    cards via [data-capture-id] so block-in-journal cards (which use the same
    .capture-item class) keep their existing full-text rendering. */
-.capture-item[data-capture-id] .cap-body {
+/* Collapsed previews — both Quick Note / capture cards (data-capture-id)
+   AND the Daily Journal card (data-daily-date) get the same 3-line cap. */
+.capture-item[data-capture-id]:not(.expanded) .cap-body,
+.capture-item[data-daily-date]:not(.expanded) .cap-body {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
