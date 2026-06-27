@@ -2191,6 +2191,8 @@ body.ios-pwa #nav {
 .life-ratings-grid { display: flex; flex-direction: column; gap: 0.7rem; }
 .life-rating-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .life-rating-label { font-size: 0.88rem; color: var(--text2); flex: 1; }
+/* "Rate your day" doubles as the section header + expand toggle. */
+.life-rating-label-expandable { cursor: pointer; font-weight: 600; color: var(--text); }
 .life-star-row { display: flex; gap: 0.5rem; }
 .life-star-btn {
   font-size: 1.6rem;
@@ -5955,18 +5957,24 @@ function renderToday() {
     ${homeQ ? '' : `<div id="home-rec-indicator" class="home-rec-indicator"></div>`}
 
     ${(() => {
-      // Daily Check-in — "Rate your day" is ALWAYS visible as the first
-      // row (single row: label + inline stars). The configured life-check
-      // metrics collapse under an expandable header (default collapsed),
-      // toggled by the › chevron. All rows share the life-rating-row format.
+      // Daily Check-in — "Rate your day" IS the header now (the separate
+      // "Daily Check-in" title row was removed as redundant). Its label
+      // carries the › chevron and the tap-to-expand; the configured
+      // life-check metrics collapse beneath it (default collapsed). The
+      // stars on the row stay independently tappable. All rows share the
+      // life-rating-row format.
       const metrics = (lifeCheckConfig.metrics || DEFAULT_LIFECHECK_METRICS)
         .filter(m => m && m.id && m.enabled !== false);
+      const hasMetrics = metrics.length > 0;
 
       const dayStars = [1,2,3,4,5].map(i =>
         `<button class="life-star-btn ${r >= i ? 'filled' : ''}" onclick="setRating('${d}', ${i})">★</button>`
       ).join('');
+      const rateLabel = hasMetrics
+        ? `<span class="life-rating-label life-rating-label-expandable" onclick="toggleDailyCheckin()">Rate your day <span class="sec-expand-chev ${_dailyCheckinExpanded ? 'open' : ''}">›</span></span>`
+        : `<span class="life-rating-label">Rate your day</span>`;
       const rateRow = `<div class="life-rating-row">
-        <span class="life-rating-label">Rate your day</span>
+        ${rateLabel}
         <div class="life-star-row">${dayStars}</div>
       </div>`;
 
@@ -5981,14 +5989,7 @@ function renderToday() {
         </div>`;
       }).join('');
 
-      const hasMetrics = metrics.length > 0;
-      const titleChev = hasMetrics
-        ? `<span class="sec-title">Daily Check-in <span class="sec-expand-chev ${_dailyCheckinExpanded ? 'open' : ''}">›</span></span>`
-        : `<span class="sec-title">Daily Check-in</span>`;
-      const hdr = `<div class="sec-hdr ${hasMetrics ? 'sec-hdr-expandable' : ''}" ${hasMetrics ? 'onclick="toggleDailyCheckin()"' : ''}>${titleChev}</div>`;
-
       return `<div class="section">
-        ${hdr}
         <div class="life-ratings-grid">
           ${rateRow}
           ${hasMetrics && _dailyCheckinExpanded ? metricRows : ''}
