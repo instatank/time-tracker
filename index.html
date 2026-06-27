@@ -16913,11 +16913,13 @@ window.dispatchAdd = function(action) {
       openAiBlocksSheet();
       return;
     case 'attachment':
-      // Attach voice / photo / file → saved as a brand-new Quick Note (the
-      // 'home' context). The attach menu is a standalone overlay, not a
-      // .sheet, so we must close the picker ourselves before opening it.
-      closeSheets();
-      openAttachMenu('home');
+      // Go straight into the Quick Note modal with the attach menu already
+      // open — a Quick Note is what an attachment becomes anyway, and this
+      // reuses its existing attach flow (voice / photo / file + optional
+      // text + tags). openCapture mounts the sheet (and focuses its body at
+      // ~300ms); we pop the attach overlay just after so it layers on top.
+      openCapture('note');
+      setTimeout(() => openAttachMenu('capture'), 350);
       return;
   }
 };
