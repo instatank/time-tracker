@@ -1143,17 +1143,21 @@ body.ios-pwa #nav {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  /* -webkit-line-clamp silently fails to clamp when the body is pre-wrap,
-     so newline-heavy notes (e.g. dictated ones) spilled past 3 lines.
-     Force normal wrapping in the collapsed preview so the clamp holds; the
-     expanded rule below restores pre-wrap to keep the real line breaks. */
+  /* -webkit-line-clamp proved unreliable here (newline-heavy / dictated
+     notes spilled past 3 lines), so the REAL cap is an explicit height:
+     line-height × 3. overflow:hidden then physically clips anything past
+     the 3rd line, regardless of whether -webkit-line-clamp engages.
+     white-space:normal so wrapping is predictable for the height math. */
   white-space: normal;
+  line-height: 1.45;
+  max-height: 4.35em; /* 1.45em × 3 lines */
 }
 .capture-item[data-capture-id].expanded .cap-body {
   display: block;
   -webkit-line-clamp: none;
   overflow: visible;
   white-space: pre-wrap;
+  max-height: none;
 }
 .cap-body-preview {
   font-size: 0.88rem;
