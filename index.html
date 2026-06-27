@@ -1143,11 +1143,17 @@ body.ios-pwa #nav {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* -webkit-line-clamp silently fails to clamp when the body is pre-wrap,
+     so newline-heavy notes (e.g. dictated ones) spilled past 3 lines.
+     Force normal wrapping in the collapsed preview so the clamp holds; the
+     expanded rule below restores pre-wrap to keep the real line breaks. */
+  white-space: normal;
 }
 .capture-item[data-capture-id].expanded .cap-body {
   display: block;
   -webkit-line-clamp: none;
   overflow: visible;
+  white-space: pre-wrap;
 }
 .cap-body-preview {
   font-size: 0.88rem;
@@ -6762,7 +6768,7 @@ function renderCapPreview(c) {
         ${c.body ? `<div class="cap-body">${esc(c.body)}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
         ${renderAttachmentsReadonly(c.attachments, 'capture', c.id)}
-        ${renderTagPills(c.tags)}
+        ${expanded ? renderTagPills(c.tags) : ''}
       </div>
     </div>`;
 }
