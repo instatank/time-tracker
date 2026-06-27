@@ -6540,19 +6540,23 @@ function saveQuickCaptureBarEntry(body) {
       preview: body, date: capDateIST(c), createdAt: c.timestamp,
     });
   } catch {}
-  toast('Captured');
+  toast('Saved to Quick Note');
   // Re-render so the new capture appears in Today's Captures section
   // immediately — but DON'T blow away the focused input by re-rendering
   // the whole page synchronously while it's still focused. Save focus +
   // caret first; re-render; restore.
   if (activeTab === 'today') {
     renderMain(true);
-    // Refocus the bar so a follow-up thought can be typed without
-    // tapping again — the whole point of the experiment is rapid-fire
-    // sequential capture.
     requestAnimationFrame(() => {
+      // Scroll the freshly-saved capture into view so the user sees exactly
+      // where it landed (it's the newest → topmost card in Captures).
+      const card = document.querySelector(`[data-capture-id="${c.id}"]`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Refocus the bar so a follow-up thought can be typed without tapping
+      // again (rapid-fire capture). preventScroll so refocusing doesn't yank
+      // the view back up to the input and undo the scroll-to-capture above.
       const next = document.getElementById('quick-cap-input');
-      if (next) next.focus();
+      if (next) next.focus({ preventScroll: true });
     });
   }
 }
