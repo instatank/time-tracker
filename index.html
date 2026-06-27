@@ -1899,6 +1899,11 @@ body.ios-pwa #nav {
    and Rate Your Day below. */
 .voice-add-btn.home-voice-tight { margin: 0; }
 
+/* Today-page recording indicator slot — empty (and invisible) unless a
+   home voice note is recording / uploading. */
+.home-rec-indicator:empty { display: none; }
+.home-rec-indicator { margin: 0.5rem 0; }
+
 /* ── Attachments ──────────────────────────────────────────── */
 /* Inline upload progress bar inside an attachment row (reuses voice-row). */
 .attach-progress {
@@ -4723,6 +4728,14 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       </div>
       <span class="add-pick-chev">›</span>
     </button>
+    <button class="add-pick-row" onclick="dispatchAdd('attachment')">
+      <span class="add-pick-icon">📎</span>
+      <div class="add-pick-text">
+        <div class="add-pick-label">Add attachments as quick note</div>
+        <div class="add-pick-sub">Voice, photo or file → saved as a Quick Note</div>
+      </div>
+      <span class="add-pick-chev">›</span>
+    </button>
   </div>
 </div>
 
@@ -5936,8 +5949,7 @@ function renderToday() {
         </div>`).join('')
     }</div>` : ''}
 
-    ${homeQ ? '' : `<button type="button" class="voice-add-btn home-voice-tight" id="home-add-btn"
-      onclick="onHomeAddClick()">➕ Add voice, photo or file</button>`}
+    ${homeQ ? '' : `<div id="home-rec-indicator" class="home-rec-indicator"></div>`}
 
     ${(() => {
       // Daily Check-in — "Rate your day" is ALWAYS visible as the first
@@ -12364,31 +12376,31 @@ window.toggleCaptureVoiceRecording = async function() {
   else await startCaptureVoiceRecording();
 };
 
-// Today-page unified "Add" button. Tap → open the attach menu (voice / photo /
-// file). While a home voice note is recording the same button turns into a
-// tap-to-stop control and shows the live timer.
+// Today-page recording indicator. The old "➕ Add voice, photo or file"
+// button was removed (the "Add attachments as quick note" option now lives
+// at the bottom of the + add-picker). This slot stays EMPTY when idle and
+// only surfaces a live "Recording… tap to stop" / "Uploading…" row while a
+// home voice note is being recorded or uploaded — same rows the in-sheet
+// voice list uses. onTick (every 500ms) keeps the timer fresh.
 function renderHomeAddBtn() {
-  const btn = document.getElementById('home-add-btn');
-  if (!btn) return;
+  const el = document.getElementById('home-rec-indicator');
+  if (!el) return;
   if (_voiceRec) {
     const sec = Math.round((Date.now() - _voiceRec.startedAt) / 1000);
-    btn.textContent = `■ Recording… · ${fmtVoiceDuration(sec)} · tap to stop`;
-    btn.classList.add('recording');
+    el.innerHTML = `<div class="voice-row recording" onclick="stopActiveVoiceRecording()" title="Tap to stop" style="cursor:pointer">
+      <span class="voice-icon pulsing">●</span>
+      <span class="voice-title">Recording… <span style="opacity:.65">tap to stop</span></span>
+      <span class="voice-dur">${fmtVoiceDuration(sec)}</span>
+    </div>`;
   } else if (_voiceUploading) {
-    btn.textContent = '⏳ Uploading…';
-    btn.classList.remove('recording');
+    el.innerHTML = `<div class="voice-row uploading">
+      <span class="voice-icon">⏳</span>
+      <span class="voice-title">Uploading…</span>
+    </div>`;
   } else {
-    btn.textContent = '➕ Add voice, photo or file';
-    btn.classList.remove('recording');
+    el.innerHTML = '';
   }
 }
-
-// Single entry point for the Today "Add" button: stop an in-progress recording,
-// otherwise open the attach menu in the 'home' context.
-window.onHomeAddClick = function() {
-  if (_voiceRec) { stopActiveVoiceRecording(); return; }
-  openAttachMenu('home');
-};
 
 window.toggleHomeVoiceRecording = async function() {
   if (_voiceRec) { await stopVoiceRecording(); return; }
@@ -16899,6 +16911,13 @@ window.dispatchAdd = function(action) {
     }
     case 'aiBlocks':
       openAiBlocksSheet();
+      return;
+    case 'attachment':
+      // Attach voice / photo / file → saved as a brand-new Quick Note (the
+      // 'home' context). The attach menu is a standalone overlay, not a
+      // .sheet, so we must close the picker ourselves before opening it.
+      closeSheets();
+      openAttachMenu('home');
       return;
   }
 };
