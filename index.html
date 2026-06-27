@@ -5971,7 +5971,7 @@ function renderToday() {
         `<button class="life-star-btn ${r >= i ? 'filled' : ''}" onclick="setRating('${d}', ${i})">★</button>`
       ).join('');
       const rateLabel = hasMetrics
-        ? `<span class="life-rating-label life-rating-label-expandable" onclick="toggleDailyCheckin()">Rate your day <span class="sec-expand-chev ${_dailyCheckinExpanded ? 'open' : ''}">›</span></span>`
+        ? `<span class="life-rating-label life-rating-label-expandable" onclick="toggleDailyCheckin()">Rate your day <span class="sec-expand-chev ${_dailyCheckinExpanded ? 'open' : ''}">→</span></span>`
         : `<span class="life-rating-label">Rate your day</span>`;
       const rateRow = `<div class="life-rating-row">
         ${rateLabel}
