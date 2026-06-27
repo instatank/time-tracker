@@ -6541,22 +6541,21 @@ function saveQuickCaptureBarEntry(body) {
     });
   } catch {}
   toast('Saved to Quick Note');
-  // Re-render so the new capture appears in Today's Captures section
-  // immediately — but DON'T blow away the focused input by re-rendering
-  // the whole page synchronously while it's still focused. Save focus +
-  // caret first; re-render; restore.
+  // Re-render so the new capture shows in Today's Captures section, then
+  // dismiss the keyboard and scroll the new note into view. The note "just
+  // saves": keyboard goes away (it was covering the toast + the note), and
+  // the page reveals where it landed. To add another note the user taps the
+  // bar again — no rapid-fire refocus, which kept the keyboard up.
   if (activeTab === 'today') {
     renderMain(true);
+    // The focused input was just replaced by the re-render; explicitly blur
+    // whatever's active so the on-screen keyboard closes.
+    try { document.activeElement && document.activeElement.blur(); } catch {}
     requestAnimationFrame(() => {
       // Scroll the freshly-saved capture into view so the user sees exactly
       // where it landed (it's the newest → topmost card in Captures).
       const card = document.querySelector(`[data-capture-id="${c.id}"]`);
       if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Refocus the bar so a follow-up thought can be typed without tapping
-      // again (rapid-fire capture). preventScroll so refocusing doesn't yank
-      // the view back up to the input and undo the scroll-to-capture above.
-      const next = document.getElementById('quick-cap-input');
-      if (next) next.focus({ preventScroll: true });
     });
   }
 }
