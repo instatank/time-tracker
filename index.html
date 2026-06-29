@@ -9638,7 +9638,12 @@ function renderDashboard() {
   const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td && !isSleepWindowBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
-  const skippedHrs = Math.max(0, n * 16 - wakingHrs); // 16 = 24h - 8h sleep
+  // Skipped = available waking hours so far MINUS what was logged. Only count
+  // ELAPSED waking time: each full past day contributes 16h (24h − 8h sleep);
+  // today contributes only the waking minutes elapsed so far (reuses the Today
+  // page's elapsedWakingMin so a partial day never over-inflates Skipped).
+  const elapsedWakingHrs = (n - 1) * 16 + elapsedWakingMin() / 60;
+  const skippedHrs = Math.max(0, elapsedWakingHrs - wakingHrs);
   const maxHrs = Math.max(...Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).map(([,v]) => v), skippedHrs, 0.1);
   const totalHrs = wakingHrs; // exclude sleep from totals used for percentages
   const deepWorkHrs = breakdown['deep_work'] || 0;
@@ -13909,7 +13914,10 @@ function paintChartZoom() {
   const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td && !isSleepWindowBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
-  const skippedHrs = Math.max(0, n * 16 - wakingHrs);
+  // Match renderDashboard: only count elapsed waking hours (full past days =
+  // 16h, today = elapsed-so-far) so a partial today doesn't over-inflate Skipped.
+  const elapsedWakingHrs = (n - 1) * 16 + elapsedWakingMin() / 60;
+  const skippedHrs = Math.max(0, elapsedWakingHrs - wakingHrs);
   // In zoom view we relax the cap to actual max so the user sees true scale.
   const maxHrs = Math.max(...Object.values(breakdown).filter(v => v >= 0), skippedHrs, 0.1);
   const renderBar = (label, hrs, color) => {
