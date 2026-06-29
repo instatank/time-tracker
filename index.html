@@ -526,8 +526,9 @@ body.ios-pwa #nav {
   line-height: 1;
   vertical-align: middle;
   transition: transform 0.15s;
+  transform: rotate(90deg); /* collapsed → points down */
 }
-.sec-expand-chev.open { transform: rotate(90deg); }
+.sec-expand-chev.open { transform: rotate(0deg); } /* expanded → points sideways */
 
 /* ── More divider ───────────────────────────────────────────── */
 .more-btn {
@@ -784,7 +785,7 @@ body.ios-pwa #nav {
 .day-ratio-bar {
   display: flex;
   width: 100%;
-  height: 14px;
+  height: 9px;
   border-radius: 999px;
   overflow: hidden;
   background: var(--surface2);
