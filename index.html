@@ -6146,6 +6146,14 @@ window.toggleDaybarExpanded = function() {
   if (activeTab === 'today') renderMain(true);
 };
 
+// Trends "Time by Category" mirrors the Today ratio bar: a slim horizontal
+// snapshot by default, tap to expand into the full per-category bar chart.
+let _trendsCatExpanded = false;
+window.toggleTrendsCatExpanded = function() {
+  _trendsCatExpanded = !_trendsCatExpanded;
+  if (activeTab === 'dashboard') renderMain(true);
+};
+
 function renderDayRatioBar(bks) {
   const elapsedWaking = elapsedWakingMin();
   if (elapsedWaking < 5) return ''; // before any waking time has elapsed
@@ -9734,14 +9742,34 @@ function renderDashboard() {
       <div class="trend-chart-wrap"><canvas id="trends-proj-chart"></canvas></div>
       ${trendCallout}
     </div>` :
-    `<div class="section">
-      <div class="sec-hdr">
-        <span class="sec-title">Time by Category</span>
-        <span class="sec-meta">${totalHrs.toFixed(1)}h waking</span>
-        <button class="sec-zoom-btn" onclick="openChartZoom('category')" aria-label="Zoom" title="Zoom">↗</button>
-      </div>
-      <div class="bar-chart">${bars}</div>
-    </div>`;
+    (() => {
+      // Slim ratio-bar snapshot of waking time by category (mirrors the Today
+      // page bar). Denominator is waking hours only — Skipped is excluded so
+      // the snapshot reads as "how my logged time split", not "how much I
+      // didn't log". Tap to expand into the full per-category bar chart below.
+      const catRatioSegs = CATS
+        .map(c => ({ c, hrs: breakdown[c.id] || 0 }))
+        .filter(x => x.hrs > 0)
+        .sort((a, b) => b.hrs - a.hrs)
+        .map(({ c, hrs }) => {
+          const pct = totalHrs > 0 ? (hrs / totalHrs) * 100 : 0;
+          return `<div class="db-seg" style="width:${pct}%;background:${c.color}" title="${esc(c.label)} · ${hrs.toFixed(1)}h · ${pct.toFixed(0)}%"></div>`;
+        }).join('');
+      const ratioBar = catRatioSegs
+        ? `<div class="day-ratio-bar" onclick="toggleTrendsCatExpanded()" title="${_trendsCatExpanded ? 'Tap to collapse' : 'Tap for breakdown'}">${catRatioSegs}</div>`
+        : `<div class="empty" style="padding:0.5rem 0;font-size:0.78rem;color:var(--text3)">No waking hours logged for this period.</div>`;
+      const hdr = `
+        <div class="sec-hdr">
+          <span class="sec-title" onclick="toggleTrendsCatExpanded()" style="cursor:pointer">Time by Category <span class="sec-expand-chev ${_trendsCatExpanded ? 'open' : ''}">→</span></span>
+          <span class="sec-meta">${totalHrs.toFixed(1)}h waking</span>
+          ${_trendsCatExpanded ? `<button class="sec-zoom-btn" onclick="event.stopPropagation();openChartZoom('category')" aria-label="Zoom" title="Zoom">↗</button>` : ''}
+        </div>`;
+      return `<div class="section">
+        ${hdr}
+        ${ratioBar}
+        ${_trendsCatExpanded ? `<div class="bar-chart" style="margin-top:0.6rem">${bars}</div>` : ''}
+      </div>`;
+    })();
 
   const html = `<div class="view">
     ${topControls}
