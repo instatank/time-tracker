@@ -3371,6 +3371,31 @@ body.ios-pwa #nav {
 }
 
 .bar-chart { margin-bottom: 1.25rem; }
+/* Trends category drill-down: a tappable bar row + an expandable panel
+   listing the blocks that make up that category's total. */
+.cat-drill-row { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
+.cat-drill-row:hover { background: var(--surface2); }
+.cat-drill-wrap.open .cat-drill-row { background: var(--surface2); }
+.cat-drill-panel {
+  margin: -0.1rem 0 0.55rem 72px;
+  padding: 0.3rem 0.5rem;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.cat-drill-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text2);
+}
+.cdi-date { min-width: 52px; color: var(--text3); }
+.cdi-time { min-width: 42px; color: var(--text3); font-variant-numeric: tabular-nums; }
+.cdi-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdi-dur { color: var(--text); font-variant-numeric: tabular-nums; }
+.cat-drill-empty { font-size: 0.72rem; color: var(--text3); }
 .bar-row {
   display: flex;
   align-items: center;
@@ -6151,6 +6176,13 @@ window.toggleDaybarExpanded = function() {
 let _trendsCatExpanded = false;
 window.toggleTrendsCatExpanded = function() {
   _trendsCatExpanded = !_trendsCatExpanded;
+  if (activeTab === 'dashboard') renderMain(true);
+};
+// Which category's contributing blocks are drilled open in the expanded
+// Trends view (null = none). Tapping a category bar toggles it.
+let _trendsCatDrill = null;
+window.drillTrendsCat = function(catId) {
+  _trendsCatDrill = _trendsCatDrill === catId ? null : catId;
   if (activeTab === 'dashboard') renderMain(true);
 };
 
@@ -9600,7 +9632,10 @@ function renderDashboard() {
   // ── Week / Month view ────────────────────────────────────────
   const n = dashRange === 'week' ? 7 : 30;
   const startDate = addDays(td, -(n-1));
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td);
+  // Exclude sleep-window blocks (02:00–10:00) so sleep logged under "Routine"
+  // doesn't inflate the category totals — mirrors the Today ratio bar, which
+  // already drops these. This is waking-time analysis.
+  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td && !isSleepWindowBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
   const skippedHrs = Math.max(0, n * 16 - wakingHrs); // 16 = 24h - 8h sleep
@@ -9764,10 +9799,36 @@ function renderDashboard() {
           <span class="sec-meta">${totalHrs.toFixed(1)}h waking</span>
           ${_trendsCatExpanded ? `<button class="sec-zoom-btn" onclick="event.stopPropagation();openChartZoom('category')" aria-label="Zoom" title="Zoom">↗</button>` : ''}
         </div>`;
+      // Expanded view: each category bar is tappable to drill into the actual
+      // blocks feeding its total (date · time · label · duration), so an
+      // unexpected number can be traced to specific entries at a glance.
+      const drillBars = CATS.map(c => {
+        const hrs = breakdown[c.id] || 0;
+        const open = _trendsCatDrill === c.id;
+        const barRow = renderCappedBar(`${c.icon} ${c.label}`, hrs, c.color);
+        if (hrs <= 0) return `<div class="cat-drill-wrap">${barRow}</div>`;
+        const catBlocks = rangeBlocks
+          .filter(b => b.category === c.id)
+          .sort((a, b) => (b.date + (b.start_time || '')).localeCompare(a.date + (a.start_time || '')));
+        const panel = open
+          ? `<div class="cat-drill-panel">${catBlocks.map(b => `
+              <div class="cat-drill-item">
+                <span class="cdi-date">${esc(fmtDate(b.date))}</span>
+                <span class="cdi-time">${esc(b.start_time || '—')}</span>
+                <span class="cdi-label">${esc(b.label || c.label)}</span>
+                <span class="cdi-dur">${esc(fmtMins(b.duration_min || 0))}</span>
+              </div>`).join('') || `<div class="cat-drill-empty">No blocks.</div>`}</div>`
+          : '';
+        return `<div class="cat-drill-wrap ${open ? 'open' : ''}">
+          <div class="cat-drill-row" onclick="drillTrendsCat('${c.id}')" title="Tap to see contributing blocks">${barRow}</div>
+          ${panel}
+        </div>`;
+      }).join('');
+      const skippedRow = `<div class="cat-drill-wrap">${renderCappedBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color)}</div>`;
       return `<div class="section">
         ${hdr}
         ${ratioBar}
-        ${_trendsCatExpanded ? `<div class="bar-chart" style="margin-top:0.6rem">${bars}</div>` : ''}
+        ${_trendsCatExpanded ? `<div class="bar-chart" style="margin-top:0.6rem">${drillBars}${skippedRow}</div>` : ''}
       </div>`;
     })();
 
@@ -13843,7 +13904,9 @@ function paintChartZoom() {
   const td = todayStr();
   const n = dashRange === 'month' ? 30 : 7;
   const startDate = addDays(td, -(n - 1));
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td);
+  // Match renderDashboard: exclude sleep-window blocks so the zoom view's
+  // category/project totals stay waking-only and consistent.
+  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td && !isSleepWindowBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
   const skippedHrs = Math.max(0, n * 16 - wakingHrs);
