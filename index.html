@@ -1133,6 +1133,8 @@ body.ios-pwa #nav {
 }
 .cap-type { font-size: 0.72rem; font-weight: 600; color: var(--text2); }
 .cap-time { font-size: 0.7rem; color: var(--text3); margin-left: auto; }
+.cap-attach-icon { font-size: 0.75rem; opacity: 0.7; margin-left: auto; }
+.cap-attach-icon + .cap-time { margin-left: 0.3rem; }
 /* Tags ride on the meta line (always visible, collapsed or expanded) — drop
    the stacked top margin so they sit inline next to the type label. */
 .cap-meta .tag-pills { margin-top: 0; }
@@ -6771,6 +6773,11 @@ function renderCapPreview(c) {
   // lifts the clamp to reveal the full text. capCardTap() owns the tap
   // (single = toggle, double = edit) and the outside-click-to-collapse.
   const expanded = expandedCaptures.has(c.id);
+  // Collapsed cards stay compact: instead of rendering attachment thumbnails
+  // (which can blow past the 3-line clamp), we show a single paperclip icon
+  // in the meta row to signal "has attachment". Full thumbnails appear only
+  // once the card is expanded.
+  const hasAttach = liveAttachments(c.attachments).length > 0;
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
@@ -6782,11 +6789,12 @@ function renderCapPreview(c) {
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
           ${renderTagPills(c.tags)}
+          ${!expanded && hasAttach ? `<span class="cap-attach-icon" title="Has attachment">📎</span>` : ''}
           <span class="cap-time">${fmtTime(c.timestamp)}</span>
         </div>
         ${c.body ? `<div class="cap-body">${esc(c.body)}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
-        ${renderAttachmentsReadonly(c.attachments, 'capture', c.id)}
+        ${expanded ? renderAttachmentsReadonly(c.attachments, 'capture', c.id) : ''}
       </div>
     </div>`;
 }
