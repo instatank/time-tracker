@@ -4192,6 +4192,26 @@ mark.hl {
 }
 .view-btn.active { background: var(--surface2); color: var(--text); box-shadow: var(--shadow-btn); }
 
+/* Prominent full-width variant — surfaces the Totals vs Over-Time (graphs)
+   choice as a primary control instead of a small tucked-away toggle. */
+.view-toggle-prominent {
+  width: 100%;
+  margin-bottom: 0.7rem;
+  border: 1px solid var(--border);
+}
+.view-toggle-prominent .view-btn {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.view-toggle-prominent .view-btn.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-btn);
+}
+
 .trend-chart-wrap {
   position: relative;
   width: 100%;
@@ -10068,7 +10088,8 @@ function renderDashboard() {
   // ── Top controls ──
   // Row 1: Weekly | Monthly Review buttons
   // Row 2: Charts | Calendar (primary view switch)
-  // Charts only → Row 3: Week | Month + period navigation; Row 4: Totals | Over Time
+  // Charts only → Row 3: Totals | Over Time (prominent, full-width — the
+  //   graphs live under "Over Time"); Row 4: Week | Month + period navigation
   const periodNav = `
     <div class="dash-period-nav">
       <button class="dash-period-btn" onclick="shiftDashPeriod(-1)" aria-label="Previous">‹</button>
@@ -10076,16 +10097,16 @@ function renderDashboard() {
       <button class="dash-period-btn" onclick="shiftDashPeriod(1)" ${dashPeriodOffset >= 0 ? 'disabled' : ''} aria-label="Next">›</button>
     </div>`;
   const chartsControls = dashSubTab === 'charts' ? `
+    <div class="view-toggle view-toggle-prominent">
+      <button class="view-btn ${dashView==='totals'?'active':''}" onclick="setDashView('totals')">Totals</button>
+      <button class="view-btn ${dashView==='overtime'?'active':''}" onclick="setDashView('overtime')">📈 Over Time</button>
+    </div>
     <div class="dash-row3">
       <div class="range-toggle">
         <button class="range-btn ${dashRange==='week'?'active':''}" onclick="setDashRange('week')">Week</button>
         <button class="range-btn ${dashRange==='month'?'active':''}" onclick="setDashRange('month')">Month</button>
       </div>
       ${periodNav}
-    </div>
-    <div class="view-toggle">
-      <button class="view-btn ${dashView==='totals'?'active':''}" onclick="setDashView('totals')">Totals</button>
-      <button class="view-btn ${dashView==='overtime'?'active':''}" onclick="setDashView('overtime')">Over Time</button>
     </div>` : '';
   const topControls = `
     <div class="wr-open-row">
