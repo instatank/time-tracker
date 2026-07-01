@@ -3329,6 +3329,44 @@ mark.hl {
 .cal-dots { display: none; }
 .cal-dot { width: 4px; height: 4px; border-radius: 50%; }
 .cal-day.empty { cursor: default; }
+
+/* Consistency heatmap (Trends → Calendar) */
+.heat-grid {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.heat-col {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  flex: 1 1 0;
+  min-width: 12px;
+}
+.heat-cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--surface2);
+}
+.heat-col .heat-cell { cursor: pointer; }
+.heat-future { background: transparent; cursor: default; }
+.heat-l0 { background: var(--surface2); }
+.heat-l1 { background: var(--accent); opacity: 0.3; }
+.heat-l2 { background: var(--accent); opacity: 0.55; }
+.heat-l3 { background: var(--accent); opacity: 0.8; }
+.heat-l4 { background: var(--accent); opacity: 1; }
+.heat-sel { outline: 2px solid var(--text); outline-offset: 1px; }
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0.5rem;
+  font-size: 0.68rem;
+  color: var(--text3);
+}
+.heat-legend .heat-cell { width: 12px; height: 12px; aspect-ratio: auto; }
+
 .hist-day-hdr {
   /* Bumped ~200% (0.9rem → 1.8rem) so the picked date dominates the
      Trends → Calendar view and there's zero ambiguity about which day's
@@ -3445,6 +3483,16 @@ mark.hl {
 .metric-val.bad  { color: var(--danger); }
 .metric-val.good { color: var(--success); }
 .metric-lbl { font-size: 0.72rem; color: var(--text2); margin-top: 3px; }
+.trends-nudge {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text2);
+  margin-bottom: 0.85rem;
+}
 
 /* ── Weekly Review ─────────────────────────────────────────── */
 .wr-nav-row {
@@ -9701,13 +9749,63 @@ async function loadProjectsFromCloud(uid) {
 
 // ── Calendar (History) — used inside Trends tab ──────────────
 function renderCalendarView() {
-  return `${renderCalendar()}
+  return `${renderConsistencyHeatmap()}
+    ${renderCalendar()}
     <div class="hist-day-hdr">
       ${fmtDate(histDate)}${ratings[histDate] ? ' &nbsp;·&nbsp; ' + '★'.repeat(ratings[histDate]) : ''}
     </div>
     ${renderDayEod(histDate)}
     ${renderDayLifeRatings(histDate)}
     ${renderDayBlocks(histDate)}`;
+}
+
+// Waking (non-sleep-window) hours logged on a single day.
+function wakingHrsForDay(d) {
+  return blocks
+    .filter(b => b.date === d && !isSleepWindowBlock(b))
+    .reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
+}
+
+// GitHub-contribution-style consistency grid: last 12 weeks, one column per
+// week (Sun–Sat rows), shaded by waking hours logged that day. One glance
+// shows streaks and gaps. Tapping a cell selects that day below.
+function renderConsistencyHeatmap() {
+  const td = todayStr();
+  const WEEKS = 12;
+  const startWeek = addDays(getWeekStart(td), -7 * (WEEKS - 1));
+  const level = h => h <= 0 ? 0 : h < 2 ? 1 : h < 5 ? 2 : h < 9 ? 3 : 4;
+  let loggedDays = 0;
+  let cols = '';
+  for (let w = 0; w < WEEKS; w++) {
+    const weekStart = addDays(startWeek, w * 7);
+    let cells = '';
+    for (let dow = 0; dow < 7; dow++) {
+      const d = addDays(weekStart, dow);
+      if (d > td) { cells += `<div class="heat-cell heat-future"></div>`; continue; }
+      const h = wakingHrsForDay(d);
+      if (h > 0) loggedDays++;
+      const sel = d === histDate ? ' heat-sel' : '';
+      cells += `<div class="heat-cell heat-l${level(h)}${sel}" title="${esc(fmtDate(d))} · ${h.toFixed(1)}h logged" onclick="setHistDate('${d}')"></div>`;
+    }
+    cols += `<div class="heat-col">${cells}</div>`;
+  }
+  return `
+    <div class="section">
+      <div class="sec-hdr">
+        <span class="sec-title">Consistency</span>
+        <span class="sec-meta">${loggedDays} of last ${WEEKS * 7} days logged</span>
+      </div>
+      <div class="heat-grid">${cols}</div>
+      <div class="heat-legend">
+        <span>Less</span>
+        <div class="heat-cell heat-l0"></div>
+        <div class="heat-cell heat-l1"></div>
+        <div class="heat-cell heat-l2"></div>
+        <div class="heat-cell heat-l3"></div>
+        <div class="heat-cell heat-l4"></div>
+        <span>More</span>
+      </div>
+    </div>`;
 }
 
 // Read-only EOD snapshot for a past day (no editing in history view)
@@ -10213,8 +10311,14 @@ function renderDashboard() {
       </div>`;
     })();
 
+  // First-run nudge: brand-new user with nothing logged anywhere yet.
+  const firstRunNudge = blocks.length === 0
+    ? `<div class="trends-nudge">📊 No activity logged yet. Log blocks on the <b>Today</b> tab and your trends, streaks and reviews fill in here automatically.</div>`
+    : '';
+
   const html = `<div class="view">
     ${topControls}
+    ${firstRunNudge}
 
     ${chartSection}
     ${projectSection}
