@@ -3351,11 +3351,14 @@ mark.hl {
 }
 .heat-col .heat-cell { cursor: pointer; }
 .heat-future { background: transparent; cursor: default; }
+/* Red → orange → yellow → green ramp: least logged (l1) to most (l4).
+   l0 = no data (neutral). Solid hexes so the steps read distinctly on
+   both dark and light themes rather than blending into each other. */
 .heat-l0 { background: var(--surface2); }
-.heat-l1 { background: var(--accent); opacity: 0.3; }
-.heat-l2 { background: var(--accent); opacity: 0.55; }
-.heat-l3 { background: var(--accent); opacity: 0.8; }
-.heat-l4 { background: var(--accent); opacity: 1; }
+.heat-l1 { background: #e5484d; }
+.heat-l2 { background: #f2871e; }
+.heat-l3 { background: #e5c00a; }
+.heat-l4 { background: #30a46c; }
 .heat-sel { outline: 2px solid var(--text); outline-offset: 1px; }
 .heat-legend {
   display: flex;
