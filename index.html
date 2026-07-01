@@ -3327,48 +3327,34 @@ mark.hl {
 .cal-day.selected { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .cal-day.has-data .cal-dots { display: flex; gap: 1.5px; margin-top: 2px; }
 .cal-dots { display: none; }
-.cal-dot { width: 4px; height: 4px; border-radius: 50%; }
 .cal-day.empty { cursor: default; }
 
-/* Consistency heatmap (Trends → Calendar) */
-.heat-grid {
-  display: flex;
-  gap: 3px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-.heat-col {
-  display: grid;
-  grid-template-rows: repeat(7, 1fr);
-  gap: 3px;
-  flex: 1 1 0;
-  min-width: 12px;
-}
-.heat-cell {
-  aspect-ratio: 1;
-  border-radius: 3px;
-  background: var(--surface2);
-}
-.heat-col .heat-cell { cursor: pointer; }
-.heat-future { background: transparent; cursor: default; }
-/* Red → orange → yellow → green ramp: least logged (l1) to most (l4).
-   l0 = no data (neutral). Solid hexes so the steps read distinctly on
-   both dark and light themes rather than blending into each other. */
-.heat-l0 { background: var(--surface2); }
-.heat-l1 { background: #e5484d; }
-.heat-l2 { background: #f2871e; }
-.heat-l3 { background: #e5c00a; }
-.heat-l4 { background: #30a46c; }
-.heat-sel { outline: 2px solid var(--text); outline-offset: 1px; }
-.heat-legend {
+/* Single merged presence + intensity marker for the numbered calendar grid.
+   Levels 1–4 read red→orange→yellow→green by waking hours logged that day
+   (l1 = light, l4 = heavy); l0 is neutral — data exists (journal/rating/etc.)
+   but no time blocks were logged, so it's shown without implying "bad". A
+   very light cell tint backs the dot so the signal reads even at a glance,
+   without the saturated full-cell fill a separate heatmap grid would need. */
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+.cal-dot-l0 { background: var(--text3); opacity: 0.6; }
+.cal-dot-l1 { background: #e5484d; }
+.cal-dot-l2 { background: #f2871e; }
+.cal-dot-l3 { background: #e5c00a; }
+.cal-dot-l4 { background: #30a46c; }
+.cal-day.cal-day-heat-1:not(.selected) { background: rgba(229, 72, 77, 0.14); }
+.cal-day.cal-day-heat-2:not(.selected) { background: rgba(242, 135, 30, 0.14); }
+.cal-day.cal-day-heat-3:not(.selected) { background: rgba(229, 192, 10, 0.16); }
+.cal-day.cal-day-heat-4:not(.selected) { background: rgba(48, 164, 108, 0.14); }
+.cal-legend {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
   font-size: 0.68rem;
   color: var(--text3);
 }
-.heat-legend .heat-cell { width: 12px; height: 12px; aspect-ratio: auto; }
+.cal-legend .cal-dot { width: 7px; height: 7px; }
+.cal-legend-sep { opacity: 0.5; margin: 0 2px; }
 
 .hist-day-hdr {
   /* Bumped ~200% (0.9rem → 1.8rem) so the picked date dominates the
@@ -9772,8 +9758,7 @@ async function loadProjectsFromCloud(uid) {
 
 // ── Calendar (History) — used inside Trends tab ──────────────
 function renderCalendarView() {
-  return `${renderConsistencyHeatmap()}
-    ${renderCalendar()}
+  return `${renderCalendar()}
     <div class="hist-day-hdr">
       ${fmtDate(histDate)}${ratings[histDate] ? ' &nbsp;·&nbsp; ' + '★'.repeat(ratings[histDate]) : ''}
     </div>
@@ -9782,54 +9767,10 @@ function renderCalendarView() {
     ${renderDayBlocks(histDate)}`;
 }
 
-// Waking (non-sleep-window) hours logged on a single day.
-function wakingHrsForDay(d) {
-  return blocks
-    .filter(b => b.date === d && !isSleepWindowBlock(b))
-    .reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-}
-
-// GitHub-contribution-style consistency grid: last 12 weeks, one column per
-// week (Sun–Sat rows), shaded by waking hours logged that day. One glance
-// shows streaks and gaps. Tapping a cell selects that day below.
-function renderConsistencyHeatmap() {
-  const td = todayStr();
-  const WEEKS = 12;
-  const startWeek = addDays(getWeekStart(td), -7 * (WEEKS - 1));
-  const level = h => h <= 0 ? 0 : h < 2 ? 1 : h < 5 ? 2 : h < 9 ? 3 : 4;
-  let loggedDays = 0;
-  let cols = '';
-  for (let w = 0; w < WEEKS; w++) {
-    const weekStart = addDays(startWeek, w * 7);
-    let cells = '';
-    for (let dow = 0; dow < 7; dow++) {
-      const d = addDays(weekStart, dow);
-      if (d > td) { cells += `<div class="heat-cell heat-future"></div>`; continue; }
-      const h = wakingHrsForDay(d);
-      if (h > 0) loggedDays++;
-      const sel = d === histDate ? ' heat-sel' : '';
-      cells += `<div class="heat-cell heat-l${level(h)}${sel}" title="${esc(fmtDate(d))} · ${h.toFixed(1)}h logged" onclick="setHistDate('${d}')"></div>`;
-    }
-    cols += `<div class="heat-col">${cells}</div>`;
-  }
-  return `
-    <div class="section">
-      <div class="sec-hdr">
-        <span class="sec-title">Consistency</span>
-        <span class="sec-meta">${loggedDays} of last ${WEEKS * 7} days logged</span>
-      </div>
-      <div class="heat-grid">${cols}</div>
-      <div class="heat-legend">
-        <span>Less</span>
-        <div class="heat-cell heat-l0"></div>
-        <div class="heat-cell heat-l1"></div>
-        <div class="heat-cell heat-l2"></div>
-        <div class="heat-cell heat-l3"></div>
-        <div class="heat-cell heat-l4"></div>
-        <span>More</span>
-      </div>
-    </div>`;
-}
+// Buckets waking (non-sleep-window) hours-logged into an intensity level for
+// the calendar's heat-coloured day marker. Same red→orange→yellow→green
+// scale used to read at a glance which days were light vs. heavy.
+function hoursLevel(h) { return h <= 0 ? 0 : h < 2 ? 1 : h < 5 ? 2 : h < 9 ? 3 : 4; }
 
 // Read-only EOD snapshot for a past day (no editing in history view)
 function renderDayEod(date) {
@@ -9902,22 +9843,50 @@ function renderCalendar(opts) {
   Object.keys(eodNotes).forEach(d => { if (eodNotes[d]) datesWithData.add(d); });
   (dailyJournals || []).forEach(j => { if (j && j.date) datesWithData.add(j.date); });
 
+  // Waking (non-sleep-window) hours per date, in one pass over blocks — feeds
+  // the day marker's intensity colour. A single pass here is cheap and avoids
+  // re-filtering the whole blocks array once per calendar day.
+  const hoursByDate = {};
+  blocks.forEach(b => {
+    if (!b.date || isSleepWindowBlock(b)) return;
+    hoursByDate[b.date] = (hoursByDate[b.date] || 0) + (b.duration_min || 0) / 60;
+  });
+
   const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
   let cells = '';
   cells += dayNames.map(d => `<div class="cal-day-label">${d}</div>`).join('');
   for (let i = 0; i < firstDay; i++) cells += `<div class="cal-day empty"></div>`;
+  let anyData = false;
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday = dateStr === td;
     const isSelected = dateStr === histDate;
     const hasData = datesWithData.has(dateStr);
+    if (hasData) anyData = true;
+    // Level 0 = data present but no time blocks logged that day (e.g. journal
+    // only) — shown as a neutral dot so presence is still visible without
+    // implying "zero hours" is bad. Levels 1–4 colour red→green by hours.
+    const level = hasData ? hoursLevel(hoursByDate[dateStr] || 0) : null;
     cells += `
-      <div class="cal-day ${isToday?'today-cell':''} ${isSelected?'selected':''} ${hasData?'has-data':''}"
-           onclick="${dateOnclick(dateStr)}">
+      <div class="cal-day ${isToday?'today-cell':''} ${isSelected?'selected':''} ${hasData?'has-data':''} ${level ? `cal-day-heat-${level}` : ''}"
+           onclick="${dateOnclick(dateStr)}"
+           title="${hasData ? esc(fmtDate(dateStr)) + ' · ' + (hoursByDate[dateStr] || 0).toFixed(1) + 'h logged' : ''}">
         ${d}
-        <div class="cal-dots">${hasData ? '<span class="cal-dot" style="background:var(--accent)"></span>' : ''}</div>
+        <div class="cal-dots">${hasData ? `<span class="cal-dot cal-dot-l${level == null ? 0 : level}"></span>` : ''}</div>
       </div>`;
   }
+
+  const legend = anyData ? `
+    <div class="cal-legend">
+      <span>Less</span>
+      <span class="cal-dot cal-dot-l1"></span>
+      <span class="cal-dot cal-dot-l2"></span>
+      <span class="cal-dot cal-dot-l3"></span>
+      <span class="cal-dot cal-dot-l4"></span>
+      <span>More</span>
+      <span class="cal-legend-sep">·</span>
+      <span>hours logged</span>
+    </div>` : '';
 
   return `
     <div class="section">
@@ -9927,6 +9896,7 @@ function renderCalendar(opts) {
         <button class="cal-nav-btn" onclick="calNextMonth()">›</button>
       </div>
       <div class="cal-grid">${cells}</div>
+      ${legend}
     </div>`;
 }
 
