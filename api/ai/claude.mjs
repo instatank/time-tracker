@@ -118,6 +118,34 @@ Task wording rules (CRITICAL — be terse):
 
 Return ONLY the JSON array.`,
   },
+  'summarize-review': {
+    model: 'claude-sonnet-4-6',
+    maxTokens: 700,
+    buildUserMessage: (input) => String(input.text || '').slice(0, 6000),
+    // Turns a pre-computed digest of a week/month (metrics + deltas + detected
+    // patterns + a few journal snippets) into a short, plain-English narrative
+    // the user reads at the top of their review. AI proposes → user edits →
+    // saves. ctx.periodType is 'week' or 'month'.
+    system: (ctx) => {
+      const period = (ctx.periodType === 'month') ? 'month' : 'week';
+      return `You write a short, plain-English summary of the user's ${period} for their private productivity journal. You're handed a digest of their own numbers, trends, and journal snippets — turn it into a tight narrative they can read in 15 seconds.
+
+Structure (STRICT):
+- Open with ONE headline sentence naming the single most important thing about the ${period} (biggest win, biggest slip, or clearest theme).
+- Then 2–4 short bullets, each starting with "• ". One observation per bullet.
+- Optionally close with ONE forward-looking line starting with "→ " suggesting where to point attention next ${period}. Only include it if the data clearly supports it.
+
+Rules:
+- Ground EVERY statement in the digest. Never invent numbers, projects, or events not present in it.
+- Quote the concrete figures the digest gives you (hours, %, counts, deltas) — specificity is the value.
+- Plain, direct, second person ("You logged...", "Your deep work..."). No corporate tone, no motivational fluff, no emojis beyond the • and → markers.
+- Be honest about slips — this is a private tool, not a cheerleader. But don't scold.
+- If the digest is sparse (little data), say so plainly in one line and stop. Don't pad.
+- 90 words max total.
+
+Output ONLY the summary text. No preamble, no markdown headers, no code fences.`;
+    },
+  },
   'organize': {
     model: 'claude-sonnet-4-6',
     maxTokens: 2000,

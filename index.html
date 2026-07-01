@@ -3819,6 +3819,76 @@ mark.hl {
 .wr-delta-down { color: var(--danger); }
 .wr-delta-flat { color: var(--text3); }
 
+/* AI review summary (weekly + monthly reviews) */
+.ai-review-summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem;
+}
+.ai-summary-draft-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-summary-draft-btn:active { transform: scale(0.97); }
+.ai-summary-hint {
+  font-size: 0.72rem;
+  color: var(--text3);
+  margin-top: 0.4rem;
+  line-height: 1.35;
+}
+.ai-summary-loading { font-size: 0.85rem; color: var(--text2); padding: 0.3rem 0; }
+.ai-summary-error { font-size: 0.8rem; color: var(--danger); margin-bottom: 0.4rem; }
+.ai-summary-text {
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: normal;
+}
+.ai-summary-editor {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 0.55rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: vertical;
+}
+.ai-summary-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  flex-wrap: wrap;
+}
+.ai-summary-actions button {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.ai-summary-actions .accept {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.ai-summary-actions .accept:hover { opacity: 0.9; }
+.ai-summary-actions .reject:hover { color: var(--danger); border-color: var(--danger); }
+.ai-summary-clear:hover { color: var(--danger); border-color: var(--danger); }
+
 /* Star metric trend rows + tiny Chart.js sparkline canvas */
 .wr-stars {
   background: var(--surface);
@@ -11228,6 +11298,8 @@ function renderWeeklyReview() {
 
     ${patternsSection}
 
+    ${renderReviewAiSummary('week', weekStart)}
+
     ${planSection}
 
     ${renderWeeklyTasksSection(weekStart, isPastWeek)}
@@ -11264,6 +11336,132 @@ function persistWeeklyReviewTasks(weekStart, tasks) {
     setDoc(doc(db, 'users', user.uid, 'weeklyReviews', weekStart), existing).catch(err => {
       console.error('[DayOS] Weekly review task save error:', err);
     });
+  }
+}
+
+// ── AI review summary (Tier 2) ───────────────────────────────
+// Builds a plain-text digest of a week/month's own numbers + detected
+// patterns + a few journal snippets, sends it to the `summarize-review` AI
+// task, and renders an editable proposal. AI proposes → user edits → saves
+// into the review object's `aiSummary` field (rides the existing whole-doc
+// sync for both collections, so no new sync wiring is needed).
+
+function buildWeeklyDigest(weekStart) {
+  const ws = weeklyStats(weekStart);
+  const patterns = surfacePatterns(ws);
+  const stars = getStarMetricsForWeek(weekStart);
+  const pct = r => r == null ? 'n/a' : Math.round(r * 100) + '%';
+  const L = [];
+  L.push(`PERIOD: week of ${fmtDate(weekStart)} – ${fmtDate(ws.weekEnd)}`);
+  L.push(`Deep work: ${ws.deepWorkHrs.toFixed(1)}h (previous week ${ws.prevDeepWorkHrs.toFixed(1)}h)`);
+  L.push(`Daily focus task done: ${ws.dftSet ? `${ws.dftDone}/${ws.dftSet} days (${pct(ws.dftRate)})` : 'none set'}`);
+  L.push(`Tasks completed: ${ws.taskTotal ? `${ws.taskDone}/${ws.taskTotal} (${pct(ws.taskCompletionRate)})` : 'none logged'}`);
+  L.push(`Systems adherence: ${ws.adherence.totalChecks ? `${ws.adherence.percentage}% (${ws.adherence.passedChecks}/${ws.adherence.totalChecks} checks)` : 'n/a'}`);
+  L.push(`Wins logged (#win): ${ws.winCount} (previous week ${ws.prevWinCount})`);
+  L.push(`Avg day rating: ${ws.dayRatingAvg > 0 ? ws.dayRatingAvg.toFixed(1) + '/5' : 'not rated'}`);
+  L.push(`Total waking hours logged: ${ws.totalLoggedHrs.toFixed(0)}h`);
+  L.push(`Time by category: ${CATS.map(c => `${c.label} ${(ws.breakdown[c.id] || 0).toFixed(1)}h`).join(', ')}`);
+  if (stars.length) L.push(`Life check-in averages (/5): ${stars.map(s => `${s.label} ${s.avg > 0 ? s.avg.toFixed(1) : '—'}`).join(', ')}`);
+  if (!patterns.notEnoughData && patterns.observations.length) {
+    L.push('Detected patterns:');
+    patterns.observations.forEach(o => L.push('- ' + o));
+  }
+  const snippets = [];
+  _enumerateDates(weekStart, ws.weekEnd).forEach(d => { if (eodNotes[d]) snippets.push(`${fmtDate(d)} end-of-day: ${eodNotes[d]}`); });
+  (dailyJournals || []).filter(j => j && notTrashed(j) && j.date >= weekStart && j.date <= ws.weekEnd)
+    .forEach(j => { if ((j.reflection || '').trim()) snippets.push(`${fmtDate(j.date)} reflection: ${j.reflection.trim()}`); });
+  if (snippets.length) {
+    L.push('Journal snippets:');
+    snippets.slice(0, 10).forEach(s => L.push('- ' + s.slice(0, 300)));
+  }
+  return L.join('\n');
+}
+
+function buildMonthlyDigest(ym) {
+  const s = monthlyStats(ym);
+  const L = [];
+  L.push(`PERIOD: ${monthLabel(ym)}`);
+  L.push(`Total waking hours logged: ${s.totalLoggedHrs.toFixed(0)}h`);
+  L.push(`Time by category: ${CATS.map(c => {
+    const tot = (s.categoryByWeek[c.id] || []).reduce((a, b) => a + b, 0);
+    return `${c.label} ${tot.toFixed(1)}h`;
+  }).join(', ')}`);
+  const projs = Object.entries(s.projectMonthlyHrs || {}).sort((a, b) => b[1] - a[1]);
+  if (projs.length) L.push(`Time by project: ${projs.map(([p, h]) => `${p} ${h.toFixed(1)}h`).join(', ')}`);
+  L.push(`Learning entries: ${s.monthLearning.length}${s.topTags.length ? ` — top tags ${s.topTags.map(t => `${t.tag} (${t.count})`).join(', ')}` : ''}`);
+  const intents = (s.weeklyIntentions || []).filter(w => w.intention);
+  if (intents.length) {
+    L.push('Weekly intentions set this month:');
+    intents.forEach(w => L.push(`- ${fmtDate(w.weekStart)}: ${w.intention}`));
+  }
+  const prev = monthlyReviews[previousMonthYM(ym)];
+  if (prev && prev.oneFocus) L.push(`Last month's stated focus was: "${prev.oneFocus}"`);
+  return L.join('\n');
+}
+
+// Renders the AI-summary section for a review. kind = 'week' | 'month'.
+function renderReviewAiSummary(kind, key) {
+  const store = kind === 'week' ? weeklyReviews : monthlyReviews;
+  const saved = store[key] && store[key].aiSummary;
+  const label = kind === 'week' ? 'week' : 'month';
+  const body = saved
+    ? `<div class="ai-summary-text">${esc(saved).replace(/\n/g, '<br>')}</div>
+       <div class="ai-summary-actions">
+         <button class="ai-summary-redraft" onclick="draftReviewSummary('${kind}','${key}')">↻ Redraft</button>
+         <button class="ai-summary-clear" onclick="clearReviewSummary('${kind}','${key}')">Clear</button>
+       </div>`
+    : `<button class="ai-summary-draft-btn" onclick="draftReviewSummary('${kind}','${key}')">✨ Draft ${label} summary</button>
+       <div class="ai-summary-hint">AI reads this ${label}'s numbers, patterns &amp; journal notes and writes a short recap you can edit.</div>`;
+  return `
+    <div class="wr-section-title">AI Summary</div>
+    <div class="ai-review-summary" id="ai-review-summary">${body}</div>`;
+}
+
+window.draftReviewSummary = async function(kind, key) {
+  const wrap = document.getElementById('ai-review-summary');
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="ai-summary-loading">✨ Drafting…</div>`;
+  try {
+    const digest = kind === 'week' ? buildWeeklyDigest(key) : buildMonthlyDigest(key);
+    const res = await aiCall('summarize-review', { text: digest }, { periodType: kind });
+    const draft = (res.text || '').trim();
+    wrap.innerHTML = `
+      <textarea class="ai-summary-editor" id="ai-summary-editor" rows="6">${esc(draft)}</textarea>
+      <div class="ai-summary-actions">
+        <button class="ai-summary-accept accept" onclick="saveReviewSummaryFromDraft('${kind}','${key}')">Save</button>
+        <button class="ai-summary-redraft" onclick="draftReviewSummary('${kind}','${key}')">↻ Redraft</button>
+        <button class="ai-summary-cancel reject" onclick="cancelReviewSummaryDraft()">Cancel</button>
+      </div>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="ai-summary-error">Couldn't draft summary: ${esc(e.message || 'error')}</div>
+      <button class="ai-summary-draft-btn" onclick="draftReviewSummary('${kind}','${key}')">Try again</button>`;
+  }
+};
+
+window.saveReviewSummaryFromDraft = function(kind, key) {
+  const t = document.getElementById('ai-summary-editor');
+  const text = (t?.value || '').trim().slice(0, 1200);
+  persistReviewSummary(kind, key, text);
+  toast('Summary saved ✓');
+  renderMain(true);
+};
+window.cancelReviewSummaryDraft = function() { renderMain(true); };
+window.clearReviewSummary = function(kind, key) { persistReviewSummary(kind, key, ''); renderMain(true); };
+
+function persistReviewSummary(kind, key, text) {
+  const store   = kind === 'week' ? weeklyReviews : monthlyReviews;
+  const skKey   = kind === 'week' ? 'dayos_weekly_reviews_v1' : 'dayos_monthly_reviews_v1';
+  const coll    = kind === 'week' ? 'weeklyReviews' : 'monthlyReviews';
+  const existing = store[key] || (kind === 'week'
+    ? { weekStart: key, weekEnd: addDays(key, 6) }
+    : { month: key, monthLabel: monthLabel(key) });
+  if (text) existing.aiSummary = text; else delete existing.aiSummary;
+  existing.savedAt = nowISTIso();
+  store[key] = existing;
+  saveLocal(skKey, store);
+  if (user) {
+    setDoc(doc(db, 'users', user.uid, coll, key), existing)
+      .catch(err => console.error('[DayOS] review summary save error:', err));
   }
 }
 
@@ -14602,10 +14800,13 @@ function renderMonthlyReview() {
         ${saved ? 'Update Review' : 'Save Review'}
       </button>`;
 
+  const sectionAiSummary = `<div class="mr-section">${renderReviewAiSummary('month', ym)}</div>`;
+
   return `<div class="view wr-view mr-view">
     ${navHeader}
     ${sectionDirection}
     ${sectionCharts}
+    ${sectionAiSummary}
     ${sectionProjects}
     ${sectionLearning}
     ${sectionWeekly}
@@ -14669,6 +14870,9 @@ window.saveMonthlyReview = function() {
     oneExperiment: experiment || null,
     savedAt: nowISTIso(),
   };
+  // Preserve any AI summary the user drafted — the form save shouldn't wipe it.
+  const prevMonthlyDoc = monthlyReviews[ym];
+  if (prevMonthlyDoc && prevMonthlyDoc.aiSummary) review.aiSummary = prevMonthlyDoc.aiSummary;
 
   monthlyReviews[ym] = review;
   saveLocal('dayos_monthly_reviews_v1', monthlyReviews);
@@ -14772,6 +14976,9 @@ window.saveWeeklyReview = function() {
     tasks: existingTasks,
     savedAt: nowISTIso(),
   };
+  // Preserve any AI summary the user drafted — the form save shouldn't wipe it.
+  const existingSummary = weeklyReviews[weekStart] && weeklyReviews[weekStart].aiSummary;
+  if (existingSummary) review.aiSummary = existingSummary;
 
   weeklyReviews[weekStart] = review;
   saveLocal('dayos_weekly_reviews_v1', weeklyReviews);

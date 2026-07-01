@@ -6,13 +6,14 @@ Reference for the next agent picking up the AI work. The three tasks below are t
 
 ## Architecture overview
 
-**One serverless route, three tasks.**
+**One serverless route, four tasks.**
 
 ```
 api/ai/claude.mjs         ← shared proxy handler
   ├── extract-blocks      ← voice dump → time-block proposals (activity logs)
   ├── organize            ← rambly text → tightened version (Thoughts / Reflection)
-  └── extract-tasks       ← voice dump → checklist items (Daily Journal Tasks)
+  ├── extract-tasks       ← voice dump → checklist items (Daily Journal Tasks)
+  └── summarize-review    ← week/month digest → short narrative recap (Weekly/Monthly Review)
 ```
 
 Pattern: the client POSTs `{ task, input, ctx }` to `/api/ai/claude`. The handler:
@@ -49,8 +50,9 @@ User has a $5/mo spending cap on the Anthropic account. ~$0.005/call on Sonnet 4
 | `extract-blocks` | `claude-sonnet-4-6` | Needs reliable structured JSON output + nuance for category/project mapping |
 | `organize` | `claude-sonnet-4-6` | Judgment-heavy (preserve every idea, cut aggressively, choose bullets vs prose by feel). We tried Haiku first; Sonnet is more calibrated |
 | `extract-tasks` | `claude-sonnet-4-6` | Strict actionable-vs-rumination filter needs nuance |
+| `summarize-review` | `claude-sonnet-4-6` | Must stay grounded in the supplied digest (no invented numbers) + write tight plain-English prose |
 
-All three on Sonnet for now. Could route `organize` back to Haiku to save cost if usage grows, but at current volume it's irrelevant.
+All four on Sonnet for now. Could route `organize` back to Haiku to save cost if usage grows, but at current volume it's irrelevant.
 
 ## Prompt locations (in `api/ai/claude.mjs`)
 
@@ -108,6 +110,19 @@ All three prompts live in the `TASKS` object near the top of `api/ai/claude.mjs`
 - Skip ruminations, observations, feelings, present/past reports, generic intentions.
 - Each task is 5-8 words max, verb + object. Drop "I need to / should / have to". Compress context into "re:" tails.
 
+### `summarize-review` — narrative recap of a week/month
+
+**Input:** `{ text: "<digest>" }`. **`ctx`:** `{ periodType: 'week' | 'month' }`.
+
+The client builds the digest (NOT free text) — `buildWeeklyDigest(weekStart)` / `buildMonthlyDigest(ym)` in `index.html` assemble a plain-text block of the period's own metrics + deltas + `surfacePatterns` observations + a few EOD/reflection snippets (week) or category/project/intention rollups (month). The model turns that into a recap.
+
+**Critical prompt rules:**
+- Ground EVERY statement in the digest — never invent numbers, projects, or events. This is the load-bearing rule (a review summary that hallucinates is worse than none).
+- One headline sentence → 2–4 `• ` bullets → optional `→ ` forward-looking line. 90 words max.
+- Plain second person, honest about slips, no motivational fluff.
+
+Stored on the review doc as `aiSummary` (rides the existing whole-doc sync for `weeklyReviews` / `monthlyReviews` — no new sync wiring). `saveWeeklyReview` / `saveMonthlyReview` preserve it like they preserve tasks.
+
 ## Client-side integration
 
 **Helper function** in `index.html`:
@@ -135,6 +150,7 @@ async function aiCall(task, input, ctx = {}) {
 | `organize` (default) | ✨ Organize next to: Daily Journal Thoughts/Reflection; capture body (Note/Project/Insight); Session Notes (during); Learning full notes | Inline comparison panel below textarea with Original / Cleaned tabs |
 | `organize` (session-review) | ✨ Organize next to Session **Review** (after) field | Same comparison panel; Cleaned tab shows ✓/>/* prefixed lines |
 | `extract-tasks` | ✨ Add via AI button in Daily Journal Tasks section header | Inline panel with textarea + Extract; results as pill rows with ✓ / ✕ |
+| `summarize-review` | ✨ Draft summary button in the AI Summary section of the Weekly/Monthly Review | Editable textarea proposal with Save / Redraft / Cancel; saved recap shows inline with Redraft / Clear (`renderReviewAiSummary` + `draftReviewSummary`) |
 
 The generic organize widget lives in `index.html` (`_ORGANIZE_FIELDS` registry + `organizeField` / `acceptOrganize` / `rejectOrganize`). The Daily Journal organize predates it and uses its own near-identical `_DJ_FIELD_IDS` path — same UX, same CSS (`.dj-organize-*`).
 
@@ -160,7 +176,7 @@ When the user says output is "too verbose" / "too terse" / "missing X":
 
 1. **Tune prompts based on user feedback** — they're testing the live features.
 2. ~~Organize on Quick Notes + Project Notes~~ — **done.** Also extended to Sessions (Notes + Review) and Learning notes via the generic widget.
-3. **Weekly/Monthly review summarizer** — bigger build. AI reads the period's data and drafts the review.
+3. ~~Weekly/Monthly review summarizer~~ — **done** (`summarize-review`). AI reads a client-built digest of the period's data + patterns and drafts an editable recap stored as `aiSummary` on the review doc.
 4. **Smart EOD prompts** — personalized prompts on the Today page based on actual day data.
 5. **Semantic search across journal entries** — RAG over user's data. Requires embedding generation + storage.
 6. **Auto-tag suggestion while typing** — small polish feature.
