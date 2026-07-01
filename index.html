@@ -3946,6 +3946,43 @@ mark.hl {
 }
 .dash-row3 .view-toggle,
 .dash-row3 .range-toggle { margin-bottom: 0; }
+/* Charts period navigation (‹ Jun 1 – Jun 7 ›) — sits next to the Week/Month
+   toggle and walks calendar periods backward. */
+.dash-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.dash-period-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.15rem 0.5rem;
+}
+.dash-period-btn:disabled { color: var(--text3); cursor: default; }
+.dash-period-btn:not(:disabled):hover { background: var(--surface3); }
+.dash-period-label {
+  font-size: 0.8rem;
+  color: var(--text2);
+  min-width: 6.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Compact delta chip under a metric card value. */
+.metric-delta {
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-top: 3px;
+  line-height: 1;
+}
+.metric-delta-up   { color: var(--success); }
+.metric-delta-down { color: var(--danger); }
+.metric-delta-flat { color: var(--text3); }
 
 /* Zoom modal — full-screen on small viewports, centered on larger ones.
    Reused by Time by Category, Time by Project, and Over-Time charts. */
@@ -5247,6 +5284,7 @@ let showWeeklyReview = false;
 let weeklyReviewOffset = 0; // 0 = current week, -1 = last week, etc.
 let dashView = 'totals'; // 'totals' or 'overtime'
 let dashSubTab = 'charts'; // 'charts' or 'calendar'
+let dashPeriodOffset = 0; // 0 = current calendar week/month, -1 = previous, etc.
 let weeklyReviews = loadLocal('dayos_weekly_reviews_v1', {});
 
 // ── Monthly Review state (C1) ──
@@ -5633,7 +5671,6 @@ function renderNav() {
 }
 
 function renderMain(keepScroll) {
-  if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
   const el = document.getElementById('main');
   if (!keepScroll) el.scrollTop = 0;
   switch (activeTab) {
@@ -9720,7 +9757,130 @@ function renderDayBlocks(date) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────
-let _chartInstance = null;
+
+// Single source of truth for the Trends "Charts" period. Returns a CALENDAR
+// week (Sun–Sat) or CALENDAR month so the numbers line up exactly with the
+// Weekly/Monthly Review screens (which are calendar-based). `dashPeriodOffset`
+// walks backwards: 0 = current period, -1 = previous, etc.
+// `endDate` is clamped to today for the current period so partial periods
+// never count future days; `fullEnd` is the untrimmed period end (used for
+// labels + the visual day-count cap).
+function getDashPeriod() {
+  const td = todayStr();
+  if (dashRange === 'month') {
+    let ym = currentYM();
+    for (let i = 0; i < -dashPeriodOffset; i++) ym = previousMonthYM(ym);
+    const r = monthRange(ym);
+    const isCurrent = ym === currentYM();
+    return {
+      mode: 'month', ym,
+      startDate: r.first,
+      endDate: isCurrent ? td : r.last,
+      fullEnd: r.last,
+      dayCount: r.daysInMonth,
+      isCurrent,
+      label: monthLabel(ym),
+    };
+  }
+  const curWeekStart = getWeekStart(td);
+  const weekStart = addDays(curWeekStart, dashPeriodOffset * 7);
+  const weekEnd   = addDays(weekStart, 6);
+  const isCurrent = weekStart === curWeekStart;
+  const sd = new Date(weekStart + 'T00:00:00Z');
+  const ed = new Date(weekEnd + 'T00:00:00Z');
+  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return {
+    mode: 'week',
+    startDate: weekStart,
+    endDate: isCurrent ? td : weekEnd,
+    fullEnd: weekEnd,
+    dayCount: 7,
+    isCurrent,
+    label: `${fmt(sd)} – ${fmt(ed)}`,
+  };
+}
+
+// Elapsed WAKING hours across a date range: each fully-past day contributes a
+// full waking day (16h), today contributes only the waking minutes elapsed so
+// far, future days contribute nothing. Used so "Skipped" never over-inflates
+// on a partial current period.
+function elapsedWakingHrsInRange(startDate, endDate) {
+  const td = todayStr();
+  let mins = 0;
+  _enumerateDates(startDate, endDate).forEach(d => {
+    if (d < td) mins += WAKING_TOTAL_MIN;
+    else if (d === td) mins += elapsedWakingMin();
+  });
+  return mins / 60;
+}
+
+// Previous comparison range for a period. For a COMPLETED period it's the whole
+// previous period; for the CURRENT (in-progress) period it's the same ELAPSED
+// slice of the previous period (week-to-date vs same-days-last-week), so a
+// mid-period comparison is apples-to-apples instead of "3h so far vs 20h full".
+function prevDashPeriodRange(period) {
+  const td = todayStr();
+  if (period.mode === 'month') {
+    const pr = monthRange(previousMonthYM(period.ym));
+    if (period.isCurrent) {
+      const dayOfMonth = parseInt(td.slice(8, 10), 10);
+      const endDay = Math.min(dayOfMonth, pr.daysInMonth);
+      return { start: pr.first, end: `${pr.first.slice(0, 7)}-${String(endDay).padStart(2, '0')}` };
+    }
+    return { start: pr.first, end: pr.last };
+  }
+  const prevStart = addDays(period.startDate, -7);
+  if (period.isCurrent) {
+    const elapsedOffset = _enumerateDates(period.startDate, period.endDate).length - 1;
+    return { start: prevStart, end: addDays(prevStart, elapsedOffset) };
+  }
+  return { start: prevStart, end: addDays(period.startDate, -1) };
+}
+
+// The six headline metrics for an arbitrary [start,end] range. Used to compute
+// deltas on the Metrics grid without duplicating the formulas in renderDashboard.
+function periodMetrics(startDate, endDate) {
+  const rb = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepWindowBlock(b));
+  const bd = catBreakdown(rb);
+  const waking = Object.entries(bd).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
+  const deepWorkHrs = bd['deep_work'] || 0;
+  const leakPct = waking > 0 ? (bd['leaks'] || 0) / waking * 100 : 0;
+  let dftSet = 0, dftDone = 0;
+  _enumerateDates(startDate, endDate).forEach(d => {
+    const v = dfts[d];
+    if (!v) return;
+    const status = (typeof v === 'string') ? 'pending' : (v.status || 'pending');
+    const text   = (typeof v === 'string') ? v : (v.text || '');
+    if (text) { dftSet++; if (status === 'done') dftDone++; }
+  });
+  const dftPct = dftSet ? Math.round(dftDone / dftSet * 100) : null;
+  let taskTotal = 0, taskDone = 0;
+  (dailyJournals || []).filter(dj => dj.date >= startDate && dj.date <= endDate)
+    .forEach(j => (j.tasks || []).forEach(t => { taskTotal++; if (t.completed) taskDone++; }));
+  const taskPct = taskTotal ? Math.round(taskDone / taskTotal * 100) : null;
+  const adh = calculateAdherence(startDate, endDate);
+  const adhPct = adh.totalChecks ? adh.percentage : null;
+  const avgR = avgRating(startDate, endDate);
+  return { deepWorkHrs, leakPct, dftPct, taskPct, adhPct, avgR };
+}
+
+// Compact delta chip for a metric card. `pct` renders "pp" (percentage points);
+// otherwise a numeric magnitude + optional suffix. Returns '' when there's no
+// prior value to compare against (keeps the card clean on first use).
+function metricDelta(curr, prev, opts = {}) {
+  const title = `vs previous ${opts.periodWord || 'period'}`;
+  if (curr == null || prev == null || isNaN(prev)) return '';
+  const diff = curr - prev;
+  const minMove = opts.pct ? 1 : 0.05;
+  if (Math.abs(diff) < minMove) return `<div class="metric-delta metric-delta-flat" title="${title}">—</div>`;
+  const up = diff > 0;
+  const good = opts.inverse ? !up : up; // inverse: lower is better (e.g. Leak Rate)
+  const cls = good ? 'metric-delta-up' : 'metric-delta-down';
+  const mag = opts.pct
+    ? Math.abs(Math.round(diff)) + 'pp'
+    : (opts.format ? opts.format(Math.abs(diff)) : Math.abs(diff).toFixed(1)) + (opts.suffix || '');
+  return `<div class="metric-delta ${cls}" title="${title}">${up ? '↑' : '↓'} ${mag}</div>`;
+}
 
 function renderDashboard() {
   const td = todayStr();
@@ -9728,29 +9888,44 @@ function renderDashboard() {
   // Migrate any stale 'day' state to 'week'.
   if (dashRange !== 'week' && dashRange !== 'month') dashRange = 'week';
 
-  // ── Top controls — three rows ──
+  // ── Period (calendar week or month; navigable via ‹ ›) ──
+  const period = getDashPeriod();
+  const startDate = period.startDate;
+  const endDate   = period.endDate;   // clamped to today for the current period
+  const n = period.dayCount;          // full period length, for the visual cap
+
+  // ── Top controls ──
   // Row 1: Weekly | Monthly Review buttons
-  // Row 2: Week | Month period toggle
-  // Row 3: Totals | Over Time + Charts | Calendar (two adjacent toggles)
+  // Row 2: Charts | Calendar (primary view switch)
+  // Charts only → Row 3: Week | Month + period navigation; Row 4: Totals | Over Time
+  const periodNav = `
+    <div class="dash-period-nav">
+      <button class="dash-period-btn" onclick="shiftDashPeriod(-1)" aria-label="Previous">‹</button>
+      <span class="dash-period-label">${esc(period.label)}${period.isCurrent ? '' : ''}</span>
+      <button class="dash-period-btn" onclick="shiftDashPeriod(1)" ${dashPeriodOffset >= 0 ? 'disabled' : ''} aria-label="Next">›</button>
+    </div>`;
+  const chartsControls = dashSubTab === 'charts' ? `
+    <div class="dash-row3">
+      <div class="range-toggle">
+        <button class="range-btn ${dashRange==='week'?'active':''}" onclick="setDashRange('week')">Week</button>
+        <button class="range-btn ${dashRange==='month'?'active':''}" onclick="setDashRange('month')">Month</button>
+      </div>
+      ${periodNav}
+    </div>
+    <div class="view-toggle">
+      <button class="view-btn ${dashView==='totals'?'active':''}" onclick="setDashView('totals')">Totals</button>
+      <button class="view-btn ${dashView==='overtime'?'active':''}" onclick="setDashView('overtime')">Over Time</button>
+    </div>` : '';
   const topControls = `
     <div class="wr-open-row">
       <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
       <button class="wr-open-btn" onclick="openMonthlyReview()">📅 Monthly Review</button>
     </div>
     <div class="range-toggle">
-      <button class="range-btn ${dashRange==='week'?'active':''}" onclick="setDashRange('week')">Week</button>
-      <button class="range-btn ${dashRange==='month'?'active':''}" onclick="setDashRange('month')">Month</button>
+      <button class="range-btn ${dashSubTab==='charts'?'active':''}" onclick="setDashSubTab('charts')">Charts</button>
+      <button class="range-btn ${dashSubTab==='calendar'?'active':''}" onclick="setDashSubTab('calendar')">Calendar</button>
     </div>
-    <div class="dash-row3">
-      <div class="view-toggle">
-        <button class="view-btn ${dashView==='totals'?'active':''}" onclick="setDashView('totals')">Totals</button>
-        <button class="view-btn ${dashView==='overtime'?'active':''}" onclick="setDashView('overtime')">Over Time</button>
-      </div>
-      <div class="range-toggle">
-        <button class="range-btn ${dashSubTab==='charts'?'active':''}" onclick="setDashSubTab('charts')">Charts</button>
-        <button class="range-btn ${dashSubTab==='calendar'?'active':''}" onclick="setDashSubTab('calendar')">Calendar</button>
-      </div>
-    </div>`;
+    ${chartsControls}`;
 
   // Calendar view — uses the existing History layout. Top controls still
   // render so the user can flip back to Charts without leaving the tab.
@@ -9762,19 +9937,17 @@ function renderDashboard() {
   }
 
   // ── Week / Month view ────────────────────────────────────────
-  const n = dashRange === 'week' ? 7 : 30;
-  const startDate = addDays(td, -(n-1));
   // Exclude sleep-window blocks (02:00–10:00) so sleep logged under "Routine"
   // doesn't inflate the category totals — mirrors the Today ratio bar, which
   // already drops these. This is waking-time analysis.
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td && !isSleepWindowBlock(b));
+  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepWindowBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
   // Skipped = available waking hours so far MINUS what was logged. Only count
   // ELAPSED waking time: each full past day contributes 16h (24h − 8h sleep);
   // today contributes only the waking minutes elapsed so far (reuses the Today
   // page's elapsedWakingMin so a partial day never over-inflates Skipped).
-  const elapsedWakingHrs = (n - 1) * 16 + elapsedWakingMin() / 60;
+  const elapsedWakingHrs = elapsedWakingHrsInRange(startDate, endDate);
   const skippedHrs = Math.max(0, elapsedWakingHrs - wakingHrs);
   const maxHrs = Math.max(...Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).map(([,v]) => v), skippedHrs, 0.1);
   const totalHrs = wakingHrs; // exclude sleep from totals used for percentages
@@ -9782,30 +9955,35 @@ function renderDashboard() {
   const leakHrs = breakdown['leaks'] || 0;
   const leakPct = totalHrs > 0 ? (leakHrs / totalHrs) * 100 : 0;
   const jStreak = journalStreak();
-  const avgR = avgRating(startDate, td);
+  const avgR = avgRating(startDate, endDate);
 
   // ── New metric cards (D2) ──
   // DFT Completion: days where DFT was set AND completed / days where DFT was set
   let dftSet = 0, dftDone = 0;
-  for (let i = 0; i < n; i++) {
-    const d = addDays(startDate, i);
+  _enumerateDates(startDate, endDate).forEach(d => {
     const v = dfts[d];
-    if (!v) continue;
+    if (!v) return;
     const status = (typeof v === 'string') ? 'pending' : (v.status || 'pending');
     const text   = (typeof v === 'string') ? v : (v.text || '');
     if (text) { dftSet++; if (status === 'done') dftDone++; }
-  }
+  });
   const dftPct = dftSet ? Math.round((dftDone / dftSet) * 100) : null;
 
   // Task Completion: completed tasks / total tasks across Daily Journal entries
-  const periodDailies = (dailyJournals || []).filter(dj => dj.date >= startDate && dj.date <= td);
+  const periodDailies = (dailyJournals || []).filter(dj => dj.date >= startDate && dj.date <= endDate);
   let taskTotal = 0, taskDone = 0;
   periodDailies.forEach(j => (j.tasks || []).forEach(t => { taskTotal++; if (t.completed) taskDone++; }));
   const taskPct = taskTotal ? Math.round((taskDone / taskTotal) * 100) : null;
 
   // Adherence: configurable rules engine (B1) — period-scoped
-  const adherenceRes = calculateAdherence(startDate, td);
+  const adherenceRes = calculateAdherence(startDate, endDate);
   const adhPct = adherenceRes.totalChecks ? adherenceRes.percentage : null;
+
+  // Previous comparison period (elapsed-matched for the current period) — feeds
+  // the delta chips on the Metrics grid and the Deep Work trend callout.
+  const prevRange = prevDashPeriodRange(period);
+  const prevM = periodMetrics(prevRange.start, prevRange.end);
+  const periodWord = period.mode;
 
   // Visual cap (D3): 12 hours/day average — single-day spikes don't squash
   // the rest of the bars. Bars exceeding the cap render at 100% with a small
@@ -9844,25 +10022,21 @@ function renderDashboard() {
 
   const leakClass = leakPct > 15 ? 'bad' : leakPct > 8 ? 'warn' : 'good';
 
-  // Deep Work trend callout
+  // Deep Work trend callout — compares this period to the elapsed-matched previous one.
   let trendCallout = '';
   if (dashView === 'overtime') {
-    const prevStart = addDays(startDate, -n);
-    const prevEnd = addDays(startDate, -1);
-    const prevBlocks = blocks.filter(b => b.date >= prevStart && b.date <= prevEnd);
-    const prevDW = prevBlocks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-    const diff = deepWorkHrs - prevDW;
+    const diff = deepWorkHrs - (prevM.deepWorkHrs || 0);
     if (Math.abs(diff) >= 0.1) {
       const arrow = diff > 0 ? '↑' : '↓';
       const cls = diff > 0 ? 'trend-up' : 'trend-down';
-      trendCallout = `<div class="trend-callout ${cls}">${arrow} Deep Work ${diff > 0 ? 'up' : 'down'} ${Math.abs(diff).toFixed(1)}h vs previous period</div>`;
+      trendCallout = `<div class="trend-callout ${cls}">${arrow} Deep Work ${diff > 0 ? 'up' : 'down'} ${Math.abs(diff).toFixed(1)}h vs previous ${period.mode}</div>`;
     }
   }
 
   // ── Star Metric Snapshot (D5) ──
   // Reuses the Weekly Review's sparkline mounter via canvas IDs prefixed
   // 'tr-spark-' so the two screens never collide.
-  const trendsStars = getTrendsStarMetrics(startDate, td, dashRange);
+  const trendsStars = getTrendsStarMetrics(startDate, endDate, dashRange);
   const starSnapshot = trendsStars.length
     ? `<div class="section">
         <div class="sec-hdr"><span class="sec-title">Star Metrics</span></div>
@@ -9976,31 +10150,40 @@ function renderDashboard() {
     ${projectSection}
 
     <div class="section">
-      <div class="sec-hdr"><span class="sec-title">Metrics</span></div>
+      <div class="sec-hdr">
+        <span class="sec-title">Metrics</span>
+        ${jStreak > 0 ? `<span class="sec-meta">🔥 ${jStreak}-day journaling streak</span>` : ''}
+      </div>
       <div class="metrics-grid metrics-grid-3">
         <div class="metric-card">
           <div class="metric-val">${deepWorkHrs.toFixed(1)}h</div>
           <div class="metric-lbl">Deep Work</div>
+          ${metricDelta(deepWorkHrs, prevM.deepWorkHrs, { suffix: 'h', periodWord })}
         </div>
         <div class="metric-card">
           <div class="metric-val">${dftPct != null ? dftPct + '%' : '—'}</div>
           <div class="metric-lbl">DFT Completion</div>
+          ${metricDelta(dftPct, prevM.dftPct, { pct: true, periodWord })}
         </div>
         <div class="metric-card">
           <div class="metric-val">${taskPct != null ? taskPct + '%' : '—'}</div>
           <div class="metric-lbl">Task Completion</div>
+          ${metricDelta(taskPct, prevM.taskPct, { pct: true, periodWord })}
         </div>
         <div class="metric-card">
           <div class="metric-val">${adhPct != null ? adhPct + '%' : '—'}</div>
           <div class="metric-lbl">Adherence</div>
+          ${metricDelta(adhPct, prevM.adhPct, { pct: true, periodWord })}
         </div>
         <div class="metric-card">
           <div class="metric-val ${leakClass}">${leakPct.toFixed(0)}%</div>
           <div class="metric-lbl">Leak Rate</div>
+          ${metricDelta(Math.round(leakPct), Math.round(prevM.leakPct), { pct: true, inverse: true, periodWord })}
         </div>
         <div class="metric-card">
           <div class="metric-val">${avgR ? avgR.toFixed(1) : '—'}</div>
           <div class="metric-lbl">Avg Day Rating</div>
+          ${metricDelta(avgR || null, prevM.avgR || null, { suffix: '', periodWord })}
         </div>
       </div>
     </div>
@@ -10009,7 +10192,7 @@ function renderDashboard() {
 
   // Mount Over Time charts (D6) — two line charts for Categories + Projects.
   if (dashView === 'overtime') {
-    setTimeout(() => buildTrendsOverTimeCharts(startDate, td, dashRange, rangeBlocks), 0);
+    setTimeout(() => buildTrendsOverTimeCharts(period, rangeBlocks), 0);
   }
   // Mount star metric sparklines if any
   if (trendsStars.length) {
@@ -10024,38 +10207,39 @@ function renderDashboard() {
 // per-day in Week mode and ~weekly in Month mode. Caps Y at 12hr/day to keep
 // the line scale readable when there are spikes.
 const _trendsOverTimeInstances = {};
-async function buildTrendsOverTimeCharts(startDate, endDate, mode, rangeBlocks) {
+// Over Time x-axis buckets for a period. Week → one bucket per elapsed day
+// (Sun..today/Sat). Month → the SAME calendar-week buckets as the Monthly
+// Review, dropping any bucket that starts after today in the current month.
+function trendsOverTimeBuckets(period) {
+  if (period.mode === 'month') {
+    const kept = monthWeekBuckets(period.ym).filter(bk => bk.start <= period.endDate);
+    return {
+      buckets: kept.map(bk => ({ start: bk.start, end: bk.end })),
+      labels: kept.map(bk => bk.label),
+    };
+  }
+  const days = _enumerateDates(period.startDate, period.endDate);
+  return {
+    buckets: days.map(d => ({ start: d, end: d })),
+    labels: days.map(d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })),
+  };
+}
+
+async function buildTrendsOverTimeCharts(period, rangeBlocks) {
   try { await loadChartJs(); } catch { return; }
   Object.keys(_trendsOverTimeInstances).forEach(k => {
     try { _trendsOverTimeInstances[k].destroy(); } catch {}
     delete _trendsOverTimeInstances[k];
   });
 
-  // Build buckets and labels.
-  const days = _enumerateDates(startDate, endDate);
-  let buckets, labels, yMaxCat, yMaxProj;
-  if (mode === 'month') {
-    const bucketSize = Math.ceil(days.length / 4);
-    buckets = []; labels = [];
-    for (let i = 0; i < 4; i++) {
-      const a = i * bucketSize;
-      const b = Math.min(days.length, (i + 1) * bucketSize);
-      if (a >= days.length) break;
-      buckets.push({ start: days[a], end: days[b - 1] });
-      labels.push('W' + (i + 1));
-    }
-    // Categories: 8 hr/day average × 7 days = 56h hard cap per weekly bucket.
-    // Projects: keep the original 12 hr/day suggested cap so a single dominant
-    // project still gets a roomy axis.
-    yMaxCat = 56;
-    yMaxProj = 84;
-  } else {
-    buckets = days.map(d => ({ start: d, end: d }));
-    labels = days.map(d => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }));
-    // Per spec: 0–8h hard cap on Categories chart in Week mode.
-    yMaxCat = 8;
-    yMaxProj = 12;
-  }
+  // Build buckets and labels. Month buckets are the SAME calendar-week buckets
+  // the Monthly Review uses (monthWeekBuckets) so "W1..W4" means the same thing
+  // on both screens. Buckets past today (current month) are dropped.
+  const { buckets, labels } = trendsOverTimeBuckets(period);
+  // Soft caps only (suggestedMax) — a genuinely big day/week still draws to its
+  // true height instead of being clipped flat at the ceiling.
+  const yMaxCat  = period.mode === 'month' ? 56 : 8;
+  const yMaxProj = period.mode === 'month' ? 84 : 12;
 
   // Aggregate per-category and per-project hours into buckets.
   const catData = {};
@@ -10117,7 +10301,7 @@ async function buildTrendsOverTimeCharts(startDate, endDate, mode, rangeBlocks) 
       };
     });
     _trendsOverTimeInstances.cat = new Chart(catCanvas.getContext('2d'), {
-      type: 'line', data: { labels, datasets }, options: optsWith(yMaxCat, /*hardCap*/ true),
+      type: 'line', data: { labels, datasets }, options: optsWith(yMaxCat),
     });
   }
   // Projects chart — one line per active project, palette-cycled colour.
@@ -10189,139 +10373,6 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r},${g},${b},${alpha})`;
   }
   return hex || 'transparent';
-}
-
-let _chartLastArgs = null;
-
-async function buildTrendChart(td, n) {
-  _chartLastArgs = { td, n };
-  try {
-    await loadChartJs();
-  } catch { return; }
-
-  const canvas = document.getElementById('trend-chart');
-  if (!canvas) return;
-
-  if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
-
-  let labels, datasets;
-
-  const allChartCats = CATS;
-  // Resolve each category CSS token once per build so Chart.js receives concrete colors.
-  const catHex = {};
-  allChartCats.forEach(c => { catHex[c.id] = cssVar('--c-' + c.id); });
-  const skippedHex = cssVar('--c-skipped');
-
-  if (dashRange === 'week') {
-    // 7 days, by day
-    labels = [];
-    const dayData = {};
-    allChartCats.forEach(c => { dayData[c.id] = []; });
-    const skippedData = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = addDays(td, -i);
-      const dt = new Date(d + 'T00:00:00');
-      labels.push(dt.toLocaleDateString('en-US', { weekday: 'short' }));
-      const dayBlocks = blocks.filter(b => b.date === d);
-      allChartCats.forEach(c => {
-        const hrs = dayBlocks.filter(b => b.category === c.id).reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-        dayData[c.id].push(hrs);
-      });
-      const dayWaking = allChartCats.reduce((s, c) => s + (dayData[c.id].at(-1) || 0), 0);
-      skippedData.push(Math.max(0, 16 - dayWaking));
-    }
-    datasets = [
-      ...allChartCats.map(c => ({
-        label: c.label,
-        data: dayData[c.id],
-        borderColor: catHex[c.id],
-        backgroundColor: hexToRgba(catHex[c.id], 0.2),
-        tension: 0.3,
-        pointRadius: 3,
-        borderWidth: 2,
-      })),
-      {
-        label: SKIPPED_CAT.label,
-        data: skippedData,
-        borderColor: skippedHex,
-        backgroundColor: hexToRgba(skippedHex, 0.2),
-        tension: 0.3,
-        pointRadius: 3,
-        borderWidth: 2,
-        borderDash: [4, 4],
-      },
-    ];
-  } else {
-    // 4 weeks
-    labels = [];
-    const weekData = {};
-    allChartCats.forEach(c => { weekData[c.id] = []; });
-    const skippedData = [];
-    for (let w = 3; w >= 0; w--) {
-      const wEnd = addDays(td, -w * 7);
-      const wStart = addDays(wEnd, -6);
-      const sd = new Date(wStart + 'T00:00:00');
-      labels.push(sd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-      const wBlocks = blocks.filter(b => b.date >= wStart && b.date <= wEnd);
-      allChartCats.forEach(c => {
-        const hrs = wBlocks.filter(b => b.category === c.id).reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-        weekData[c.id].push(hrs);
-      });
-      const weekWaking = allChartCats.reduce((s, c) => s + (weekData[c.id].at(-1) || 0), 0);
-      skippedData.push(Math.max(0, 7 * 16 - weekWaking));
-    }
-    datasets = [
-      ...allChartCats.map(c => ({
-        label: c.label,
-        data: weekData[c.id],
-        borderColor: catHex[c.id],
-        backgroundColor: hexToRgba(catHex[c.id], 0.2),
-        tension: 0.3,
-        pointRadius: 3,
-        borderWidth: 2,
-      })),
-      {
-        label: SKIPPED_CAT.label,
-        data: skippedData,
-        borderColor: skippedHex,
-        backgroundColor: hexToRgba(skippedHex, 0.2),
-        tension: 0.3,
-        pointRadius: 3,
-        borderWidth: 2,
-        borderDash: [4, 4],
-      },
-    ];
-  }
-
-  const legendColor = cssVar('--chart-legend');
-  const tickColor   = cssVar('--chart-tick');
-  const gridColor   = cssVar('--chart-grid');
-
-  _chartInstance = new Chart(canvas.getContext('2d'), {
-    type: 'line',
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          labels: { color: legendColor, font: { size: 11 }, boxWidth: 12, padding: 10 }
-        }
-      },
-      scales: {
-        x: {
-          ticks: { color: tickColor, font: { size: 11 } },
-          grid: { color: gridColor }
-        },
-        y: {
-          beginAtZero: true,
-          ticks: { color: tickColor, font: { size: 11 }, callback: v => v + 'h' },
-          grid: { color: gridColor }
-        }
-      }
-    }
-  });
 }
 
 // ── Weekly Review ─────────────────────────────────────────────
@@ -13972,9 +14023,16 @@ window.closeJournalSearch = window.closeGlobalSearch;
 window.openHomeSearch  = window.openGlobalSearch;
 window.closeHomeSearch = window.closeGlobalSearch;
 window.setHomeSearch   = window.setGlobalSearch;
-window.setDashRange = function(r) { dashRange = r; if (r === 'day') dashDay = todayStr(); renderMain(); };
+window.setDashRange = function(r) { dashRange = r; dashPeriodOffset = 0; if (r === 'day') dashDay = todayStr(); renderMain(); };
 window.setDashView = function(v) { dashView = v; renderMain(); };
 window.setDashSubTab = function(t) { dashSubTab = t; renderMain(); };
+// Walk the Charts period backward/forward. Never past the current period (0).
+window.shiftDashPeriod = function(dir) {
+  const next = dashPeriodOffset + dir;
+  if (next > 0) return;
+  dashPeriodOffset = next;
+  renderMain();
+};
 window.dashDayNav = function(dir) { dashDay = addDays(dashDay, dir); renderMain(); };
 window.openWeeklyReview = function() { showWeeklyReview = true; weeklyReviewOffset = 0; renderMain(); };
 window.closeWeeklyReview = function() { showWeeklyReview = false; renderMain(); };
@@ -14038,17 +14096,14 @@ function paintChartZoom() {
   const titleEl = document.getElementById('zoom-modal-title');
   const bodyEl  = document.getElementById('zoom-modal-body');
   if (!titleEl || !bodyEl || !chartZoomKey) return;
-  const td = todayStr();
-  const n = dashRange === 'month' ? 30 : 7;
-  const startDate = addDays(td, -(n - 1));
-  // Match renderDashboard: exclude sleep-window blocks so the zoom view's
-  // category/project totals stay waking-only and consistent.
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= td && !isSleepWindowBlock(b));
+  // Same calendar period + waking-only filtering as renderDashboard.
+  const period = getDashPeriod();
+  const startDate = period.startDate;
+  const endDate   = period.endDate;
+  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepWindowBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
-  // Match renderDashboard: only count elapsed waking hours (full past days =
-  // 16h, today = elapsed-so-far) so a partial today doesn't over-inflate Skipped.
-  const elapsedWakingHrs = (n - 1) * 16 + elapsedWakingMin() / 60;
+  const elapsedWakingHrs = elapsedWakingHrsInRange(startDate, endDate);
   const skippedHrs = Math.max(0, elapsedWakingHrs - wakingHrs);
   // In zoom view we relax the cap to actual max so the user sees true scale.
   const maxHrs = Math.max(...Object.values(breakdown).filter(v => v >= 0), skippedHrs, 0.1);
@@ -14064,7 +14119,7 @@ function paintChartZoom() {
       </div>`;
   };
   if (chartZoomKey === 'category') {
-    titleEl.textContent = 'Time by Category — ' + (dashRange === 'month' ? 'Last 30 days' : 'Last 7 days');
+    titleEl.textContent = 'Time by Category — ' + period.label;
     bodyEl.innerHTML = `<div class="bar-chart">
       ${CATS.map(c => renderBar(`${c.icon} ${c.label}`, breakdown[c.id] || 0, c.color)).join('')}
       ${renderBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color)}
@@ -14089,7 +14144,7 @@ function paintChartZoom() {
           <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
         </div>`;
     };
-    titleEl.textContent = 'Time by Project — ' + (dashRange === 'month' ? 'Last 30 days' : 'Last 7 days');
+    titleEl.textContent = 'Time by Project — ' + period.label;
     bodyEl.innerHTML = keys.length
       ? `<div class="bar-chart">${keys.map((p, i) => renderProjBar(p, projectHrs[p], MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length])).join('')}</div>`
       : `<div class="empty" style="padding:1rem 0;color:var(--text3)">No project hours logged.</div>`;
@@ -14101,30 +14156,12 @@ function paintChartZoom() {
       window._zoomChartInstance = null;
     }
     const isCat = chartZoomKey === 'overtime-cat';
-    titleEl.textContent = (isCat ? 'Categories Over Time' : 'Projects Over Time')
-      + ' — ' + (dashRange === 'month' ? 'Last 30 days' : 'Last 7 days');
+    titleEl.textContent = (isCat ? 'Categories Over Time' : 'Projects Over Time') + ' — ' + period.label;
     bodyEl.innerHTML = `<div style="position:relative;height:60vh;min-height:280px"><canvas id="zoom-line-canvas"></canvas></div>`;
 
-    // Build the same bucket structure buildTrendsOverTimeCharts uses.
-    const days = _enumerateDates(startDate, td);
-    let buckets, labels, yMax;
-    if (dashRange === 'month') {
-      const bsz = Math.ceil(days.length / 4);
-      buckets = []; labels = [];
-      for (let i = 0; i < 4; i++) {
-        const a = i * bsz, bend = Math.min(days.length, (i + 1) * bsz);
-        if (a >= days.length) break;
-        buckets.push({ start: days[a], end: days[bend - 1] });
-        labels.push('W' + (i + 1));
-      }
-      // Categories: hard-cap 56h/bucket (8 hr/day × 7 days). Projects keep
-      // the original 84h suggestion so a busy single-project week breathes.
-      yMax = isCat ? 56 : 84;
-    } else {
-      buckets = days.map(d => ({ start: d, end: d }));
-      labels = days.map(d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }));
-      yMax = isCat ? 8 : 12;
-    }
+    // Same bucket structure (and calendar-week month buckets) as buildTrendsOverTimeCharts.
+    const { buckets, labels } = trendsOverTimeBuckets(period);
+    const yMax = isCat ? (period.mode === 'month' ? 56 : 8) : (period.mode === 'month' ? 84 : 12);
     const catData = {}; CATS.forEach(c => { catData[c.id] = buckets.map(() => 0); });
     const projData = {};
     rangeBlocks.forEach(b => {
@@ -14181,7 +14218,7 @@ function paintChartZoom() {
             x: { ticks: { color: tickColor, font: { size: 12 } }, grid: { color: gridColor } },
             y: {
               beginAtZero: true,
-              ...(isCat ? { max: yMax } : { suggestedMax: yMax }),
+              suggestedMax: yMax,
               ticks: { color: tickColor, font: { size: 12 }, callback: v => v + 'h' },
               grid: { color: gridColor },
             },
@@ -17977,10 +18014,11 @@ function applyTheme(pref) {
     const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
     if (bg) meta.setAttribute('content', bg);
   }
-  // If a dashboard chart is currently live, rebuild it so dataset/grid colors re-read the tokens.
-  if (_chartInstance && _chartLastArgs) {
-    const { td, n } = _chartLastArgs;
-    setTimeout(() => buildTrendChart(td, n), 0);
+  // If the Trends tab is showing live charts, re-render it so Chart.js datasets
+  // and grid colors re-read the freshly-applied theme tokens.
+  if (activeTab === 'dashboard' && dashSubTab === 'charts' && dashView === 'overtime'
+      && !showWeeklyReview && !showMonthlyReview) {
+    setTimeout(() => renderMain(true), 0);
   }
 }
 
