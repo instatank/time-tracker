@@ -1140,6 +1140,16 @@ body.ios-pwa #nav {
    the stacked top margin so they sit inline next to the type label. */
 .cap-meta .tag-pills { margin-top: 0; }
 .cap-body { font-size: 0.88rem; color: var(--text); white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
+/* Search / hashtag preview highlight — the matched term inside an anchored
+   collapsed preview (see anchoredPreview()). Subtle amber wash that reads on
+   both dark and light themes. */
+mark.hl {
+  background: rgba(250, 204, 21, 0.30);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  font-weight: 600;
+}
 /* Collapsed capture cards line-clamp the body to 3 lines; tapping the card
    sets `.expanded` on the container which lifts the clamp. Scoped to capture
    cards via [data-capture-id] so block-in-journal cards (which use the same
@@ -5659,6 +5669,7 @@ function getTodayWins(d) {
       source: 'journal',
       id: c.id,
       body: c.body || '',
+      anchorText: c.body || '',
       timestamp: c.timestamp,
       sourceType: 'journal',
     });
@@ -5672,6 +5683,7 @@ function getTodayWins(d) {
         id: s.id,
         project: s.projectName,
         body: s.before || s.during || s.after || '',
+        anchorText: [s.before, s.during, s.after, ...(s.done || []), ...(s.pending || []), ...(s.learned || [])].filter(Boolean).join('\n'),
         timestamp: s.createdAt || (s.date + 'T00:00:00'),
         sourceType: 'session',
       });
@@ -5684,6 +5696,7 @@ function getTodayWins(d) {
       source: 'learning',
       id: e.id,
       body: e.takeaway || '',
+      anchorText: [e.takeaway, e.fullNotes].filter(Boolean).join('\n'),
       timestamp: e.createdAt || e.timestamp || '',
       sourceType: 'learning',
     });
@@ -5697,6 +5710,7 @@ function getTodayWins(d) {
       source: 'daily',
       id: j.date,
       body: (j.thoughts || '').trim() || (j.reflection || '').trim() || '(daily journal)',
+      anchorText: [j.thoughts, ...((j.tasks || []).map(t => t.text || '')), j.reflection].filter(Boolean).join('\n'),
       timestamp: j.lastEditedAt || j.timestamp || (j.date + 'T23:59:00'),
       sourceType: 'daily',
     });
@@ -5718,8 +5732,8 @@ function renderWinsPanel(d) {
     const key = `${w.sourceType}:${w.id}`;
     const expanded = expandedWins.has(key);
     const body = expanded
-      ? esc(w.body)                                                              // full text on expand
-      : (w.body.length > 140 ? esc(w.body.slice(0, 140)) + '…' : esc(w.body));   // single-line preview
+      ? esc(w.body)                                                    // full text on expand
+      : anchoredPreview(w.anchorText || w.body, '#win', { max: 140 }).html;  // preview anchored on #win
     const projectArg = esc(w.project || '').replace(/'/g, "\\'");
     return `<div class="win-item ${expanded ? 'expanded' : ''}"
       onclick="winCardTap('${esc(key)}','${esc(w.sourceType)}','${esc(w.id)}','${projectArg}')">
@@ -6805,6 +6819,77 @@ function renderVoiceNotesReadonly(voiceNotes, parentKind, parentId) {
   }).join('')}</div>`;
 }
 
+// ── Anchored preview snippets ───────────────────────────────────
+// When a card surfaces because of a specific hashtag or search term — Today's
+// Wins (always #win), Journal search, or a #tag filter pill — the collapsed
+// preview should show the LINE where that term appears, not just the first
+// line of a long entry. anchoredPreview() locates the term, narrows the text
+// to a window around it, and returns escaped HTML with the term wrapped in
+// <mark class="hl"> so it stands out.
+//
+//   text   — full raw entry text (may contain newlines; NOT pre-escaped)
+//   needle — the hashtag ('#win') or search query to anchor on
+//   opts.max — target snippet length before it starts to window (default 160)
+//
+// Returns { html, found }. When the needle isn't in the text (e.g. a tag added
+// via the pill picker rather than typed inline, or a search that matched a
+// title/tag not the body) `found` is false and html is the escaped head of the
+// text — i.e. the previous first-lines behaviour, so callers can choose to
+// keep their existing preview instead.
+function anchoredPreview(text, needle, opts = {}) {
+  const max = opts.max || 160;
+  const raw = (text || '').replace(/\r/g, '');
+  const trimmed = raw.trim();
+  if (!trimmed) return { html: '', found: false };
+  const n = (needle || '').trim().toLowerCase();
+  const idx = n ? raw.toLowerCase().indexOf(n) : -1;
+  if (idx === -1) {
+    const head = trimmed.length > max ? trimmed.slice(0, max).replace(/\s+$/, '') + '…' : trimmed;
+    return { html: esc(head), found: false };
+  }
+  // Narrow to the line holding the match.
+  const lineStart = raw.lastIndexOf('\n', idx) + 1;
+  let lineEnd = raw.indexOf('\n', idx);
+  if (lineEnd === -1) lineEnd = raw.length;
+  let seg = raw.slice(lineStart, lineEnd);
+  let mAt = idx - lineStart;
+  // Drop leading whitespace, keeping the match offset aligned.
+  const lead = seg.length - seg.replace(/^\s+/, '').length;
+  seg = seg.slice(lead); mAt -= lead;
+  seg = seg.replace(/\s+$/, '');
+  // A long single line (e.g. dictated notes with no newlines) → window around
+  // the match so the highlight is centred rather than off-screen.
+  let pre = false, suf = false;
+  if (seg.length > max) {
+    const half = Math.max(0, Math.floor((max - n.length) / 2));
+    let from = Math.max(0, mAt - half);
+    const to = Math.min(seg.length, from + max);
+    from = Math.max(0, to - max);
+    pre = from > 0;
+    suf = to < seg.length;
+    mAt -= from;
+    seg = seg.slice(from, to);
+  }
+  const before = esc(seg.slice(0, mAt));
+  const hit    = esc(seg.slice(mAt, mAt + n.length));
+  const after  = esc(seg.slice(mAt + n.length));
+  return {
+    html: (pre ? '…' : '') + before + `<mark class="hl">${hit}</mark>` + after + (suf ? '…' : ''),
+    found: true,
+  };
+}
+
+// The term the current view is anchored on, if any: an active search query
+// takes priority, else an active #tag filter pill on the Journal tab. Card
+// renderers use this to anchor their collapsed preview on the matching line.
+// '' = no anchor, so previews keep their normal first-lines behaviour.
+function activePreviewAnchor() {
+  const s = (globalSearch || '').trim();
+  if (s) return s;
+  if (activeTab === 'journal' && (journalFilter || '').startsWith('#')) return journalFilter;
+  return '';
+}
+
 function renderCapPreview(c) {
   const ct = ctypeById(c.type);
   const delKey = 'cap-' + c.id;
@@ -6819,6 +6904,14 @@ function renderCapPreview(c) {
   // in the meta row to signal "has attachment". Full thumbnails appear only
   // once the card is expanded.
   const hasAttach = liveAttachments(c.attachments).length > 0;
+  // Anchor the collapsed preview on the active search/hashtag term so a long
+  // note surfaces the matching line, not just its first lines.
+  const anchor = activePreviewAnchor();
+  let capBodyHTML = esc(c.body || '');
+  if (!expanded && anchor) {
+    const ap = anchoredPreview(c.body, anchor);
+    if (ap.found) capBodyHTML = ap.html;
+  }
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
@@ -6833,7 +6926,7 @@ function renderCapPreview(c) {
           ${!expanded && hasAttach ? `<span class="cap-attach-icon" title="Has attachment">📎</span>` : ''}
           <span class="cap-time">${fmtTime(c.timestamp)}</span>
         </div>
-        ${c.body ? `<div class="cap-body">${esc(c.body)}</div>` : ''}
+        ${c.body ? `<div class="cap-body">${capBodyHTML}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
         ${expanded ? renderAttachmentsReadonly(c.attachments, 'capture', c.id) : ''}
       </div>
@@ -7351,19 +7444,27 @@ function renderCapFull(c) {
   const isToday = date === todayStr();
   const dateLabel = isToday ? `Today · ${fmtTime(c.timestamp)}` : `${fmtDate(date)} · ${fmtTime(c.timestamp)}`;
   const delKey = 'cap-' + c.id;
+  // Anchor the collapsed preview on the active #tag filter / search term.
+  const expanded = expandedCaptures.has(c.id);
+  const anchor = activePreviewAnchor();
+  let capBodyHTML = esc(c.body || '');
+  if (!expanded && anchor) {
+    const ap = anchoredPreview(c.body, anchor);
+    if (ap.found) capBodyHTML = ap.html;
+  }
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
         <button class="card-swipe-edit" onclick="openCaptureEdit('${c.id}')" title="Edit entry" aria-label="Edit">${ICON_PENCIL}</button>
         <button class="card-swipe-delete" data-delkey="${delKey}" onclick="deleteCapture('${c.id}')" title="Delete entry" aria-label="Delete">${ICON_TRASH}</button>
       </div>
-      <div class="capture-item ${expandedCaptures.has(c.id) ? 'expanded' : ''}" data-capture-id="${c.id}" onclick="capCardTap('${c.id}')">
+      <div class="capture-item ${expanded ? 'expanded' : ''}" data-capture-id="${c.id}" onclick="capCardTap('${c.id}')">
         <div class="cap-meta">
           <span>${ct.icon}</span>
           <span class="cap-type">${ct.label}</span>
           <span class="cap-time">${dateLabel}</span>
         </div>
-        ${c.body ? `<div class="cap-body" style="margin-top:0.25rem">${esc(c.body)}</div>` : ''}
+        ${c.body ? `<div class="cap-body" style="margin-top:0.25rem">${capBodyHTML}</div>` : ''}
         ${renderVoiceNotesReadonly(c.voiceNotes, 'capture', c.id)}
         ${renderAttachmentsReadonly(c.attachments, 'capture', c.id)}
         ${renderTagPills(c.tags)}
@@ -7397,12 +7498,22 @@ function renderDailyJournalCard(d) {
     ? `<span class="cap-time" style="margin-left:0.4rem">${taskSummary}</span>`
     : '';
   const delKey = 'daily-' + d.date;
+  // When a search / #tag filter is active, anchor the preview on the matching
+  // line across Thoughts, Tasks and Reflection — so a #win buried in the
+  // reflection surfaces here instead of the first line of thoughts.
+  const anchor = activePreviewAnchor();
+  let previewHTML = esc(preview);
+  if (anchor) {
+    const dailyText = [d.thoughts, ...tasks.map(t => t.text || ''), d.reflection].filter(Boolean).join('\n');
+    const ap = anchoredPreview(dailyText, anchor);
+    if (ap.found) previewHTML = ap.html;
+  }
   // Body — preview when collapsed, full inline editor when expanded.
   // Tap the .capture-item to toggle. Inputs use stopPropagation so typing
   // doesn't accidentally collapse the card.
   const body = expanded
     ? renderDailyExpandedPreview(d)
-    : `<div class="cap-body" style="margin-top:0.25rem">${esc(preview)}</div>`;
+    : `<div class="cap-body" style="margin-top:0.25rem">${previewHTML}</div>`;
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
@@ -7912,9 +8023,20 @@ function renderSessionCard(s) {
     if (s.after)  bodyParts.push(`<div class="session-section"><span class="session-section-label after">Review</span>${renderReviewBody(s)}</div>`);
     if (!bodyParts.length) bodyParts.push(`<div class="session-section" style="color:var(--text3);font-style:italic">No notes captured.</div>`);
   } else {
-    // Collapsed preview: show first non-empty of before/during/after
+    // Collapsed preview: show first non-empty of before/during/after — but if
+    // a search / #tag filter is active, anchor on the matching line (which may
+    // live in the review lists) instead.
     const preview = s.before || s.during || s.after || '';
-    if (preview) bodyParts.push(`<div class="session-preview">${esc(preview)}</div>`);
+    if (preview) {
+      let previewHTML = esc(preview);
+      const anchor = activePreviewAnchor();
+      if (anchor) {
+        const sessText = [s.before, s.during, s.after, ...(s.done || []), ...(s.pending || []), ...(s.learned || [])].filter(Boolean).join('\n');
+        const ap = anchoredPreview(sessText, anchor);
+        if (ap.found) previewHTML = ap.html;
+      }
+      bodyParts.push(`<div class="session-preview">${previewHTML}</div>`);
+    }
   }
 
   // Footer: hint on the left (only when collapsed & has content), linked/unlinked badge on the right
@@ -8653,6 +8775,16 @@ function renderLearningCard(e) {
     : '';
 
   const delKey = 'learn-' + e.id;
+  // Collapsed cards only show the takeaway; if a search / #tag filter matches
+  // text that lives in the (hidden) full notes, anchor the preview there so
+  // the match is visible without expanding.
+  const anchor = activePreviewAnchor();
+  let takeawayHTML = esc(e.takeaway || '');
+  if (!expanded && anchor) {
+    const learnText = [e.takeaway, e.fullNotes].filter(Boolean).join('\n');
+    const ap = anchoredPreview(learnText, anchor);
+    if (ap.found) takeawayHTML = ap.html;
+  }
   return `
     <div class="card-swipe-wrap">
       <div class="card-swipe-actions">
@@ -8668,7 +8800,7 @@ function renderLearningCard(e) {
           </div>
           <span class="learning-date">${dateLabel}</span>
         </div>
-        <div class="learning-takeaway">${esc(e.takeaway || '')}</div>
+        <div class="learning-takeaway">${takeawayHTML}</div>
         ${pillsRow}
         ${e.fullNotes && expanded
           ? `<div class="learning-notes">${esc(e.fullNotes)}</div>`
