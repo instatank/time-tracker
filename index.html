@@ -78,6 +78,17 @@
   --tag-pending-bg:   #2a1a08;
   --tag-pending-text: #d4922a;
 
+  /* Custom-tag auto-color palette — tagAutoPaletteIndex() hashes each custom
+     tag to one of these 6 slots so tags stay visually distinct from each
+     other (and from the win/insight/dft/pending built-ins) with zero manual
+     per-tag configuration. */
+  --tag-c1-bg: #3a0f1a; --tag-c1-text: #e8607f; /* rose   */
+  --tag-c2-bg: #0a2e2a; --tag-c2-text: #4ecdc4; /* teal   */
+  --tag-c3-bg: #332b05; --tag-c3-text: #d4c62a; /* gold   */
+  --tag-c4-bg: #340a35; --tag-c4-text: #d772d9; /* fuchsia*/
+  --tag-c5-bg: #062a38; --tag-c5-text: #4fc3e0; /* cyan   */
+  --tag-c6-bg: #1f2e08; --tag-c6-text: #a8d84a; /* lime   */
+
   /* Session section labels */
   --session-before: #6b9fe8;
   --session-during: #5fb97a;
@@ -166,6 +177,14 @@
   --tag-dft-text:     #2F4CA8;
   --tag-pending-bg:   #F5EBDA;
   --tag-pending-text: #8A5A18;
+
+  /* Custom-tag auto-color palette — see dark theme block for rationale */
+  --tag-c1-bg: #FBE7EC; --tag-c1-text: #B23A56; /* rose   */
+  --tag-c2-bg: #E3F5F3; --tag-c2-text: #157D74; /* teal   */
+  --tag-c3-bg: #FBF2D2; --tag-c3-text: #8A7F0F; /* gold   */
+  --tag-c4-bg: #F7E5F8; --tag-c4-text: #9C2AA0; /* fuchsia*/
+  --tag-c5-bg: #E1F3FA; --tag-c5-text: #0E6A8A; /* cyan   */
+  --tag-c6-bg: #EEF5DD; --tag-c6-text: #5C7A12; /* lime   */
 
   /* Session section labels */
   --session-before: #3B3AB0;
@@ -1211,8 +1230,13 @@ mark.hl {
 .tag-pill.tag-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
 .tag-pill.tag-project { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
 .tag-pill.tag-project::before { content: '• '; opacity: 0.7; letter-spacing: -1px; }
-.tag-pill.tag-other   { background: var(--muted-bg);       color: var(--muted-text); }
 .tag-pill.tag-1pct    { background: var(--tag-win-bg);     color: var(--tag-win-text); } /* legacy alias for #1% */
+.tag-pill.tag-auto-1  { background: var(--tag-c1-bg); color: var(--tag-c1-text); }
+.tag-pill.tag-auto-2  { background: var(--tag-c2-bg); color: var(--tag-c2-text); }
+.tag-pill.tag-auto-3  { background: var(--tag-c3-bg); color: var(--tag-c3-text); }
+.tag-pill.tag-auto-4  { background: var(--tag-c4-bg); color: var(--tag-c4-text); }
+.tag-pill.tag-auto-5  { background: var(--tag-c5-bg); color: var(--tag-c5-text); }
+.tag-pill.tag-auto-6  { background: var(--tag-c6-bg); color: var(--tag-c6-text); }
 
 /* ── Tag picker (sheets) ──────────────────────────────────────── */
 .tag-picker {
@@ -1238,7 +1262,12 @@ mark.hl {
 .tag-pick-pill.tag-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
 .tag-pick-pill.tag-project { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
 .tag-pick-pill.tag-project::before { content: '• '; opacity: 0.7; letter-spacing: -1px; }
-.tag-pick-pill.tag-other   { background: var(--muted-bg);       color: var(--muted-text); }
+.tag-pick-pill.tag-auto-1  { background: var(--tag-c1-bg); color: var(--tag-c1-text); }
+.tag-pick-pill.tag-auto-2  { background: var(--tag-c2-bg); color: var(--tag-c2-text); }
+.tag-pick-pill.tag-auto-3  { background: var(--tag-c3-bg); color: var(--tag-c3-text); }
+.tag-pick-pill.tag-auto-4  { background: var(--tag-c4-bg); color: var(--tag-c4-text); }
+.tag-pick-pill.tag-auto-5  { background: var(--tag-c5-bg); color: var(--tag-c5-text); }
+.tag-pick-pill.tag-auto-6  { background: var(--tag-c6-bg); color: var(--tag-c6-text); }
 .tag-pick-pill.selected { border-color: currentColor; font-weight: 600; }
 .tag-picker-group { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; width: 100%; }
 .tag-picker-group-label {
@@ -2360,6 +2389,16 @@ mark.hl {
   cursor: pointer;
   transition: all 0.15s;
 }
+/* Top-used custom tags promoted into the filter row (see topCustomTags())
+   pick up the same auto-color palette as their card pills. Compound
+   selectors so they win over the plain .fpill background regardless of
+   source order. */
+.fpill.tag-auto-1  { background: var(--tag-c1-bg); color: var(--tag-c1-text); border-color: transparent; }
+.fpill.tag-auto-2  { background: var(--tag-c2-bg); color: var(--tag-c2-text); border-color: transparent; }
+.fpill.tag-auto-3  { background: var(--tag-c3-bg); color: var(--tag-c3-text); border-color: transparent; }
+.fpill.tag-auto-4  { background: var(--tag-c4-bg); color: var(--tag-c4-text); border-color: transparent; }
+.fpill.tag-auto-5  { background: var(--tag-c5-bg); color: var(--tag-c5-text); border-color: transparent; }
+.fpill.tag-auto-6  { background: var(--tag-c6-bg); color: var(--tag-c6-text); border-color: transparent; }
 .fpill.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .project-subtabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: -0.25rem 0 0.75rem; padding: 0.5rem 0 0.25rem; border-top: 1px solid var(--border2); }
 .proj-pill { font-size: 0.72rem; padding: 0.25rem 0.6rem; border-radius: 20px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text2); cursor: pointer; }
@@ -6824,25 +6863,36 @@ function renderVoiceNotesReadonly(voiceNotes, parentKind, parentId) {
 // Wins (always #win), Journal search, or a #tag filter pill — the collapsed
 // preview should show the LINE where that term appears, not just the first
 // line of a long entry. anchoredPreview() locates the term, narrows the text
-// to a window around it, and returns escaped HTML with the term wrapped in
-// <mark class="hl"> so it stands out.
+// to a window around it, and returns escaped HTML with every matched token
+// wrapped in <mark class="hl"> so it stands out.
 //
 //   text   — full raw entry text (may contain newlines; NOT pre-escaped)
-//   needle — the hashtag ('#win') or search query to anchor on
+//   needle — the hashtag ('#win') or a (possibly multi-word) search query.
+//            Multi-word queries are tokenized the same way matchesSearchQuery()
+//            matches them — the snippet anchors on whichever token appears
+//            earliest in this particular text, and every token occurrence
+//            visible in the snippet gets highlighted.
 //   opts.max — target snippet length before it starts to window (default 160)
 //
-// Returns { html, found }. When the needle isn't in the text (e.g. a tag added
-// via the pill picker rather than typed inline, or a search that matched a
-// title/tag not the body) `found` is false and html is the escaped head of the
-// text — i.e. the previous first-lines behaviour, so callers can choose to
-// keep their existing preview instead.
+// Returns { html, found }. When no token is in the text (e.g. a tag added via
+// the pill picker rather than typed inline, or a search that matched a
+// title/tag not the body) `found` is false and html is the escaped head of
+// the text — i.e. the previous first-lines behaviour, so callers can choose
+// to keep their existing preview instead.
 function anchoredPreview(text, needle, opts = {}) {
   const max = opts.max || 160;
   const raw = (text || '').replace(/\r/g, '');
   const trimmed = raw.trim();
   if (!trimmed) return { html: '', found: false };
-  const n = (needle || '').trim().toLowerCase();
-  const idx = n ? raw.toLowerCase().indexOf(n) : -1;
+  const tokens = (needle || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const rawLower = raw.toLowerCase();
+  // A multi-word query only needs ONE token to decide where to anchor —
+  // pick whichever token appears earliest in the text.
+  let idx = -1, anchorTok = '';
+  tokens.forEach(t => {
+    const i = rawLower.indexOf(t);
+    if (i !== -1 && (idx === -1 || i < idx)) { idx = i; anchorTok = t; }
+  });
   if (idx === -1) {
     const head = trimmed.length > max ? trimmed.slice(0, max).replace(/\s+$/, '') + '…' : trimmed;
     return { html: esc(head), found: false };
@@ -6861,22 +6911,29 @@ function anchoredPreview(text, needle, opts = {}) {
   // the match so the highlight is centred rather than off-screen.
   let pre = false, suf = false;
   if (seg.length > max) {
-    const half = Math.max(0, Math.floor((max - n.length) / 2));
+    const half = Math.max(0, Math.floor((max - anchorTok.length) / 2));
     let from = Math.max(0, mAt - half);
     const to = Math.min(seg.length, from + max);
     from = Math.max(0, to - max);
     pre = from > 0;
     suf = to < seg.length;
-    mAt -= from;
     seg = seg.slice(from, to);
   }
-  const before = esc(seg.slice(0, mAt));
-  const hit    = esc(seg.slice(mAt, mAt + n.length));
-  const after  = esc(seg.slice(mAt + n.length));
   return {
-    html: (pre ? '…' : '') + before + `<mark class="hl">${hit}</mark>` + after + (suf ? '…' : ''),
+    html: (pre ? '…' : '') + highlightTokens(seg, tokens) + (suf ? '…' : ''),
     found: true,
   };
+}
+
+// Escapes `segRaw` for HTML then wraps every occurrence of any token in
+// <mark class="hl">. Runs the match regex against the ALREADY-escaped string,
+// which is safe because hashtags/search words never contain & < > " — the
+// only chars esc() touches.
+function highlightTokens(segRaw, tokens) {
+  const escaped = esc(segRaw);
+  const pattern = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).filter(Boolean).join('|');
+  if (!pattern) return escaped;
+  return escaped.replace(new RegExp('(' + pattern + ')', 'gi'), '<mark class="hl">$1</mark>');
 }
 
 // The term the current view is anchored on, if any: an active search query
@@ -6933,6 +6990,42 @@ function renderCapPreview(c) {
     </div>`;
 }
 
+// Tokenized text search: every whitespace-separated token in the query must
+// appear SOMEWHERE across the joined haystack (order and adjacency don't
+// matter). Replaces naive whole-phrase substring matching, where searching
+// "client win" failed to match "...closed the big client today, huge win..."
+// because the two words weren't literally next to each other in the text.
+function matchesSearchQuery(parts, query) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return false;
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const hay = parts.map(p => (p == null ? '' : String(p))).join(' ').toLowerCase();
+  return tokens.every(t => hay.includes(t));
+}
+
+// Custom tags "promoted" into the Journal filter row next to the built-ins
+// (#win/#insight/#dft/#1%) — so a personally-invented tag you actually use a
+// lot doesn't require retyping it into search every time. Ranked by usage
+// count (most-used first), tagHistory recency breaking ties.
+const CUSTOM_TAG_PILL_LIMIT = 2;
+function topCustomTags(limit = CUSTOM_TAG_PILL_LIMIT) {
+  const builtInSet = new Set(TAG_BUILT_IN);
+  const projectTagSet = new Set(projects.map(p => '#' + projectSlug(p)));
+  const usage = collectAllTagsInUse();
+  const candidates = [];
+  usage.forEach((counts, tag) => {
+    if (counts.total > 0 && !builtInSet.has(tag) && !projectTagSet.has(tag)) {
+      candidates.push({ tag, total: counts.total, recency: tagHistory.indexOf(tag) });
+    }
+  });
+  candidates.sort((a, b) =>
+    (b.total - a.total) ||
+    ((a.recency === -1 ? Infinity : a.recency) - (b.recency === -1 ? Infinity : b.recency)) ||
+    a.tag.localeCompare(b.tag)
+  );
+  return candidates.slice(0, limit).map(c => c.tag);
+}
+
 // ── Journal ───────────────────────────────────────────────────
 function renderJournal() {
   // Search narrows captures + dailies inline (see filters further below);
@@ -6985,16 +7078,12 @@ function renderJournal() {
   }
 
   if (globalSearch.trim()) {
-    const q = globalSearch.trim().toLowerCase();
-    filtered = filtered.filter(c => {
-      const hay = [
-        c.body || '',
-        c.project_tag || '',
-        (typeLabel[c.type] || c.type || ''),
-        (c.tags || []).join(' '),     // include hashtag pills
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
-    });
+    filtered = filtered.filter(c => matchesSearchQuery([
+      c.body || '',
+      c.project_tag || '',
+      (typeLabel[c.type] || c.type || ''),
+      (c.tags || []).join(' '),     // include hashtag pills
+    ], globalSearch));
   }
 
   filtered.sort((a,b) => b.timestamp.localeCompare(a.timestamp));
@@ -7024,17 +7113,13 @@ function renderJournal() {
   }
   // Search across the three sections + task texts + tags
   if (globalSearch.trim()) {
-    const q = globalSearch.trim().toLowerCase();
-    filteredDaily = filteredDaily.filter(d => {
-      const hay = [
-        d.thoughts || '',
-        d.reflection || '',
-        ...(d.tasks || []).map(t => t.text || ''),
-        (d.tags || []).join(' '),     // include hashtag pills
-        'daily journal',
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
-    });
+    filteredDaily = filteredDaily.filter(d => matchesSearchQuery([
+      d.thoughts || '',
+      d.reflection || '',
+      ...(d.tasks || []).map(t => t.text || ''),
+      (d.tags || []).join(' '),     // include hashtag pills
+      'daily journal',
+    ], globalSearch));
   }
   // Drop empty entries from the feed (created-but-never-saved drafts shouldn't
   // happen, but defensive — the empty-skip in saveDailyJournalSilent prevents
@@ -7100,10 +7185,15 @@ function renderJournal() {
         <button class="add-fab-square" style="margin-left:auto" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
       </div>`;
 
+  const topCustom = topCustomTags();
   const row2 = `<div class="filter-row" style="margin-top:-0.25rem">
       ${['#win','#insight','#dft','#1%'].map(f => `
         <button class="fpill ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
           ${f}
+        </button>`).join('')}
+      ${topCustom.map(f => `
+        <button class="fpill ${tagClassFor(f)} ${journalFilter===f?'active':''}" onclick="setJFilter('${esc(f)}')" title="Your most-used custom tag">
+          ${esc(f)}
         </button>`).join('')}
     </div>`;
 
@@ -7183,7 +7273,7 @@ function isProjectTag(tag) {
 
 // Single source of truth for tag → CSS modifier class.
 // Content tags get their specific colour; project tags get the shared blue + dot;
-// everything else is the neutral gray `.tag-other` styling.
+// every custom tag gets one of 6 auto-generated colours (see tagAutoPaletteIndex).
 function tagClassFor(tag) {
   const t = (tag || '').toLowerCase();
   if (t === '#win')     return 'tag-win';
@@ -7192,7 +7282,17 @@ function tagClassFor(tag) {
   if (t === '#pending') return 'tag-pending';
   if (t === '#1%')      return 'tag-1pct';
   if (isProjectTag(t))  return 'tag-project';
-  return 'tag-other';
+  return 'tag-auto-' + tagAutoPaletteIndex(t);
+}
+
+// Deterministic 1..6 palette slot for a custom tag, derived from a simple
+// string hash — so the same tag always renders in the same color everywhere
+// (cards, pickers, filter pills) without needing per-tag configuration.
+const TAG_AUTO_PALETTE_SIZE = 6;
+function tagAutoPaletteIndex(tag) {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
+  return (h % TAG_AUTO_PALETTE_SIZE) + 1;
 }
 
 // ── Shared two-layer tag picker (sessions + captures + learning) ──
@@ -13893,12 +13993,9 @@ window.closeGlobalSearch = function() {
 // type's native card so users can tell at a glance what kind of entry
 // they're looking at.
 function renderSearchResults() {
-  const q = (globalSearch || '').trim().toLowerCase();
-  if (!q) return ''; // caller should short-circuit; defensive.
+  if (!(globalSearch || '').trim()) return ''; // caller should short-circuit; defensive.
 
   const matches = []; // { kind, item, sortKey }
-  const norm = s => (s == null ? '' : String(s)).toLowerCase();
-  const matchAny = (parts) => parts.some(p => norm(p).includes(q));
   // Voice-note audio content isn't searchable, but the user-set titles
   // (e.g. "ideas for the launch deck") absolutely should be — they're
   // the only handle a search has on what's inside a voice note.
@@ -13908,24 +14005,24 @@ function renderSearchResults() {
 
   captures.forEach(c => {
     if (isTrashed(c)) return;
-    if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c), attachTitles(c)])) return;
+    if (!matchesSearchQuery([c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c), attachTitles(c)], globalSearch)) return;
     matches.push({ kind: 'cap', item: c, sortKey: c.timestamp || '' });
   });
   (dailyJournals || []).forEach(d => {
     if (isTrashed(d) || isDailyEntryEmpty(d)) return;
     const taskText = (d.tasks || []).map(t => t.text || '').join(' ');
-    if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d), attachTitles(d)])) return;
+    if (!matchesSearchQuery([d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d), attachTitles(d)], globalSearch)) return;
     matches.push({ kind: 'daily', item: d, sortKey: d.lastEditedAt || d.timestamp || d.date || '' });
   });
   Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
     if (isTrashed(s)) return;
     const reviewText = [...(s.done || []), ...(s.pending || []), ...(s.learned || [])].join(' ');
-    if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s), attachTitles(s)])) return;
+    if (!matchesSearchQuery([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s), attachTitles(s)], globalSearch)) return;
     matches.push({ kind: 'session', item: s, sortKey: s.createdAt || s.date || '' });
   }));
   (learning || []).forEach(e => {
     if (isTrashed(e)) return;
-    if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e), attachTitles(e)])) return;
+    if (!matchesSearchQuery([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e), attachTitles(e)], globalSearch)) return;
     matches.push({ kind: 'learning', item: e, sortKey: e.createdAt || e.date || '' });
   });
   matches.sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
@@ -15465,6 +15562,19 @@ window.openTagAction = function(tag) {
   renderTagActionPanel();
 };
 
+// Jump straight to the Journal, filtered to this tag — the "View entries"
+// row inside a tag's Settings panel. Reuses the same journalFilter state
+// the #win/#insight/#dft/#1% pills already drive.
+window.viewTagEntries = function(tag) {
+  journalFilter = tag;
+  journalProjectFilter = null;
+  journalExpanded = false;
+  activeTab = 'journal';
+  try { localStorage.setItem('dayos_active_tab', 'journal'); } catch {}
+  closeSheets();
+  render();
+};
+
 function renderTagActionPanel() {
   const body = document.getElementById('settings-body');
   if (!_settingsTagAction) { openSettingsTags(); return; }
@@ -15484,6 +15594,12 @@ function renderTagActionPanel() {
       ${back}
       <div class="settings-row-sub" style="margin:-0.4rem 0 0.85rem 0.1rem">${esc(usageLine)}</div>
       <div class="settings-list">
+        ${usage.total ? `
+        <button class="settings-row" onclick="viewTagEntries('${esc(tag).replace(/'/g, "\\'")}')">
+          <span class="settings-row-icon">🔎</span>
+          <div class="settings-row-text"><div class="settings-row-label">View entries</div><div class="settings-row-sub">Jump to Journal filtered to this tag.</div></div>
+          <span class="settings-row-chev">›</span>
+        </button>` : ''}
         <button class="settings-row" onclick="setTagActionMode('rename')">
           <span class="settings-row-icon">✏️</span>
           <div class="settings-row-text"><div class="settings-row-label">Rename</div><div class="settings-row-sub">Type a new name. If it matches an existing tag, this becomes a merge.</div></div>
