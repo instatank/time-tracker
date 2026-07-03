@@ -139,6 +139,23 @@ You asked how a zero-tech-background builder should be developing during the bui
 
 ---
 
+## Execution status (2026-07-02 — green-lit and executed)
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | PartySpark model bump | **SHIPPED** — `gemini-3-pro-image`, build green, on the feature branch. **Needs you:** merge to `main` (= production deploy) before ~July 17. |
+| 2 | /ship skill + rescue /tmp sims | **SHIPPED** — the /tmp sims were already lost (unversioned, gone with the fresh container); gate rebuilt in-repo as `scripts/check.sh` (verified green), sims to be rebuilt in `tests/` as code is touched. /ship installed in all 6 active repos. |
+| 3 | Shared playbook | **SHIPPED** — `time-tracker/playbook/` (PLAYBOOK + 4 SOPs + LEARNING_METHOD + README); the three duplicate cheatsheets are now stubs; all repos carry pointers. |
+| 4 | Session-wrap automation | **SHIPPED** — /wrap skill + Stop-hook nudge in all 6 active repos (hook verified: fires valid block-JSON once/day, then silent); founder questions built in. End-to-end firing in a real future session: not yet observed. |
+| 5 | Verify-on-phone rule | **SHIPPED** — `SOP-verify-on-phone.md` + baked into every ship/wrap skill; BillOS fix #6 handed over with a real phone checklist as the first instance. |
+| 6 | Firebase sync skill + latent BillOS hang | **SHIPPED** — `SOP-firebase-sync.md`; BillOS `billUpdate` (Pause/Cancel/Reactivate) converted to the optimistic pattern, syntax-verified, SW bumped v0.4.25. **Needs you:** 3-step phone check (in the report). |
+| 7 | Storage-rules auto-deploy + gotchas | **SHIPPED** — BillOS Action now deploys `storage.rules` (YAML validated; first real Action run will confirm); all Vercel/Firebase gotchas + model inventory in `SOP-deploy.md`. time-tracker storage rules remain manual (its Actions only do PR merge — noted). |
+| 8 | api/ landmine linter | **SHIPPED** — `scripts/check-api-landmines.mjs` + `npm run check:api`, runs green, wired into party-spark's /ship. |
+| 9 | Global rules to user level | **DONE via #3** — PLAYBOOK Part 1 + per-repo pointers; no duplicates created. |
+| 10 | Housekeeping | **SHIPPED** — tradeforge refs cleaned (store filename deliberately kept: load-bearing identifier), stale "5 in 5" tagline fixed (was real), boilerplate README replaced, dead setup_env.sh + duplicate script removed. |
+| 11 | Dead config | **SHIPPED** — time-tracker's unfireable hook removed, permission list pruned. |
+| 12–13 | UI iteration / Showcase | **SKIPPED** as agreed. |
+
 ## Suggested execution order (when you green-light)
 
 1. **Today-ish:** #1 model bump (5 min) · #11 dead-config cleanup · #9 global working rules.
