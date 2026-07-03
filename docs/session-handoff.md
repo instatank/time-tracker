@@ -1,15 +1,14 @@
-# Session handoff — June 2026
+# Session handoff — reconciled 2026-07-02
 
-Working state for the next agent picking up this branch. Read top to bottom; nothing else from prior chats carries over.
+Working state for the next agent picking up this repo. Read top to bottom; nothing else from prior chats carries over. **Facts below are re-verified against the code by the `/wrap` skill at each session end — this doc was once ~60 SW versions stale; if a fact disagrees with the code, the code wins (fix the doc in the same commit).**
 
 ---
 
 ## Current state
 
-- **Branch:** `claude/review-dayos-handoff-TQYUm` — auto-merges to `main` via GitHub Actions, `main` deploys to Vercel.
-- **Last commit:** `74b16d9` — AI: Daily Journal task extraction (Sonnet, proposal pills).
-- **Working tree:** clean. Nothing untracked, nothing unpushed.
-- **Service worker cache key:** `dayos-v71` (sw.js). **Mandatory** to bump on every user-facing change — devices serve stale `index.html` otherwise.
+- **Branches:** `claude/*` branches auto-merge to `main` via GitHub Actions, `main` deploys to Vercel. (Check `git branch --show-current` — don't trust a doc for this.)
+- **Service worker cache key:** check `const CACHE` at the top of `sw.js` — currently `dayos-v134` as of 2026-07-02. **Mandatory** to bump on every user-facing change — devices serve stale `index.html` otherwise. The `/ship` skill does this automatically.
+- **2026-07-02:** shared cross-project playbook added under `playbook/` (global rules, SOPs, learning method) + `/ship` and `/wrap` skills + Stop-hook wrap reminder + in-repo pre-push gate `scripts/check.sh` + `LEARNINGS.md` friction ledger.
 
 ## What this session built (big picture)
 
@@ -34,32 +33,19 @@ Files that exist as project SOPs:
 - `docs/dayos-sop.md` — Plain-English founder-learnings doc the user wrote ("what I'd tell myself starting again"). Not technical reference.
 - `docs/ai-features.md` (**new this session**) — AI infrastructure + prompt locations + tuning notes.
 
-## Tests live OUTSIDE the repo
+## Tests live IN the repo now
 
-At `/tmp/dayos-check/*.mjs`. Survive across sessions in the same dev environment but are NOT versioned. Don't trust `ls` until you confirm they're there. When you add a new pure helper, add a sim file in `/tmp/dayos-check/` in the same commit. **Note:** these may not exist in a fresh dev environment — the syntax check still runs, but the sim suite will skip silently.
+**History (kept as a lesson):** the sim tests used to live at `/tmp/dayos-check/*.mjs`, unversioned. A fresh environment came up without them (2026-07-02) and they were lost — the gate looked green with its teeth missing. Anything not committed doesn't exist.
+
+**Now:** behavioural sims belong in `tests/*.mjs` (currently empty — rebuild sims there as sync/helper code gets touched; add the sim in the same commit as the helper).
 
 ## Mandatory pre-push gate
 
 ```bash
-# 1. Inline-script syntax check
-node -e "
-const fs=require('fs');
-const html=fs.readFileSync('/home/user/time-tracker/index.html','utf8');
-const m=html.match(/<script type=\"module\">([\s\S]*?)<\/script>/);
-let body=m[1].replace(/^\s*import[^;]*;/gm,'// import stripped');
-try{new Function('return (async()=>{'+body+'})')();console.log('SYNTAX_OK');}
-catch(e){console.log('SYNTAX_FAIL:',e.message);process.exit(1);}
-"
-
-# 2. Server route syntax check (NEW this session — there are now serverless functions)
-node --check /home/user/time-tracker/api/cron-reminders.mjs
-node --check /home/user/time-tracker/api/ai/claude.mjs
-
-# 3. Run sim tests if they exist
-cd /tmp/dayos-check && for f in *-tests.mjs *-sim.mjs cal-test.mjs td-tests.mjs wr-tests.mjs tag-tests.mjs; do
-  [ -f "$f" ] && (node "$f" >/dev/null 2>&1 && echo "$f ok" || echo "$f FAIL")
-done | sort -u
+bash scripts/check.sh
 ```
+
+Extracts + syntax-checks the inline module, `node --check`s every `api/**/*.mjs`, runs `tests/*.mjs` sims if present. The `/ship` skill runs this plus the cache bump. Full ritual + why: `playbook/SOP-ship.md`.
 
 **Static checks are necessary but NOT sufficient.** Multiple bugs this session passed static checks and broke at runtime. For anything touching the AI route or service worker: deploy preview + verify before declaring done.
 
