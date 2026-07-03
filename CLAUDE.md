@@ -23,7 +23,11 @@ No build step for the app. Edit `index.html`, open it directly in browser, or pu
 
 **Mandatory on every user-facing change:** bump the service-worker cache key `dayos-vN` in `sw.js`. Devices serve stale `index.html` otherwise. (Server-only `api/*.mjs` changes don't need a bump.)
 
-**Pre-push gate:** syntax-check the inline module, syntax-check `api/*.mjs` with `node --check`, run `/tmp/dayos-check/*.mjs` sims if present. Full commands in `docs/session-handoff.md`.
+**Pre-push gate:** run `bash scripts/check.sh` (extracts + syntax-checks the inline module, checks `api/**/*.mjs`, runs `tests/*.mjs` sims if present). The old `/tmp/dayos-check/` location is dead — those sims were unversioned and got lost with a fresh environment; behavioural sims now belong in `tests/`. The `/ship` skill runs this gate + the cache bump automatically — use it for every push.
+
+## Shared playbook (cross-project — read at session start)
+
+The single source of truth for global working rules, transferable lessons, and the ship / sync / deploy / verify SOPs lives in **`playbook/`** in this repo (`PLAYBOOK.md` first). It supersedes the old per-repo cheatsheets. Every session: read `playbook/PLAYBOOK.md`; before ending a session that shipped commits, run the **`/wrap`** skill (a Stop hook nudges once if forgotten) — it reconciles `docs/session-handoff.md` against reality, appends friction cards to `LEARNINGS.md`, and asks the founder the two learning questions from `playbook/LEARNING_METHOD.md`.
 
 ## Architecture
 
@@ -143,7 +147,7 @@ Respects `env(safe-area-inset-*)` for status bar + home indicator. `apple-mobile
 
 - `docs/session-handoff.md` — current branch state, what's shipped vs pending, open items. **Read at session start.**
 - `docs/ai-features.md` — full AI architecture + prompt locations + tuning.
-- `docs/sync-lessons.md` — Firestore sync gotchas (paste-ready for other projects).
+- `playbook/SOP-firebase-sync.md` — Firestore sync gotchas (shared playbook; `docs/sync-lessons.md` is a superseded stub).
 - `docs/experiments.md` — per-flag tracker for everything under Settings → Experiments. Lists exact functions, CSS blocks, sheets, and wiring sites to delete when graduating or killing each experiment.
 - `docs/dayos-sop.md` — the user's own plain-English founder-learnings doc.
 
