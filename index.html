@@ -5970,17 +5970,12 @@ function renderToday() {
   // lives in a separate collection from `captures`).
   let todayDaily = (dailyJournals || []).filter(j => j && notTrashed(j) && j.date === d && !isDailyEntryEmpty(j));
 
-  // Home-page search — narrows ONLY notes / daily journals. Activity-log
-  // blocks are excluded from search results per spec; when a query is
-  // active, the Today's Log section is hidden entirely so the page reads
-  // as a focused result set instead of a mixed view.
+  // When a search query is active the page swaps its whole body for
+  // renderSearchResults() further down (see the `if (homeQ)` return), so the
+  // Today feed below is never rendered in that case. We only need the flag to
+  // pick that branch — no inline narrowing of caps/todayDaily (that used to
+  // duplicate, and diverge from, the unified searcher).
   const homeQ = (globalSearch || '').trim().toLowerCase();
-  if (homeQ) {
-    const capHay   = c => [c.body||'', c.project_tag||'', (c.tags||[]).join(' ')].join(' ').toLowerCase();
-    const dailyHay = j => [j.thoughts||'', j.reflection||'', ...(j.tasks||[]).map(t => t.text||''), (j.tags||[]).join(' ')].join(' ').toLowerCase();
-    caps       = caps.filter(c => capHay(c).includes(homeQ));
-    todayDaily = todayDaily.filter(j => dailyHay(j).includes(homeQ));
-  }
   // Voice-only quick notes (no body text, one or more attached voice notes —
   // the shape the Today-page mic button creates) are surfaced as a flat
   // standalone strip lower on the page so they don't show up wrapped in
@@ -7148,19 +7143,9 @@ function renderJournal() {
     );
   }
 
-  if (globalSearch.trim()) {
-    const q = globalSearch.trim().toLowerCase();
-    filtered = filtered.filter(c => {
-      const hay = [
-        c.body || '',
-        c.project_tag || '',
-        (typeLabel[c.type] || c.type || ''),
-        (c.tags || []).join(' '),     // include hashtag pills
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
-    });
-  }
-
+  // NB: no inline search narrowing here — when a query is active this function
+  // returns renderSearchResults() (see below), which searches every collection
+  // uniformly. Filtering `filtered` by the query would be dead work.
   filtered.sort((a,b) => b.timestamp.localeCompare(a.timestamp));
 
   // ── Daily Journal entries ──
@@ -7186,31 +7171,17 @@ function renderJournal() {
       (d.tags || []).some(t => projectSlug(t) === slug)
     );
   }
-  // Search across the three sections + task texts + tags
-  if (globalSearch.trim()) {
-    const q = globalSearch.trim().toLowerCase();
-    filteredDaily = filteredDaily.filter(d => {
-      const hay = [
-        d.thoughts || '',
-        d.reflection || '',
-        ...(d.tasks || []).map(t => t.text || ''),
-        (d.tags || []).join(' '),     // include hashtag pills
-        'daily journal',
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
-    });
-  }
+  // (No inline search narrowing — same reason as `filtered` above: the active-
+  // query path returns renderSearchResults() and never renders this list.)
   // Drop empty entries from the feed (created-but-never-saved drafts shouldn't
   // happen, but defensive — the empty-skip in saveDailyJournalSilent prevents
   // most cases anyway).
   filteredDaily = filteredDaily.filter(d => !isDailyEntryEmpty(d));
 
-  // For tag filters, pull in activity blocks that contain the tag.
-  // For free-text search, also surface blocks whose label / note / tags /
-  // SEARCH excludes activity logs by spec — captures + daily journals
-  // only. Tag filtering (#win / #insight / #dft / #1%) still surfaces
-  // matching blocks because that's a different intent (a quick pivot
-  // on hashtags, not a free-text search).
+  // For a tag filter (#win / #insight / #dft / #1%), also pull in activity
+  // blocks that carry the tag — that's a deliberate hashtag pivot. Free-text
+  // search is handled elsewhere (renderSearchResults) and excludes blocks by
+  // spec, so there's no block-surfacing branch for search here.
   let allItems; // unified list: { item, kind: 'cap'|'block'|'daily', sortKey }
   if (isTagFilter) {
     const taggedBlocks = blocks.filter(b =>
@@ -14245,7 +14216,21 @@ function renderSearchResults() {
 
   const matches = []; // { kind, item, sortKey }
   const norm = s => (s == null ? '' : String(s)).toLowerCase();
-  const matchAny = (parts) => parts.some(p => norm(p).includes(q));
+  // Two query modes:
+  //  • A single `#tag` query does EXACT tag matching — matches only entries
+  //    whose tags[] contains that tag, so "#win" stops surfacing "#winner"
+  //    and search now agrees with the Journal filter pills.
+  //  • Anything else is a multi-word substring search: every whitespace-
+  //    separated term must appear somewhere in the entry, in any order, so
+  //    "meal launch" finds "launch plan for the meal app".
+  const isTagQuery = q.startsWith('#') && !/\s/.test(q);
+  const tagQ  = isTagQuery ? normalizeTag(q) : '';
+  const terms = q.split(/\s+/).filter(Boolean);
+  const matchItem = (tags, parts) => {
+    if (isTagQuery) return (tags || []).includes(tagQ);
+    const hay = parts.map(norm).join('\n');
+    return terms.every(t => hay.includes(t));
+  };
   // Voice-note audio content isn't searchable, but the user-set titles
   // (e.g. "ideas for the launch deck") absolutely should be — they're
   // the only handle a search has on what's inside a voice note.
@@ -14255,24 +14240,24 @@ function renderSearchResults() {
 
   captures.forEach(c => {
     if (isTrashed(c)) return;
-    if (!matchAny([c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c), attachTitles(c)])) return;
+    if (!matchItem(c.tags, [c.body, c.project_tag, (c.tags || []).join(' '), voiceTitles(c), attachTitles(c)])) return;
     matches.push({ kind: 'cap', item: c, sortKey: c.timestamp || '' });
   });
   (dailyJournals || []).forEach(d => {
     if (isTrashed(d) || isDailyEntryEmpty(d)) return;
     const taskText = (d.tasks || []).map(t => t.text || '').join(' ');
-    if (!matchAny([d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d), attachTitles(d)])) return;
+    if (!matchItem(d.tags, [d.thoughts, d.reflection, taskText, (d.tags || []).join(' '), voiceTitles(d), attachTitles(d)])) return;
     matches.push({ kind: 'daily', item: d, sortKey: d.lastEditedAt || d.timestamp || d.date || '' });
   });
   Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
     if (isTrashed(s)) return;
     const reviewText = [...(s.done || []), ...(s.pending || []), ...(s.learned || [])].join(' ');
-    if (!matchAny([s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s), attachTitles(s)])) return;
+    if (!matchItem(s.tags, [s.before, s.during, s.after, s.projectName, reviewText, (s.tags || []).join(' '), voiceTitles(s), attachTitles(s)])) return;
     matches.push({ kind: 'session', item: s, sortKey: s.createdAt || s.date || '' });
   }));
   (learning || []).forEach(e => {
     if (isTrashed(e)) return;
-    if (!matchAny([e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e), attachTitles(e)])) return;
+    if (!matchItem(e.tags, [e.sourceName, e.sourceType, e.takeaway, e.fullNotes, (e.tags || []).join(' '), voiceTitles(e), attachTitles(e)])) return;
     matches.push({ kind: 'learning', item: e, sortKey: e.createdAt || e.date || '' });
   });
   matches.sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));

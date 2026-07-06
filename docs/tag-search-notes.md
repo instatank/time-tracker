@@ -4,6 +4,19 @@ Working notes for the tagging/indexing/search test-and-improve project (started 
 One lesson per entry. Kept in the repo working tree; **not committed** until execution phases
 are approved (every commit auto-ships to production via the claude/* → main auto-merge).
 
+## Status
+
+- **Phase B shipped** (2026-07-06, SW v135). B1: `#tag` queries now do exact tag
+  matching (aligns search with filter pills — `#win` no longer surfaces `#winner`).
+  B2: multi-word queries are order-independent AND (`meal launch` finds `launch … meal`).
+  B3: removed the dead inline search-narrowing in `renderToday`/`renderJournal` that
+  duplicated (and diverged from) the unified searcher. Verified: 19/19 browser assertions
+  pass against the modified app. Phase A (tag-tokenizer fixes) intentionally skipped per
+  founder — the split is minor and A was fix-forward-only anyway, so B stands alone.
+- **Not done:** Phase C (UI affordances — tappable tag pills, active-filter chip). The
+  browser harness lives in the session scratchpad (`tagsearch/`), not yet committed to
+  `tests/` (needs a playwright-gated runner so `scripts/check.sh` doesn't fail on a fresh env).
+
 ## Lessons
 
 - **Two tag tokenizers disagree.** Inline typing goes through `extractTags` (regex, ASCII-only,
