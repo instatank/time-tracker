@@ -1,4 +1,4 @@
-# Session handoff — reconciled 2026-07-06
+# Session handoff — reconciled 2026-07-06 (Phase C wrap)
 
 Working state for the next agent picking up this repo. Read top to bottom; nothing else from prior chats carries over. **Facts below are re-verified against the code by the `/wrap` skill at each session end — this doc was once ~60 SW versions stale; if a fact disagrees with the code, the code wins (fix the doc in the same commit).**
 
@@ -6,9 +6,16 @@ Working state for the next agent picking up this repo. Read top to bottom; nothi
 
 ## Current state
 
-- **Branches:** `claude/*` branches auto-merge to `main` via GitHub Actions, `main` deploys to Vercel. (Check `git branch --show-current` — don't trust a doc for this.) Current working branch: `claude/update-claude-md-o5xdhd`, no PR opened yet for it.
-- **Service worker cache key:** check `const CACHE` at the top of `sw.js` — currently `dayos-v134` as of 2026-07-06. **Mandatory** to bump on every user-facing change — devices serve stale `index.html` otherwise. The `/ship` skill does this automatically.
-- **Latest commit:** `06c8231` — CLAUDE.md doc-drift fix (see below). Working tree clean.
+- **Branches:** `claude/*` branches auto-merge to `main` via GitHub Actions, `main` deploys to Vercel. (Check `git branch --show-current` — don't trust a doc for this.) Current working branch: `claude/tag-search-phase-c-wyr6l2`, no PR opened yet (auto-merge doesn't need one).
+- **Service worker cache key:** check `const CACHE` at the top of `sw.js` — currently `dayos-v136` as of 2026-07-06. **Mandatory** to bump on every user-facing change — devices serve stale `index.html` otherwise. The `/ship` skill does this automatically.
+- **Latest commit:** `0b46647` — Tag search Phase C (tappable tag pills + active-filter chip). Working tree clean.
+
+## Tag/search project — DONE (all phases shipped 2026-07-06)
+
+Three-phase test-and-improve pass on tagging + search, tracked in `docs/tag-search-notes.md`:
+- **Phase B (SW v135):** `#tag` search queries do exact tag matching (agrees with Journal filter pills — `#win` ≠ `#winner`); multi-word queries are order-independent AND; dead inline search-narrowing in `renderToday`/`renderJournal` removed. Phase A (tag-tokenizer fix) intentionally skipped by founder.
+- **Phase C (SW v136):** card tag pills are tappable (`renderTagPills` → `tagPillTap`) — tapping a `#tag` filters the app to that exact tag via the unified global search; `stopPropagation` stops the card's own expand/edit tap. A removable **active-filter chip** (`activeTagFilterChipHtml`, prepended in `renderSearchResults`) sits atop results, coloured to match the tag, one tap to clear. Verified 9/9 in a headless-browser sim.
+- **Known real bugs found but NOT fixed** (documented in `tag-search-notes.md`, founder hasn't prioritised): two tag tokenizers (`extractTags` vs `normalizeTag`) disagree on hyphens/non-ASCII; `getRelatedCapturesFor` (~index.html 8061) doesn't filter `notTrashed`, so a trashed capture shows under its project for up to 7 days.
 
 ## What shipped since the last real reconciliation (2026-06-27 → 2026-07-06)
 
@@ -87,9 +94,9 @@ Extracts + syntax-checks the inline module, `node --check`s every `api/**/*.mjs`
 ## Open items (in priority order)
 
 1. **Cross-device test pass** owed since the Trash/voice/AI rollout — still not confirmed done as of this reconciliation. Ask the user before assuming it happened.
-2. **`tests/*.mjs` is still empty.** Rebuild behavioural sims as sync/helper code gets touched — do it in the same commit as the helper, not as a separate cleanup pass.
+2. **`tests/*.mjs` is still empty.** Rebuild behavioural sims as sync/helper code gets touched — do it in the same commit as the helper, not as a separate cleanup pass. The tag/search work built two working browser sims (Phase B + Phase C `verify-phasec.mjs`) but they live in the session scratchpad, not `tests/` — committing them needs a **Playwright-gated runner** in `scripts/check.sh` so a fresh machine without the browser doesn't fail the gate. That runner is the concrete next step to get any browser sim into the repo. Harness pattern (Firebase-module stubs, `serviceWorkers:'block'`, `--no-sandbox`, point `executablePath` at the pre-installed `/opt/pw-browsers/chromium_headless_shell-*/chrome-linux/headless_shell`) is in `docs/tag-search-notes.md`.
 3. **Bigger AI features still deferred** (per the original priority list, minus `summarize-review` which is now done): smart EOD prompts, semantic search, auto-tag suggestion, full Daily Journal generation, pattern detection → routine suggestion.
-4. **This branch (`claude/update-claude-md-o5xdhd`) has no PR yet.** Open one if/when the user wants these doc fixes merged, or fold into the next feature branch's PR.
+4. **Two known tag/search bugs left unfixed** (founder hasn't prioritised, see the tag-search project section above): tokenizer disagreement (`extractTags` vs `normalizeTag`) and trashed captures leaking into project Related lists (`getRelatedCapturesFor`).
 
 ## What NOT to do
 

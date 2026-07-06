@@ -22,3 +22,13 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 - Where else: "docs/experiments.md or docs/ai-features.md in this repo — same risk, just not caught yet."
 - Quiz question: "You skim `docs/some-feature.md`, see 'Reconciled 2026-08-01' at the top, and it's only 2 weeks old — do you trust its body without checking it against the actual code/commits first? Why or why not?"
 - Internalized: no
+
+---
+
+### 2026-07-06 — Playwright I installed didn't match the browser already on the machine
+- What happened: to verify Phase C in a real browser I `npm install`ed Playwright, but it launched looking for a browser version (`chromium-1140`) that wasn't there — the cloud environment ships a *different* pre-installed Chromium (`chromium-1194`). Pointing at that binary then failed a second way: the full `chrome` build has dropped the old headless mode Playwright 1.48 asks for. Fix was to point `executablePath` at the separate `headless_shell` binary that still implements it. Two rounds of trial-and-error before the browser even launched.
+- Concept: **a tool and the thing it drives are two separate versions that must line up.** The test *library* (Playwright, from npm) and the *browser* it controls (pre-installed on the box) are pinned independently; install the library fresh and it assumes a browser version the machine doesn't have. When an environment pre-provisions the heavy dependency, you adopt its version rather than letting the library fetch its own. Instance of the "ephemeral environment" theme — the box has its own fixed toolchain you must conform to, not override.
+- In my words: (pending — answer at next wrap)
+- Where else: (pending — answer at next wrap)
+- Quiz question: "You `npm install` a browser-automation library to run a quick test, and it errors that a browser is missing — but the machine clearly has Chrome pre-installed. What's the likely mismatch, and what do you reach for before trying to download anything?"
+- Internalized: no
