@@ -13,9 +13,17 @@ are approved (every commit auto-ships to production via the claude/* → main au
   duplicated (and diverged from) the unified searcher. Verified: 19/19 browser assertions
   pass against the modified app. Phase A (tag-tokenizer fixes) intentionally skipped per
   founder — the split is minor and A was fix-forward-only anyway, so B stands alone.
-- **Not done:** Phase C (UI affordances — tappable tag pills, active-filter chip). The
-  browser harness lives in the session scratchpad (`tagsearch/`), not yet committed to
-  `tests/` (needs a playwright-gated runner so `scripts/check.sh` doesn't fail on a fresh env).
+- **Phase C shipped** (2026-07-06). Card tag pills are now tappable (`renderTagPills` →
+  `tagPillTap`): tapping any `#tag` routes through the unified global search as an exact-tag
+  query (so it agrees with the Journal filter pills — `#win` ≠ `#winner`), `stopPropagation`
+  keeps the parent card's expand/edit tap from also firing. A removable **active-filter chip**
+  (`activeTagFilterChipHtml`, prepended in `renderSearchResults`) sits atop the results,
+  coloured to match the tag; one tap clears the filter via `closeGlobalSearch()`. Verified:
+  9/9 browser assertions pass against the modified app (Playwright, Firebase-stubbed, SW-blocked).
+- **Test harness still not committed to `tests/`.** The Phase C sim lives in the session
+  scratchpad (`verify-phasec.mjs`); like the Phase B harness it needs a Playwright-gated runner
+  (browser + module present only in this env) before `tests/*.mjs` can host it without breaking
+  `scripts/check.sh` on a fresh machine. Documented pattern in the "Testing setup" lesson below.
 
 ## Lessons
 

@@ -1284,6 +1284,57 @@ mark.hl {
   cursor: pointer;
 }
 .tag-pill.tag-more:hover { color: var(--text2); border-color: var(--text3); }
+/* Tappable card tag-pills — tap to filter the app to that exact tag. */
+.tag-pill.tappable { cursor: pointer; transition: transform 0.08s, filter 0.12s; }
+.tag-pill.tappable:hover { filter: brightness(1.08); }
+.tag-pill.tappable:active { transform: scale(0.92); }
+/* Active tag-filter chip — sits atop search results, removable in one tap. */
+.active-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 0.85rem;
+  flex-wrap: wrap;
+}
+.active-filter-label {
+  font-size: 0.68rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 6px 4px 12px;
+  border-radius: 999px;
+  background: var(--muted-bg);
+  color: var(--muted-text);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.08s, filter 0.12s;
+}
+.active-filter-chip.tag-win     { background: var(--tag-win-bg);     color: var(--tag-win-text); }
+.active-filter-chip.tag-insight { background: var(--tag-insight-bg); color: var(--tag-insight-text); }
+.active-filter-chip.tag-dft     { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
+.active-filter-chip.tag-pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
+.active-filter-chip.tag-project { background: var(--tag-dft-bg);     color: var(--tag-dft-text); }
+.active-filter-chip.tag-1pct    { background: var(--tag-win-bg);     color: var(--tag-win-text); }
+.active-filter-chip:hover  { filter: brightness(1.08); }
+.active-filter-chip:active { transform: scale(0.96); }
+.active-filter-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 0.95rem;
+  line-height: 1;
+  background: rgba(128,128,128,0.22);
+}
 .tag-pick-pill:active { transform: scale(0.96); }
 .tag-custom-input {
   font-size: 0.78rem;
@@ -7290,8 +7341,14 @@ function renderTagPills(tags, opts = {}) {
   const limit   = (opts && opts.limit)   || CARD_TAG_LIMIT;
   const visible = tags.length > limit ? tags.slice(0, limit) : tags;
   const hidden  = tags.length - visible.length;
+  // Each pill is tappable: tapping it filters the app to that exact tag via
+  // the unified global search (#tag → exact-tag match). stopPropagation in
+  // tagPillTap keeps the parent card's own tap (expand/edit) from firing too.
   const pillsHtml = visible
-    .map(t => `<span class="tag-pill ${tagClassFor(t)}">${esc(t)}</span>`)
+    .map(t => {
+      const arg = esc(t).replace(/'/g, "\\'");
+      return `<span class="tag-pill tappable ${tagClassFor(t)}" role="button" tabindex="0" onclick="tagPillTap(event,'${arg}')" title="Filter by ${esc(t)}">${esc(t)}</span>`;
+    })
     .join('');
   const moreHtml = hidden > 0
     ? `<span class="tag-pill tag-more" title="${tags.slice(limit).map(t => esc(t)).join(' · ')}">+${hidden} more</span>`
@@ -14198,6 +14255,19 @@ window.openGlobalSearch = function() {
   const input = _findActiveSearchInput();
   if (input) input.focus();
 };
+// Tapping a tag pill on any card filters the whole app to that exact tag.
+// We route through the unified global search (an exact `#tag` query does
+// tag-membership matching, so it agrees with the Journal filter pills) and
+// open the search input so the state is visible + clearable. event is passed
+// so we can stop the tap bubbling up to the card's own expand/edit handler.
+window.tagPillTap = function(ev, tag) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  globalSearch = tag;
+  globalSearchOpen = true;
+  renderMain(true);
+  const input = _findActiveSearchInput();
+  if (input) input.blur(); // dismiss the mobile keyboard — this is a filter, not typing
+};
 window.closeGlobalSearch = function() {
   globalSearchOpen = false;
   globalSearch = '';
@@ -14262,16 +14332,36 @@ function renderSearchResults() {
   });
   matches.sort((a, b) => (b.sortKey || '').localeCompare(a.sortKey || ''));
 
+  // When the query is an exact `#tag`, show a removable "active filter" chip
+  // above the results so the tag-filter state is obvious and one tap clears
+  // it. Prepended to both the empty and populated branches.
+  const chip = activeTagFilterChipHtml();
+
   if (!matches.length) {
-    return `<div class="empty" style="padding:2rem 0.5rem;text-align:center">No matches found for "${esc(globalSearch)}".</div>`;
+    return chip + `<div class="empty" style="padding:2rem 0.5rem;text-align:center">No matches found for "${esc(globalSearch)}".</div>`;
   }
-  return matches.map(m => {
+  return chip + matches.map(m => {
     if (m.kind === 'cap')      return renderCapPreview(m.item);
     if (m.kind === 'daily')    return renderDailyJournalCard(m.item);
     if (m.kind === 'session')  return renderSessionCard(m.item);
     if (m.kind === 'learning') return renderLearningCard(m.item);
     return '';
   }).join('');
+}
+
+// The removable chip shown atop search results when the active query is an
+// exact `#tag` filter (typically entered by tapping a tag pill). Coloured to
+// match the tag; tapping it clears the filter via closeGlobalSearch(). Returns
+// '' for empty or multi-word (free-text) queries — those aren't tag filters.
+function activeTagFilterChipHtml() {
+  const q = (globalSearch || '').trim();
+  if (!q || !q.startsWith('#') || /\s/.test(q)) return '';
+  const tag = normalizeTag(q);
+  if (!tag) return '';
+  return `<div class="active-filter-row">
+    <span class="active-filter-label">Filtering by</span>
+    <button class="active-filter-chip ${tagClassFor(tag)}" onclick="closeGlobalSearch()" title="Clear filter" aria-label="Clear ${esc(tag)} filter">${esc(tag)}<span class="active-filter-x">&times;</span></button>
+  </div>`;
 }
 
 // Reusable search input row — same look across every page. Reads/writes
