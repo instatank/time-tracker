@@ -54,7 +54,7 @@ State lives in three places, in this order of truth: module-level `let` vars →
 - `dayos_life_ratings_v1` — `{ 'YYYY-MM-DD': { metricId: 1–5 } }` (Daily Check-in)
 - `dayos_eod_v1` — `{ 'YYYY-MM-DD': text }` (EOD review note)
 - `dayos_dfts_v1` — `{ 'YYYY-MM-DD': { text, status } }` status ∈ `pending | done | skipped`
-- `dayos_weekly_reviews_v1` / monthly reviews — structured review objects keyed by period
+- `dayos_weekly_reviews_v1` / `dayos_monthly_reviews_v1` — structured review objects keyed by period; can carry an `aiSummary` string (see AI features)
 - `dayos_tag_history_v1` — user's custom tag history
 - `dayos_experiments_v1` — `{ [flagKey]: true }` opt-in feature flags. **Local-only / NOT synced** by design (so a half-baked experiment on phone never leaks to laptop). Surfaced in Settings → Experiments. See `docs/experiments.md`.
 - `dayos_default_blocks_config_v1` — `{ templates: [{ id, enabled, start_time, duration_min, category, label, projectTag? }] }` user-defined daily auto-blocks (Settings → Daily defaults). Synced to `users/{uid}/meta/defaultBlocks`. The auto-creator runs at the top of every `renderToday` and uses deterministic block IDs (`default-{tplId}-{date}`) so two devices racing produce one Firestore document, not two.
@@ -127,13 +127,18 @@ Firestore paths: `users/{uid}/{blocks|captures|sessions|learning|dailyJournal}/{
 
 ### Trends / Dashboard
 
-- **Calendar sub-tab**: pick a date → see that day's blocks + Daily Journal entry + captures + EOD + life ratings.
-- **Week/Month view**: bar chart (Totals) or line chart (Over Time), Metrics grid, Weekly/Monthly Review.
+- **Calendar sub-tab**: pick a date → see that day's blocks + Daily Journal entry + captures + EOD + life ratings. The numbered grid doubles as a consistency heatmap — each day-with-data gets a `cal-dot-l0`–`l4` marker (neutral = data but no logged hours; red→orange→yellow→green by waking hours logged, via `hoursLevel()`), with a Less→More legend.
+- **Charts sub-tab**: `view-toggle-prominent` switches Totals (bar chart) vs Over Time (line chart); both read a **calendar week/month period** from `getDashPeriod()`, walked backwards with `‹ / ›` (`shiftDashPeriod`, state in `dashPeriodOffset`) so the numbers line up exactly with Weekly/Monthly Review. Metric cards show a `metric-delta` chip vs the prior period.
+- **Weekly/Monthly Review**: structured review screens with an **AI Summary** section (`renderReviewAiSummary` / `draftReviewSummary`) — see AI features.
 - `SKIPPED_CAT` computed at render. Over Time chart uses Chart.js lazy-loaded from CDN; instance in `_chartInstance`, destroyed before rebuild.
+
+### Anchored preview snippets
+
+`anchoredPreview(text, needle, opts)` (used by Journal search, `#tag` filter pills, and Today's Wins panel, which always anchors on `#win`) locates the matched term inside a long entry and windows the collapsed preview around that line instead of always showing the first line, wrapping the match in `<mark class="hl">`. Falls back to a plain head-of-text preview when the needle isn't found (e.g. a tag added via the pill picker rather than typed inline).
 
 ### AI features
 
-Three Claude-powered features, all server-proxied through `api/ai/claude.mjs`, all "AI proposes → user confirms": **activity-block extraction** (voice dump → time blocks), **organize** (tighten Thoughts/Reflection), **task extraction** (dump → Daily Journal tasks). Full architecture, prompts, auth, and tuning in **`docs/ai-features.md`**.
+Four Claude-powered features, all server-proxied through `api/ai/claude.mjs`, all "AI proposes → user confirms": **activity-block extraction** (voice dump → time blocks), **organize** (tighten Thoughts/Reflection), **task extraction** (dump → Daily Journal tasks), **review summary** (`summarize-review`: week/month digest → editable narrative recap, stored as `aiSummary` on the review doc). Full architecture, prompts, auth, and tuning in **`docs/ai-features.md`**.
 
 ### Push notifications
 
