@@ -94,6 +94,16 @@ Daily Journal, Project Sessions, and Learning entries autosave (no Save button):
 
 `extractTags(text)` parses `#hashtags` → lowercased, space-stripped. Stored on blocks + captures + all entry types at save time. **Special tags**: `#dft`, `#win`, `#insight`, `#1%` — surface as filter pills in Journal. **Project matching**: a `tags` entry of `#<projectslug>` links an entry to a project; the canonical project list lives in `dayos_projects_v1`.
 
+Two tokenizers must stay in lockstep: `extractTags` (inline `#hashtags`, regex-based) and `normalizeTag` (picker's custom-tag input). They currently diverge on some inputs (hyphens, non-ASCII) — see `docs/tag-search-notes.md` — so any tag-parsing change must touch both.
+
+### Search
+
+One unified global search (`globalSearch` state → `renderSearchResults()`) spans every collection **except activity-log blocks** (excluded by spec). The search icon appears on Today / Journal / Projects (not Trends); when the query is non-empty each of those pages short-circuits to `renderSearchResults()`. Two query modes:
+- **Exact `#tag`** — a single `#tag` token (no spaces) matches only entries whose `tags[]` contains that exact tag, so it agrees with the Journal filter pills (`#win` does **not** surface `#winner`).
+- **Multi-word substring** — any other query splits on whitespace; every term must appear somewhere in the entry, in any order (AND). Haystack = body/thoughts/reflection/task text + tags + voice-note titles + attachment filenames. Case-insensitive.
+
+Results render in each type's native card, sorted by timestamp desc; trashed entries are excluded. No index — a linear scan, measured fine at personal scale (~15 ms over 5k entries). Journal's `#win`/`#insight`/`#dft`/`#1%` filter pills (`journalFilter` state) are a separate, tag-exact path that also pulls in matching activity blocks; an active search query replaces (does not compose with) the pill filter.
+
 ### DFT (Daily Focus Task)
 
 Stored in `dayos_dfts_v1`. States: `pending` → tick (`done`) or skip (`skipped`). Both auto-create a journal capture with `#dft` tag. `sweepOldDfts()` auto-skips pending DFTs from previous days on init. The Today-page DFT control is an inline strip between the search icon and + button: single tap toggles the ✓/✕ actions, double tap edits.
