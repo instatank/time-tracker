@@ -1,4 +1,4 @@
-# Session handoff — reconciled 2026-07-02
+# Session handoff — reconciled 2026-07-06
 
 Working state for the next agent picking up this repo. Read top to bottom; nothing else from prior chats carries over. **Facts below are re-verified against the code by the `/wrap` skill at each session end — this doc was once ~60 SW versions stale; if a fact disagrees with the code, the code wins (fix the doc in the same commit).**
 
@@ -6,32 +6,40 @@ Working state for the next agent picking up this repo. Read top to bottom; nothi
 
 ## Current state
 
-- **Branches:** `claude/*` branches auto-merge to `main` via GitHub Actions, `main` deploys to Vercel. (Check `git branch --show-current` — don't trust a doc for this.)
-- **Service worker cache key:** check `const CACHE` at the top of `sw.js` — currently `dayos-v134` as of 2026-07-02. **Mandatory** to bump on every user-facing change — devices serve stale `index.html` otherwise. The `/ship` skill does this automatically.
-- **2026-07-02:** shared cross-project playbook added under `playbook/` (global rules, SOPs, learning method) + `/ship` and `/wrap` skills + Stop-hook wrap reminder + in-repo pre-push gate `scripts/check.sh` + `LEARNINGS.md` friction ledger.
+- **Branches:** `claude/*` branches auto-merge to `main` via GitHub Actions, `main` deploys to Vercel. (Check `git branch --show-current` — don't trust a doc for this.) Current working branch: `claude/update-claude-md-o5xdhd`, no PR opened yet for it.
+- **Service worker cache key:** check `const CACHE` at the top of `sw.js` — currently `dayos-v134` as of 2026-07-06. **Mandatory** to bump on every user-facing change — devices serve stale `index.html` otherwise. The `/ship` skill does this automatically.
+- **Latest commit:** `06c8231` — CLAUDE.md doc-drift fix (see below). Working tree clean.
 
-## What this session built (big picture)
+## What shipped since the last real reconciliation (2026-06-27 → 2026-07-06)
 
-This was an intensive multi-day session. Major systems shipped:
+The 2026-07-02/03 version of this doc claimed to be "reconciled" but only patched a top bullet — the body below was still describing the pre-2026-07-01 state. Corrected now. Actual scope of what shipped:
 
-1. **Voice notes** (Firebase Storage). Per-entry attached voice notes across Quick Note / Project Note / Daily Journal / Project Session / Learning. Plus a Today-page strip for one-tap quick-note voice dumps. Title search, playback indicator with elapsed time, ×-delete with two-tap confirm.
-2. **7-day Trash** for entries + voice notes (soft-delete model). Settings → Trash with multi-select + bulk restore/purge. Sweep on init + post-sign-in hard-deletes anything past TTL.
-3. **Autosave** on Project Sessions + Learning entries (Daily Journal model). No more Save button on those modals.
-4. **Push notifications** — daily 11:30pm IST reminder via Vercel cron + FCM. Hobby plan limits cron to daily; single entry.
-5. **iOS PWA polish** — safe-area-inset for status bar + home indicator, status-bar-style flipped to "default", explicit standalone-mode CSS fallback with `!important`.
-6. **AI infrastructure (the major new system).** Three Claude tasks live: activity-block extraction, organize (Thoughts/Reflection), task extraction. See `docs/ai-features.md`.
-7. **Smaller polish:** × close buttons on all big modals, Projects/Learning lists default to current-month view, Trends calendar now shows Daily Journal entries.
+1. **Trends / Dashboard overhaul (2026-06-29 → 07-01), all on `main`:**
+   - Time by Category collapsed into a slim ratio-bar snapshot; Skipped based on elapsed waking hours (not full days); sleep-window blocks excluded from category totals with drill-down.
+   - Charts sub-tab: calendar-based Week/Month periods with `‹ / ›` navigation (`dashPeriodOffset`, `getDashPeriod()`), per-metric delta chips vs. the prior period, and a prominent Totals/Over-Time toggle.
+   - Calendar sub-tab: numbered grid doubles as a consistency heatmap (`cal-dot-l0`–`l4`, red→orange→yellow→green by waking hours logged via `hoursLevel()`), with a Less→More legend and a first-run empty state.
+   - **AI-drafted Weekly/Monthly Review summaries** — a 4th AI feature (`summarize-review`): client builds a digest (`buildWeeklyDigest`/`buildMonthlyDigest`), AI drafts an editable recap, saved as `aiSummary` on the review doc. This is the "bigger AI feature" the 2026-06-27 handoff had listed as deferred — it's done now, not pending.
+   - Anchored search/hashtag preview snippets (`anchoredPreview()`): Journal search, `#tag` pills, and Today's Wins panel now window the collapsed preview around the matching line instead of always showing the first line.
+2. **Cross-project infrastructure (2026-07-02/03):** shared `playbook/` (global rules, ship/sync/deploy/verify SOPs, learning method) + `/ship` and `/wrap` skills + Stop-hook wrap reminder + in-repo pre-push gate `scripts/check.sh` (replaces the old unversioned `/tmp/dayos-check/` sims, which were lost) + `LEARNINGS.md` friction ledger + `learning_notes.md` (cross-session diagnosis, items 1–11 shipped).
+3. **2026-07-06:** `CLAUDE.md`'s Trends/Dashboard and AI-features sections were still describing the pre-2026-07-01 state (3 AI features, no heatmap, no period nav) despite all of the above being live on `main` for days — fixed in `06c8231`. This doc (`session-handoff.md`) had the same problem, one layer worse (claimed "reconciled" while stale) — fixed in this wrap.
+
+## Earlier history (pre-2026-06-27, still accurate, kept for context)
+
+Major systems from the prior session block: **voice notes** (Firebase Storage, per-entry, Today-page quick-dump strip), **7-day Trash** (soft-delete + Settings → Trash + sweep), **autosave** on Sessions + Learning, **push notifications** (daily 11:30pm IST via Vercel cron + FCM — Hobby plan caps cron to once daily), **iOS PWA polish** (safe-area-inset, `!important` standalone fallback), and the first 3 **AI features** (`extract-blocks`, `organize`, `extract-tasks`) — all verified working, all superseded as "final" once the 4th (`summarize-review`) shipped.
 
 ## Active areas the user is iterating on
 
-- **AI features are in active testing.** User said they'd continue testing and bring feedback. Prompts will likely need tuning.
-- No private documents being drafted off-disk this session (unlike the previous handoff which mentioned `docs/working-with-claude.md` being iterated privately).
+- No specific feature currently flagged as "user is actively testing, feedback pending" — the last explicit testing note (AI extract/organize/task-extraction) was marked verified working in earlier commits. Confirm with the user at session start whether that's still true; don't assume.
+- No private documents being drafted off-disk.
 
 Files that exist as project SOPs:
 - `CLAUDE.md` — architecture, data model, render pattern, IST helpers, recap commands. **Read this first.**
-- `docs/sync-lessons.md` — Firestore-sync gotchas distilled from earlier sessions, paste-ready brief for use on other projects.
+- `playbook/PLAYBOOK.md` — cross-project global rules + SOPs (ship/sync/deploy/verify). Supersedes old per-repo cheatsheets; read at session start.
+- `playbook/SOP-firebase-sync.md` — Firestore-sync gotchas (shared; `docs/sync-lessons.md` is a superseded stub, kept only for old links).
 - `docs/dayos-sop.md` — Plain-English founder-learnings doc the user wrote ("what I'd tell myself starting again"). Not technical reference.
-- `docs/ai-features.md` (**new this session**) — AI infrastructure + prompt locations + tuning notes.
+- `docs/ai-features.md` — AI infrastructure + prompt locations + tuning notes, kept current including `summarize-review`.
+- `docs/experiments.md` — per-flag tracker for Settings → Experiments.
+- `LEARNINGS.md` — friction ledger, appended by `/wrap`.
 
 ## Tests live IN the repo now
 
@@ -47,32 +55,13 @@ bash scripts/check.sh
 
 Extracts + syntax-checks the inline module, `node --check`s every `api/**/*.mjs`, runs `tests/*.mjs` sims if present. The `/ship` skill runs this plus the cache bump. Full ritual + why: `playbook/SOP-ship.md`.
 
-**Static checks are necessary but NOT sufficient.** Multiple bugs this session passed static checks and broke at runtime. For anything touching the AI route or service worker: deploy preview + verify before declaring done.
+**Static checks are necessary but NOT sufficient.** Multiple bugs in past sessions passed static checks and broke at runtime. For anything touching the AI route or service worker: deploy preview + verify before declaring done.
 
 ## Branch flow + deploy (CRITICAL — read before touching Vercel)
 
 - **`claude/*` → auto-merges to `main` → Vercel deploys.** Every commit ships.
-- **Vercel deployment can silently fail** if `vercel.json` rejects a cron schedule (Hobby plan caps cron to daily). When deploys mysteriously stop, check Deployments tab in Vercel UI for the actual error. We got bitten by `*/30 * * * *` being rejected silently — burned half a day debugging.
+- **Vercel deployment can silently fail** if `vercel.json` rejects a cron schedule (Hobby plan caps cron to daily). When deploys mysteriously stop, check Deployments tab in Vercel UI for the actual error. Got bitten by `*/30 * * * *` being rejected silently — burned half a day debugging.
 - **`api/*.mjs` extension matters.** ES module syntax (`import` / `export default`) requires `.mjs` OR a `package.json` with `"type": "module"`. This project uses `.mjs`. Don't rename to `.js`.
-
-## Recent work — what shipped, what's still being tested
-
-Most of this session is on `main` and live. **Bold = user is still testing / hasn't given final approval.**
-
-| Commit | What | User verified? |
-|---|---|---|
-| `74b16d9` | **AI: Task extraction in Daily Journal Tasks section** | **Pending** |
-| `09048ef` | **Organize → Sonnet 4.6 + aggressive cutting prompt** | **Pending** |
-| `9d70b09` | AI Organize on Thoughts + Reflection | Verified working |
-| `09a8780` | AI extract: label history + activity splitting | Verified working |
-| `3c27c5f` | AI: Activity log extraction (Sonnet) | Verified working |
-| `420017c` | Trends calendar shows Daily Journal | Verified working |
-| `2e5f282` | Trash: 7-day soft-delete recovery | Verified working |
-| `71f3f5c` | Trash: multi-select + bulk actions | Verified working |
-| `2f7fe1e` | Autosave on Sessions + Learning | Verified working |
-| `7e73d7f` | Cron: 11:30pm IST daily push reminder | Working (Vercel cron registered) |
-| `f851a47` | iOS PWA safe-area fix | Verified working after reinstall |
-| `dbafa97` | Voice notes rollout to all entry types | Verified working |
 
 ## Conventions you must follow
 
@@ -85,10 +74,11 @@ Most of this session is on `main` and live. **Bold = user is still testing / has
 - **Use function-wrapper aliases, not bare assignments.** `window.X = function() { window.Y(); }` not `window.X = window.Y`. The latter captures `undefined` if Y is defined later in the file. Got bitten earlier — see commit `9e107fb` for the fix pattern.
 - **Bump `dayos-vN` in `sw.js` on every user-facing change.** Server-only changes (`api/*.mjs`) don't need a bump.
 - **iOS PWA: use `min(env(safe-area-inset-*), Npx)` patterns** when capping. `max(env(...), Npx)` for forcing a minimum.
+- **Docs drift independently of each other.** Reconciling `session-handoff.md` does NOT mean `CLAUDE.md` (or vice versa) is current — each doc describing the same system must be checked against the actual code separately, every session. A doc's own "reconciled [date]" header is not proof it's accurate; verify, don't trust the label.
 
 ## AI features — high-level (full detail in `docs/ai-features.md`)
 
-- Server proxy at `api/ai/claude.mjs`. Three tasks: `extract-blocks`, `organize`, `extract-tasks`. All use Sonnet 4.6.
+- Server proxy at `api/ai/claude.mjs`. **Four** tasks: `extract-blocks`, `organize`, `extract-tasks`, `summarize-review`. All use Sonnet 4.6.
 - Auth: Firebase ID token verified server-side via project public keys. No npm deps.
 - Client: `aiCall(task, input, ctx)` helper in `index.html` — Firebase ID token in Authorization header.
 - Cost ceiling: user set $5/mo Anthropic spend cap. ~$0.005/call on Sonnet. Plenty of headroom.
@@ -96,10 +86,10 @@ Most of this session is on `main` and live. **Bold = user is still testing / has
 
 ## Open items (in priority order)
 
-1. **User is testing the three AI features.** Prompts will likely need tuning. Expect feedback on: over-cutting in Organize, missed/incorrect task extraction, label inconsistency in activity extraction.
-2. **Next AI feature pending: Organize on Quick Notes + Project Notes.** Trivial extension; same backend, same UX. ~1h of work.
-3. **Bigger AI features deferred:** Weekly/Monthly review summarizer, smart EOD prompts, semantic search, auto-tag suggestion, full Daily Journal generation, pattern detection → routine suggestion. User wanted to ship the smaller ones first and revisit these after a few days of using current features.
-4. **Cross-device test pass** of everything since `2e5f282` (Trash + voice + AI) is still owed. User has been testing piecemeal but hasn't done a deliberate cross-device sweep.
+1. **Cross-device test pass** owed since the Trash/voice/AI rollout — still not confirmed done as of this reconciliation. Ask the user before assuming it happened.
+2. **`tests/*.mjs` is still empty.** Rebuild behavioural sims as sync/helper code gets touched — do it in the same commit as the helper, not as a separate cleanup pass.
+3. **Bigger AI features still deferred** (per the original priority list, minus `summarize-review` which is now done): smart EOD prompts, semantic search, auto-tag suggestion, full Daily Journal generation, pattern detection → routine suggestion.
+4. **This branch (`claude/update-claude-md-o5xdhd`) has no PR yet.** Open one if/when the user wants these doc fixes merged, or fold into the next feature branch's PR.
 
 ## What NOT to do
 
@@ -109,6 +99,7 @@ Most of this session is on `main` and live. **Bold = user is still testing / has
 - Don't push to `main` directly. Always work on the `claude/*` branch.
 - Don't add the FCM/Whisper/transcription pipeline without explicit user request. We discussed it; user explicitly said skip — they have an external transcription tool.
 - Don't change cron from daily to more frequent without explaining the Vercel Hobby plan limit (cron must be daily).
+- Don't trust a doc's own "reconciled" claim without diffing it against current commits/code — see the Conventions entry above.
 
 ## How the user works
 
@@ -119,4 +110,4 @@ Most of this session is on `main` and live. **Bold = user is still testing / has
 
 ---
 
-*Generated at end of session, June 2026. Pin this file at the start of the next session by reading it top to bottom. Then read `CLAUDE.md`, then `docs/sync-lessons.md`, then `docs/ai-features.md`, then `git log --oneline -25`. That's the onboarding.*
+*Generated/reconciled at end of session, 2026-07-06. Pin this file at the start of the next session by reading it top to bottom. Then read `CLAUDE.md`, then `playbook/PLAYBOOK.md`, then `docs/ai-features.md`, then `git log --oneline -25`. That's the onboarding.*
