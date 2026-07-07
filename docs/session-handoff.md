@@ -1,4 +1,6 @@
-# Session handoff — reconciled 2026-07-06 (Phase C wrap)
+# Session handoff — reconciled 2026-07-06 (Phase C wrap); docs-only addendum 2026-07-07
+
+**2026-07-07 (branch `claude/dayos-second-brain-integration-argsm7`, docs only — no app code, no SW bump needed):** DayOS is now a **memory bank for the founder's personal AI agent** (`instatank/instatank42`). The agent mirrors this Firestore read-only via a service account (same REST pattern as `api/cron-reminders.mjs`) into markdown on its server. What changed in THIS repo: new contract doc `docs/second-brain-integration.md` (collections/fields/invariants the agent depends on), pointers in `CLAUDE.md`, and a 7th checklist site in `playbook/SOP-firebase-sync.md` (schema changes must update the contract doc in the same commit). The agent-side implementation lives entirely in the instatank42 repo (`docs/SECOND_BRAIN.md` there is the plan of record).
 
 Working state for the next agent picking up this repo. Read top to bottom; nothing else from prior chats carries over. **Facts below are re-verified against the code by the `/wrap` skill at each session end — this doc was once ~60 SW versions stale; if a fact disagrees with the code, the code wins (fix the doc in the same commit).**
 

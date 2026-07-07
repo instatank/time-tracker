@@ -19,6 +19,8 @@
 
 Repo variants: Cadence — anything mutating user state must be added to the `setDoc` call in `saveState()`, and every schema migration bumps `_meta.version` + changelog + the seeder gate in `index.html` **together**. BillOS — bill-doc fields ride `attachments[]`-style embedded arrays; see `SYNC.md` for the cross-user gate.
 
+**DayOS only — a 7th site:** the personal AI agent reads DayOS's Firestore as a second-brain memory bank (read-only service account). Its data contract lives in `docs/second-brain-integration.md` — if the schema change touches a collection, field, or invariant listed there, **update that doc in the same commit** (and flag the agent repo if a collection was added/renamed). Field renames are address changes (L5): they break the consumer silently.
+
 ### B. Any write that a UI waits on
 
 Apply Playbook L1: issue the write, update the UI immediately, `.catch` → toast. Never gate a modal close or spinner on `await setDoc/updateDoc` under offline persistence. Exception: true transactions (BillOS Mark Paid) stay awaited.

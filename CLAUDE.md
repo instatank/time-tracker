@@ -134,6 +134,7 @@ Firestore paths: `users/{uid}/{blocks|captures|sessions|learning|dailyJournal}/{
 - `initialSync(uid)` on sign-in merges local + remote, then batch-writes back. Uses `onSnapshot` for live updates.
 - `forcePushToCloud()` / `forcePullFromCloud()` — manual overrides in Settings.
 - **New collection checklist:** per-write sync fn + `initialSync` + `forcePushToCloud` + `forcePullFromCloud` + tombstones + `_synced` flag. Miss any → silent cross-device data loss. See `docs/sync-lessons.md`.
+- **External consumer:** the founder's personal AI agent (`instatank/instatank42`) mirrors this Firestore read-only as a second-brain memory bank. Schema changes to synced collections must also update the contract doc `docs/second-brain-integration.md` (same commit — it's in the sync SOP checklist).
 
 ### Trends / Dashboard
 
@@ -164,6 +165,7 @@ Respects `env(safe-area-inset-*)` for status bar + home indicator. `apple-mobile
 - `docs/ai-features.md` — full AI architecture + prompt locations + tuning.
 - `playbook/SOP-firebase-sync.md` — Firestore sync gotchas (shared playbook; `docs/sync-lessons.md` is a superseded stub).
 - `docs/experiments.md` — per-flag tracker for everything under Settings → Experiments. Lists exact functions, CSS blocks, sheets, and wiring sites to delete when graduating or killing each experiment.
+- `docs/second-brain-integration.md` — the Firestore data contract for the personal AI agent that reads DayOS as a memory bank. **Update it in the same commit as any synced-schema change.**
 - `docs/dayos-sop.md` — the user's own plain-English founder-learnings doc.
 
 ## End of Session Learning Recap
