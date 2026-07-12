@@ -28,18 +28,18 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 ### 2026-07-06 — Playwright I installed didn't match the browser already on the machine
 - What happened: to verify Phase C in a real browser I `npm install`ed Playwright, but it launched looking for a browser version (`chromium-1140`) that wasn't there — the cloud environment ships a *different* pre-installed Chromium (`chromium-1194`). Pointing at that binary then failed a second way: the full `chrome` build has dropped the old headless mode Playwright 1.48 asks for. Fix was to point `executablePath` at the separate `headless_shell` binary that still implements it. Two rounds of trial-and-error before the browser even launched.
 - Concept: **a tool and the thing it drives are two separate versions that must line up.** The test *library* (Playwright, from npm) and the *browser* it controls (pre-installed on the box) are pinned independently; install the library fresh and it assumes a browser version the machine doesn't have. When an environment pre-provisions the heavy dependency, you adopt its version rather than letting the library fetch its own. Instance of the "ephemeral environment" theme — the box has its own fixed toolchain you must conform to, not override.
-- In my words: (pending — answer at next wrap)
-- Where else: (pending — answer at next wrap)
-- Quiz question: "You `npm install` a browser-automation library to run a quick test, and it errors that a browser is missing — but the machine clearly has Chrome pre-installed. What's the likely mismatch, and what do you reach for before trying to download anything?"
-- Internalized: no
+- In my words: — (founder: not present — this friction happened inside the session's tooling; per LEARNING_METHOD v2 §2 this card is exempt from founder questions, forever. Kept for future sessions.)
+- Where else: any repo where a session installs a driver/library for a tool the environment pre-provisions.
+- Quiz question: (exempt — founder not present)
+- Internalized: n/a (sessions' lane)
 
 ---
 
 ### 2026-07-12 — Rebuilt the learning ritual around witnessed moments (decision card)
 - The choice: fix the existing wrap ritual (LEARNING_METHOD v2: one multiple-choice question, only about moments the founder was present for, every answer producing a named visible outcome) instead of adding another parallel system on top. The live alternative was more process — extra review steps, more questions, a new tool.
-- Why (his words): (pending — asked at this wrap)
+- Why (his words): "a few reasons: they were too technical; they asked about moments I never saw; and also! even when I answered the questions, nothing happened!" (answered correctly at this wrap — named both root causes unprompted)
 - The principle: learning attaches to decisions you made or moments you witnessed — quizzing someone on an experience they didn't have produces "I don't know," and an answer that changes nothing visible trains people to stop answering.
-- Status: watching
+- Status: watching → scenario quiz due ~2026-07-19, then retire
 
 ---
 
