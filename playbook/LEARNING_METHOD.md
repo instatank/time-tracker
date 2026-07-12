@@ -1,82 +1,130 @@
-# The Friction Ledger — how you learn through building
+# The Learning Method v2 — decisions first, one question, visible outcomes
 
-**This doc is for you alone.** Claude sessions read it only to know what questions to ask you at wrap time. It designs how you grasp, retain, and grow — in minutes per session, hooked into the tooling so nothing depends on your memory. The end state it builds toward: you predicting failures before a session hits them, and needing the checklists less, not more.
-
-## The core idea
-
-You don't learn from sessions. You learn from **frictions** — the moments something broke, hung, duplicated, or silently lied. Your history proves it: every rule you actually *know* (bundled fixes break things, the phone is the truth, compiles ≠ works) came from a specific painful incident, not from reading. So the method's unit is one friction → one **concept card**, and everything else is machinery to make cards stick and transfer.
-
-**One concept per friction, not per session.** A session with three frictions yields up to three cards; a smooth session yields zero, and zero is a valid answer — padding kills the signal.
-
-## The concept card
-
-Cards live in each repo's `LEARNINGS.md`, appended by `/wrap`. Format:
-
-```
-### [date] — [short name of what broke]
-- What happened: one sentence, plain language.
-- Concept: the transferable idea, named. (Usually an instance of a PLAYBOOK entry — link it.)
-- In my words: ← YOUR one-sentence teach-back, recorded verbatim.
-- Where else: ← YOUR answer to "where else in my stack could this same thing bite?"
-- Quiz question: a prediction question a future wrap can ask you.
-- Internalized: no | streak 1/2 | YES (date) — two correct answers on separate days retires it.
-```
-
-The two arrowed fields are the learning. If a session writes the whole card itself, it's documentation; if *you* fill those two lines, it's memory.
-
-## The routine (all of it, and where the tooling drives it)
-
-**1. Pre-build prediction — 1 sentence, before new work starts.** When you kick off a feature, say: *"my guess: the risk here is ___."* The session logs it and checks it at wrap. Right or wrong doesn't matter — the act of predicting is what converts you from passenger to pilot, and calibration comes free over time. (Sessions are instructed to invite this; skip it freely on trivial tasks.)
-
-**2. Session wrap — 2–3 minutes, triggered by tooling, not memory.** The `/wrap` skill (backed by a Stop-hook nudge, so it fires even when everyone forgets) does the log-keeping itself — handoff doc, LEARNINGS append — and then asks **you** exactly three things:
-   - **Teach-back:** "One sentence, your words: what's the concept behind today's friction?" (Fills *In my words*. If you can't say it, the session re-explains and you try again — that loop IS the learning.)
-   - **Transfer:** "Where else in your stack could this same failure occur?" (Fills *Where else*. This question is the whole reason one project's pain protects the other six.)
-   - **Quiz — one old card:** the session picks your oldest non-internalized card and asks its prediction question, e.g. *"You're adding a synced 'tags' field to Cadence. What breaks if you forget the seeder gate?"* Answer correctly → streak +1. Two correct on separate days → the card is marked internalized and retires from rotation. **This is the graduation mechanism: retired cards are things you no longer need the checklist for.**
-
-**3. Weekly synthesis — ~10 minutes, one paste.** Once a week (pick a fixed slot — end of your Friday session works), paste this into any session:
-
-> *Weekly synthesis: read every repo's LEARNINGS.md for entries since [date]. For each: tell me which existing PLAYBOOK concept it's an instance of, or make the case it's genuinely new. Promote accordingly (extend the existing entry or add a new card), dedupe, and show me the diff. Then: glance at the model inventory in SOP-deploy.md for anything nearing retirement. End with the one question you'd quiz me on from this week.*
-
-   You read the diff and answer one question. That's the whole ritual. It keeps the playbook alive, catches the next model retirement, and gives you one more spaced repetition.
-
-**4. Graduation to invariants — when a card bites twice.** A concept that appears in two frictions has proven docs aren't enough for it. At that point ask the session to move it *into the machinery*: a check in the ship gate, a throw in the code, a hook. (Playbook L11.) Your fluency ladder, explicitly: **felt it → can say it → can predict it → machine enforces it → I design for it up front.** The ledger tracks where each concept sits.
-
-## Why this survives contact with a busy founder
-
-- Nothing here is a separate habit: the wrap is hook-triggered, the questions come to you, the synthesis is one paste. Your total cost: ~3 min/session + 10 min/week.
-- It gets *lighter* over time, not heavier: internalized cards retire; the quiz rotation shrinks as you grow. A method that accumulates obligations dies; this one is designed to empty itself.
-- It matches how you already think: EV per question. Teach-back and transfer are the two highest-retention moves known (self-explanation + application), bought for two sentences.
-
-## The self-test that matters
-
-You've internalized a concept when you can **predict the failure before the session hits it** — the pre-build prediction starts matching reality. Watch for the first time you say "careful, this write path — how do we find out if it fails silently?" *before* Claude flags it. That's the metric. Not how many cards you have; how many you've retired.
+**This doc is for Ankit and for Claude sessions.** Sessions follow §2–§4 mechanically at wrap
+time. **Precedence note for sessions:** if a repo's `/wrap` skill still describes the older
+ritual (teach-back + transfer + quiz, three questions), THIS document wins — run the v2 ritual
+below.
 
 ---
 
-## Worked example — a real lesson, end to end
+## §1 What broke in v1 (so we don't rebuild it)
 
-This is the BillOS optimistic-write lesson, walked through the full method with your actual history, so you can see what each stage looks like:
+The Friction Ledger's ideas were right (one concept per incident, teach-back, spaced quizzes).
+Its unit was wrong, and the founder said so plainly:
 
-**The friction (real, March–June 2026):** BillOS froze twice — a receipt stuck at "Uploading 100%", a bill stuck on "Saving…". Cause: with Firestore offline persistence, `await setDoc` waits for the *server's* acknowledgment, but the local cache had already saved; the UI was blocking on a promise that could stall forever.
+1. **Wrong unit.** Cards captured *Claude's* engineering frictions — Playwright binary
+   mismatches, ESM resolver quirks — that happened invisibly inside the session's work. Then
+   the wrap quizzed the founder on them. He was being tested on someone else's experience,
+   so the honest answer was "I don't know," every time. Learning attaches to moments you
+   *lived*, not moments that were summarized to you.
+2. **No visible outcome.** Answers were recorded into a file he never reopened. From his
+   side: effort in, nothing out. A ritual whose payoff is invisible gets rationally abandoned.
+3. **Too many asks.** Three questions per wrap (teach-back + transfer + quiz) at the exact
+   moment energy is lowest — end of session.
 
-**The card, as `/wrap` would have written it:**
+v2 keeps the card machinery but fixes all three: **only witnessed moments become questions;
+every answer changes something named on the spot; one question per wrap, maximum.**
+
+## §2 The two kinds of card
+
+### Decision cards — the founder's lane (this is where he learns)
+
+The unit of Ankit's learning is a **decision he made or watched being made**: a product call,
+a scope cut, a plan he approved or rejected, a tradeoff he picked from options, a technique he
+tried from `CURRICULUM.md`. These are moments he was *present* for by definition.
 
 ```
-### 2026-05-14 — Bill save hung on "Saving…"
-- What happened: the save spinner waited for Firestore's server ack, which stalls
-  offline — but the local cache had already saved the bill instantly.
-- Concept: local truth vs server truth (PLAYBOOK L1) — never block UI on a server
-  acknowledgment when the local write is already committed.
-- In my words: "the app already saved it on my phone; waiting for the cloud to
-  agree just freezes me for no benefit."          ← your teach-back
-- Where else: "DayOS voice-note saves? Cadence finishing a workout?"  ← your transfer
-- Quiz question: "You add a 'pause bill' button that awaits updateDoc before
-  closing the sheet. What happens on a weak connection?"
-- Internalized: no
+### [date] — [the decision, in five words]
+- The choice: what was decided, and what the live alternative was.
+- Why (his words): ← recorded verbatim from the wrap answer.
+- The principle: the one-line transferable rule this instance suggests.
+- Status: watching | confirmed (it worked) | reversed (we learned the hard way)
 ```
 
-**The quiz, at a later wrap:** *"You add a 'pause bill' button that awaits updateDoc before closing the sheet — what happens on a weak connection?"* Correct answer: *"the sheet hangs even though the pause already saved locally — issue the write, close immediately, toast only on real failure."* Streak 1. Correct again next week → retired.
+Decision cards live in each repo's `LEARNINGS.md` alongside friction cards.
 
-**The payoff — already real, not hypothetical:** the concept *predicted* the third instance before it fired. BillOS's Pause/Cancel/Reactivate buttons still `await`ed their `updateDoc` — the diagnosis existed in your own handoff notes, found by asking "where else does this pattern exist?", which is exactly the transfer question above. It was fixed in this session (2026-07-02) before any user ever hit it. One friction, internalized, protected a code path you never had to debug.
+### Friction cards — the sessions' lane (unchanged format, new audience)
 
-**The graduation:** it bit twice, so it stopped being a note: it's now Playbook L1, wired into `SOP-firebase-sync.md`'s EXECUTE layer, checked whenever a session touches a write path. You'll know you've reached the top of the ladder the day you review a new feature plan and say, unprompted: "that spinner waits on the server, doesn't it?"
+Engineering frictions (the v1 card format) are still valuable — **for future sessions**, and
+as the raw feed for weekly promotion into `PLAYBOOK.md`. Sessions keep writing them. But:
+
+> **The witnessed rule: a card can only generate a founder question if the founder was present
+> for the moment** — he made the call, he saw it break, or the session flagged it live (📍,
+> §3) and he read the flag. Cards without a witnessed moment get `founder: not present` and
+> are *permanently exempt* from wrap questions and quizzes. No exceptions — one unanswerable
+> question costs more trust than ten cards are worth.
+
+## §3 During the session — the 📍 flag (sessions: do this)
+
+When something learn-worthy happens **while it's happening**, the session posts one line,
+marked so it's scannable:
+
+> 📍 **Moment:** we just chose X over Y because Z. *(one sentence, plain English, no jargon)*
+
+Rules for sessions: max 2–3 flags per session — flag the moment you'd want a smart
+non-technical co-founder to notice, not every technical event. A flag costs the founder
+nothing in the moment (no response expected). The wrap may only ask about flagged moments or
+decisions the founder himself made in conversation. **No flags and no founder decisions =
+no question at wrap.** A silent wrap is a valid wrap.
+
+## §4 At wrap — one question, one visible outcome (sessions: do this)
+
+After the mechanical wrap work (handoff reconcile, cards appended), ask **at most ONE**
+question, built like this:
+
+1. **Subject:** the most consequential witnessed moment of the session.
+2. **Form: multiple choice** (use AskUserQuestion), 3 options — the real principle, a
+   plausible near-miss, and a clearly-wrong distractor. Recognition beats recall for a
+   builder at this stage; free-text "explain the concept" questions produced blank stares in
+   v1. Offer free-text as the "Other" escape, never as the requirement.
+3. **Stakes stated up front:** say *why* this question, in one line ("this decides whether
+   the principle goes in the playbook").
+4. **The outcome, immediately and named.** Whatever he answers, something visible happens
+   *in the same reply*:
+   - Right → "Locked. I've written it into the card as confirmed; it'll come back as a
+     scenario quiz in ~a week, then retire."
+   - Wrong/unsure → re-explain in two plain sentences, then: "No penalty — I've marked it
+     'watching'; you'll see it again in a different form." (No streak resets announced like
+     a scolding. The v1 ledger literally recorded "founder needed the answer, streak reset" —
+     never write that sentence again.)
+   - Either way, if the principle is playbook-worthy, show the one-line diff being added.
+5. **Skipping is fine.** "Skip" is a first-class answer, logged without comment. Three skips
+   in a row on the same card = the card wasn't worth a question; drop it silently.
+
+**Quizzes (spaced repetition), redesigned:** only decision cards and *witnessed* friction
+cards enter rotation. A quiz question is always a **scenario with its context restated**
+("You're adding a synced field to Cadence — here's what that means: … — what's the first
+thing that breaks if you skip the seeder gate?") and **multiple choice**. One quiz max per
+wrap, and only if a card is due (~1 week since last touch); a wrap with a new-moment question
+skips the quiz — one question total, always.
+
+## §5 Weekly synthesis — one paste, ~30 minutes
+
+Once a week, fixed slot, paste into any session (or better: after CURRICULUM item 10, this
+arrives as a scheduled routine and pastes itself):
+
+> **Weekly review.** 1) Read every repo's LEARNINGS.md for cards since [date]; promote
+> playbook-worthy ones into PLAYBOOK.md (as instances of existing concepts where possible),
+> dedupe, show me the diff in plain English. 2) Look at playbook/CURRICULUM.md: tell me how
+> last week's technique went based on the cards, mark its status, and recommend next week's
+> — one line on why. 3) Glance at SOP-deploy.md's model inventory for anything nearing
+> retirement. 4) End with exactly one scenario quiz from a due card — multiple choice.
+
+His cost: read one diff, confirm one technique, answer one question.
+
+## §6 Monthly review — first session of the month, ~45 minutes
+
+> **Monthly review.** Open playbook/NORTH_STAR.md. 1) Re-score the four tracks — argue from
+> evidence in this month's LEARNINGS/commits, not vibes; show me last month's scores next to
+> your proposal. 2) Portfolio: recommend any tier changes, promotions, kills — with one-line
+> reasons. I decide. 3) Ask me the graduation-test question: what happened this month that
+> moved toward it? 4) Rewrite NORTH_STAR.md's assessment + date, show me the diff. 5) Refill
+> CURRICULUM.md if fewer than 4 unstarted items remain — check what's new in Claude Code
+> since the last refill.
+
+## §7 The self-test that matters (unchanged from v1 — it was right)
+
+You've internalized a principle when you **predict the failure or name the tradeoff before
+the session does.** Watch for the first unprompted "careful — does anything cache this?" or
+"what's the smallest slice here?" That's the metric. Not cards collected — questions you no
+longer need asked.

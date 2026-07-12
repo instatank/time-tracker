@@ -27,7 +27,7 @@ No build step for the app. Edit `index.html`, open it directly in browser, or pu
 
 ## Shared playbook (cross-project — read at session start)
 
-The single source of truth for global working rules, transferable lessons, and the ship / sync / deploy / verify SOPs lives in **`playbook/`** in this repo (`PLAYBOOK.md` first). It supersedes the old per-repo cheatsheets. Every session: read `playbook/PLAYBOOK.md`; before ending a session that shipped commits, run the **`/wrap`** skill (a Stop hook nudges once if forgotten) — it reconciles `docs/session-handoff.md` against reality, appends friction cards to `LEARNINGS.md`, and asks the founder the two learning questions from `playbook/LEARNING_METHOD.md`.
+The single source of truth for global working rules, transferable lessons, and the ship / sync / deploy / verify SOPs lives in **`playbook/`** in this repo (`PLAYBOOK.md` first). It supersedes the old per-repo cheatsheets. Every session: read `playbook/PLAYBOOK.md`; before ending a session that shipped commits, run the **`/wrap`** skill (a Stop hook nudges once if forgotten) — it reconciles `docs/session-handoff.md` against reality, appends decision/friction cards to `LEARNINGS.md`, and asks the founder at most one question per `playbook/LEARNING_METHOD.md` v2 (witnessed moments only, multiple choice, visible outcome). For strategy / what-to-build conversations, also read `playbook/NORTH_STAR.md`.
 
 ## Architecture
 
