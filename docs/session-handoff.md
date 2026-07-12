@@ -1,4 +1,6 @@
-# Session handoff — reconciled 2026-07-06 (Phase C wrap); docs-only addendum 2026-07-07
+# Session handoff — reconciled 2026-07-06 (Phase C wrap); docs-only addenda 2026-07-07 + 2026-07-12
+
+**2026-07-12 (branch `claude/portfolio-learning-strategy-gibhtm`, docs only — no app code, no SW bump needed):** the shared playbook gained the **builder's-path system** (founder-requested strategy overhaul): `playbook/NORTH_STAR.md` (four skill tracks + levels, portfolio tiers across all 10 repos, weekly/monthly cadence, graduation test), `playbook/CURRICULUM.md` (12-week technique ladder, one per week), `playbook/templates/BUILD_BRIEF.md` (required before new projects / major Tier-1 features), and a **v2 rewrite of `playbook/LEARNING_METHOD.md`** — decision cards join friction cards; the *witnessed rule* (never question the founder about moments he wasn't present for); 📍 live flags; ONE multiple-choice question per wrap with a named visible outcome. The `/wrap` skill's steps 2–4 were updated to match; v2 supersedes older wrap-question wording in other repos' skills. Portfolio tier assignments await founder confirmation at the first monthly review. This branch has NOT auto-merged to `main` yet — confirm merge before other repos fetch the playbook from `main`.
 
 **2026-07-07 (branch `claude/dayos-second-brain-integration-argsm7`, docs only — no app code, no SW bump needed):** DayOS is now a **memory bank for the founder's personal AI agent** (`instatank/instatank42`). The agent mirrors this Firestore read-only via a service account (same REST pattern as `api/cron-reminders.mjs`) into markdown on its server. What changed in THIS repo: new contract doc `docs/second-brain-integration.md` (collections/fields/invariants the agent depends on), pointers in `CLAUDE.md`, and a 7th checklist site in `playbook/SOP-firebase-sync.md` (schema changes must update the contract doc in the same commit). The agent-side implementation lives entirely in the instatank42 repo (`docs/SECOND_BRAIN.md` there is the plan of record).
 
@@ -8,9 +10,9 @@ Working state for the next agent picking up this repo. Read top to bottom; nothi
 
 ## Current state
 
-- **Branches:** `claude/*` branches auto-merge to `main` via GitHub Actions, `main` deploys to Vercel. (Check `git branch --show-current` — don't trust a doc for this.) Current working branch: `claude/tag-search-phase-c-wyr6l2`, no PR opened yet (auto-merge doesn't need one).
+- **Branches:** `claude/*` branches auto-merge to `main` via GitHub Actions, `main` deploys to Vercel. (Check `git branch --show-current` — don't trust a doc for this.) Current working branch: `claude/portfolio-learning-strategy-gibhtm` (playbook/system docs), no PR opened yet (auto-merge doesn't need one).
 - **Service worker cache key:** check `const CACHE` at the top of `sw.js` — currently `dayos-v136` as of 2026-07-06. **Mandatory** to bump on every user-facing change — devices serve stale `index.html` otherwise. The `/ship` skill does this automatically.
-- **Latest commit:** `0b46647` — Tag search Phase C (tappable tag pills + active-filter chip). Working tree clean.
+- **Latest commit:** `4be4804` — builder's-path playbook docs (NORTH_STAR, CURRICULUM, BUILD_BRIEF, learning method v2). Last app-code commit remains `0b46647` (Tag search Phase C).
 
 ## Tag/search project — DONE (all phases shipped 2026-07-06)
 
@@ -44,6 +46,7 @@ Major systems from the prior session block: **voice notes** (Firebase Storage, p
 Files that exist as project SOPs:
 - `CLAUDE.md` — architecture, data model, render pattern, IST helpers, recap commands. **Read this first.**
 - `playbook/PLAYBOOK.md` — cross-project global rules + SOPs (ship/sync/deploy/verify). Supersedes old per-repo cheatsheets; read at session start.
+- `playbook/NORTH_STAR.md` + `playbook/CURRICULUM.md` + `playbook/templates/BUILD_BRIEF.md` — the builder's-path system (skill tracks, portfolio tiers, technique-of-the-week, new-project brief). Read NORTH_STAR for any strategy / what-to-build conversation.
 - `playbook/SOP-firebase-sync.md` — Firestore-sync gotchas (shared; `docs/sync-lessons.md` is a superseded stub, kept only for old links).
 - `docs/dayos-sop.md` — Plain-English founder-learnings doc the user wrote ("what I'd tell myself starting again"). Not technical reference.
 - `docs/ai-features.md` — AI infrastructure + prompt locations + tuning notes, kept current including `summarize-review`.

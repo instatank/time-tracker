@@ -32,3 +32,19 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 - Where else: (pending — answer at next wrap)
 - Quiz question: "You `npm install` a browser-automation library to run a quick test, and it errors that a browser is missing — but the machine clearly has Chrome pre-installed. What's the likely mismatch, and what do you reach for before trying to download anything?"
 - Internalized: no
+
+---
+
+### 2026-07-12 — Rebuilt the learning ritual around witnessed moments (decision card)
+- The choice: fix the existing wrap ritual (LEARNING_METHOD v2: one multiple-choice question, only about moments the founder was present for, every answer producing a named visible outcome) instead of adding another parallel system on top. The live alternative was more process — extra review steps, more questions, a new tool.
+- Why (his words): (pending — asked at this wrap)
+- The principle: learning attaches to decisions you made or moments you witnessed — quizzing someone on an experience they didn't have produces "I don't know," and an answer that changes nothing visible trains people to stop answering.
+- Status: watching
+
+---
+
+### 2026-07-12 — Portfolio tiered; new builds now require a brief (decision card)
+- The choice: give every repo a job — DayOS + PartySpark as the two flagships (deep iteration + technique practice), five utilities in maintain-mode, UoT special, instatank42 + Penalty-Shootout parked — and require a 10-minute BUILD_BRIEF before any new project or major flagship feature. The live alternative was continuing to build on impulse across all ten.
+- Why (his words): "I'm building very aimlessly… I just think like a normal person who needs something and come up with brain dumps." (from the commissioning conversation — tier assignments still await his confirmation at the first monthly review)
+- The principle: a project is training only when it stretches a named skill; unlabeled play masquerades as progress.
+- Status: watching
