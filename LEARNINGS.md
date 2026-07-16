@@ -66,3 +66,21 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 - Where else: any batch/scheduled job in either repo that calls an LLM with a small `max_tokens` and no explicit thinking config — e.g. any future weekly/monthly job, or a new AI feature added to DayOS's own `api/ai/claude.mjs`.
 - Quiz question: "A new scheduled job calls Sonnet with max_tokens=1000 and doesn't set `thinking`. What's the risk, and what two things should the code do about it?"
 - Internalized: no
+
+---
+
+### 2026-07-16 — His GitHub tokens were living inside DayOS notes (friction card — founder witnessed + resolved it himself)
+- What happened: the very first nightly brain-backup push was rejected by GitHub's push protection — it spotted GitHub tokens inside the backup. The founder had saved personal-access tokens (and possibly passwords) in DayOS notes. Because DayOS syncs to Firestore and the agent mirrors Firestore to the VPS, those tokens had already been sitting in plaintext in three places (Firestore, the VPS disk, and nearly a fourth: the backup repo) — the backup didn't create the exposure, it surfaced it. The founder found and deleted the tokens at the source; the backup then went through clean.
+- Concept: **notes and journals are copying systems, not storage vaults** — anything typed into a synced app gets replicated to every downstream mirror, forever multiplying the places a secret lives. Secrets belong only in purpose-built stores (.env on the server, a password manager) that are deliberately excluded from every sync path. Defense-in-depth followed: the backup now auto-redacts anything key-shaped from the copy it pushes (instatank42 `memory_backup.py`) — but that catches shaped keys/tokens only, never free-text passwords, so the source rule still carries the weight.
+- In my words: "Notes apps copy; vaults don't" — picked the principle unprompted at this wrap (2026-07-16): anything typed into a synced app replicates to every downstream mirror; secrets belong only in stores no sync path touches.
+- Where else: WhatsApp exports and future Gmail/Drive banks — anything a secret was ever typed into will carry it into the brain; same rule, same redaction net.
+- Quiz question: "You paste an API key into a DayOS note 'so you don't lose it.' How many places does that key now live, and which of them does deleting the note NOT clean up?"
+- Internalized: no
+
+---
+
+### 2026-07-16 — Where should the brain's backup live? (decision card)
+- The choice: nightly backup of the agent's whole memory/ to a **private GitHub repo** (`instatank/2ndbrain`, which he created on the spot) rather than rclone-to-Google-Drive or staying VPS-only. Doubles as the "I can't see my data" fix: the repo is browsable on GitHub and readable as an Obsidian vault from a clone.
+- Why (his words): "Tier 3A sounds good! … I'll go with your recommendation for now, i.e. GitHub repo. I will create a new repo for this called '2nd brain'." (Also asked about Obsidian — the GitHub route turned out to BE the Obsidian route: plain-markdown repo → clone → vault.)
+- Follow-on decision, same session: after his leaked fine-grained tokens were deleted at source, he chose **not to rotate** them ("do I really need to rotate?? I think we should be fine") — reasonable because they were narrowly scoped fine-grained tokens that never went public; rotation was flagged as mandatory only if any had been broad classic tokens.
+- Status: shipped + verified live by him same day (memory/ folder visible in the repo after the first successful run)
