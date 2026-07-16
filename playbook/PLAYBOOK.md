@@ -126,6 +126,14 @@ Each lesson = one failure your stack actually paid for, generalized. New lessons
 
 ---
 
+## L12 — Collapse repeated log entries to one entity, dated from first occurrence
+
+**EXECUTE:** When a raw log records the same underlying fact once per period it's still true (an unfinished task carried forward day after day, a recurring alert, a still-open ticket re-synced every pull), any view built on top must group those repeats into ONE entity keyed by its natural identity, and date it from when it FIRST appeared — not list one row per time it was logged.
+
+**UNDERSTAND:** The second brain's open-loops ledger (`instatank42`) showed one unfinished DayOS journal task as a separate open loop for every day it carried forward — three days open looked like three items, not one item three days old. Concept: **a raw log counts occurrences; a view answers a different question ("how long has this been true"), and conflating the two silently reports the wrong number.** Where else: any "still pending / still open / still recurring" view over a log that re-records the same fact on every pass — reminders, recurring bills, unresolved-error dashboards, anything synced on a timer.
+
+---
+
 # Part 3 — When a session starts (loading protocol)
 
 **EXECUTE:** 1) Read the repo's CLAUDE.md. 2) Read this playbook (locally if time-tracker is cloned, else via GitHub `get_file_contents` on `instatank/time-tracker`, `playbook/PLAYBOOK.md`). 3) Read the repo's handoff doc + `LEARNINGS.md` if present. 4) If the conversation is about *what to build next*, starting something new, or the founder's progress/strategy — also read `NORTH_STAR.md` (and require a `templates/BUILD_BRIEF.md` for new projects). If a technique-of-the-week is active, read its `CURRICULUM.md` entry and practice it. 5) During the session, post 📍 flags per `LEARNING_METHOD.md` §3. 6) Before ending a session that shipped commits, run the repo's `/wrap` skill — the Stop hook will remind you once if you forget; the wrap's founder questions follow `LEARNING_METHOD.md` v2 (one question max, witnessed moments only), which supersedes any older question list hard-coded in a repo's wrap skill.

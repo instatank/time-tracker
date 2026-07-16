@@ -48,3 +48,21 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 - Why (his words): "I'm building very aimlessly… I just think like a normal person who needs something and come up with brain dumps." (from the commissioning conversation — tier assignments still await his confirmation at the first monthly review)
 - The principle: a project is training only when it stretches a named skill; unlabeled play masquerades as progress.
 - Status: watching
+
+---
+
+### 2026-07-16 — Open loops: 10-day window, permanent archive, collapse repeats (decision card)
+- The choice: cap the DayOS second-brain's open-loops ledger to a 10-day active window, move anything older into a permanent "never closed" archive file, and collapse a task that carries forward day after day into ONE entry — dated from when it first went open — instead of one entry per day it reappeared. The live alternative (what shipped first, before his own testing caught it) listed every open item with no cutoff and no de-duplication across carried-forward days.
+- Why (his words): "i was thinking 10 days should be enough. then it stores under a 'never closed' category for perpetuity (in case i want to know in future what tends to fall here)... my open loops carry forward for the day... It doesn't need to repeat showing it... Even if it's carried for three days, it doesn't need to show across three days. It can just show us one open task."
+- The principle: when a system logs the same underlying fact once per day it recurs (a raw log), a view built on top of that log must collapse repeats into one entity keyed by first occurrence — otherwise "how long has this been open" reads as "how many times was this logged," which is the wrong number.
+- Status: confirmed (it worked) — promoted to `playbook/PLAYBOOK.md` L12, 2026-07-16
+
+---
+
+### 2026-07-16 — Sonnet's silent thinking ate the whole digest budget (friction card — founder witnessed)
+- What happened: the second-brain agent's monthly-synthesis job budgets only 1200 tokens for its one Sonnet call. Sonnet 5 defaults to "adaptive thinking" whenever the `thinking` parameter is omitted — invisible reasoning tokens spent out of that same small budget. It ate the entire budget, so the model returned zero visible text; the code still wrote a file, just with the "Agent-written monthly synthesis for June..." label and nothing after it. Nothing raised an error — the founder had to notice a blank body himself to catch it.
+- Concept: **a tool's invisible internal step can quietly consume a budget meant for its visible output.** When a token/time/cost budget is small and a step (reasoning, retries, warm-up) shares that budget without being explicitly asked for, the visible result can go to zero with no error raised. The fix has two halves: turn the invisible step off explicitly wherever the budget can't absorb it, AND make "the output came back empty" a raised error, never a silently-written file.
+- In my words: (not asked this wrap — the one question went to the open-loops decision card above; the founder witnessed this break directly, so it's eligible for a future scenario quiz, not permanently exempt)
+- Where else: any batch/scheduled job in either repo that calls an LLM with a small `max_tokens` and no explicit thinking config — e.g. any future weekly/monthly job, or a new AI feature added to DayOS's own `api/ai/claude.mjs`.
+- Quiz question: "A new scheduled job calls Sonnet with max_tokens=1000 and doesn't set `thinking`. What's the risk, and what two things should the code do about it?"
+- Internalized: no
