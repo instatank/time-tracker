@@ -10,6 +10,12 @@ This doc is the **contract**: what the consumer reads and which invariants it
 relies on. **If a schema change touches anything below, update this doc in the
 same commit** — it's part of the sync checklist in `playbook/SOP-firebase-sync.md`.
 
+*How the consumer organizes this data* (tag views, open-loops ledger,
+metrics table, AI syntheses) is planned in
+`instatank42/docs/DAYOS_ORGANIZATION.md` — deliberately built entirely from
+the fields already listed below, so it adds **no** new requirements on this
+app. Nothing in that plan changes this contract.
+
 ## How the consumer connects
 
 - Auth: Firebase **service-account** JWT → Firestore REST API — the exact
