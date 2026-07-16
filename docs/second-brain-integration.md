@@ -41,13 +41,22 @@ app. Nothing in that plan changes this contract.
 | `life_ratings` | `YYYY-MM-DD` | `{metricId: 1–5}` (labels from `meta/lifecheck`) |
 | `eod` | `YYYY-MM-DD` | `text` |
 | `dfts` | `YYYY-MM-DD` | `text`, `status` (`pending`/`done`/`skipped`) |
-| `weeklyReviews` | week-start date (**Sunday**) | all fields rendered generically; `aiSummary` rendered as prose |
-| `monthlyReviews` | `YYYY-MM` | same as weekly |
-| `meta` | fixed ids | `projects.list[]` (canonical project names), `lifecheck.metrics[{id,label}]`; others ignored today |
+| `weeklyReviews` | week-start date (**Sunday**) | `weekStart`, `weekEnd`, `totals{deepWorkHrs, dftRate, taskCompletionRate, adherencePct, winCount, dayRatingAvg}`, `starAverages{metricKey: avg}`, `patterns[]` (observation strings), `nextWeekIntention` (+ legacy `intention`), `tasks[{text, completed}]`, `aiSummary?`, `savedAt`. Unknown/added fields still render generically; `aiSummary` rendered as prose |
+| `monthlyReviews` | `YYYY-MM` | `month`, `monthLabel`, `directionCheck{gotClearer, didntGoAsPlanned}`, `projectActions[{projectName, action, monthlyHours}]`, `newProjects[]`, `learningHarvest{totalEntries, byType, topTags, worthApplying}`, `learningFocusNext{tags[], freeText}`, `weeklyIntentionsCoherence`, `oneFocus`, `oneExperiment`, `aiSummary?`, `savedAt`. Same generic-render + prose-`aiSummary` guarantees as weekly |
+| `meta` | fixed ids | `projects.list[]` (canonical project names), `lifecheck.metrics[{id,label}]`, **`adherence.rules[{id, label, type, source, condition, enabled}]`** (used by the consumer's metrics lens — see below), `dayscore` (available, not yet consumed); other meta docs ignored |
 | `projectRefs/{uid}/{slug}` (top-level) | `{sourceType}_{sourceId}` | currently NOT consumed (entries are matched by tags directly); listed for completeness |
 
 Not read at all: `devices` (except uid discovery), `dismissals`,
-`meta/tag_history`, `meta/adherence`, `meta/dayscore`, `meta/defaultBlocks*`.
+`meta/tag_history`, `meta/defaultBlocks*`.
+
+**`meta/adherence` — now consumed.** The consumer replicates DayOS's own
+`calculateAdherence` (index.html) on the mirrored blocks so its `metrics.csv`
+lens carries the same adherence % the Trends page shows. Only `type: 'auto'`,
+`source: 'timeBlocks'` rules are evaluated (a rule's `condition.category` is a
+CAT id or label; `condition.minMinutes` the daily threshold). `type: 'explicit'`
+rules read a per-day `dailyChecks` doc that DayOS does not yet sync, so they
+evaluate to "not met" — matching the app, which does the same. If explicit
+adherence data ever starts syncing, add its collection to this table.
 
 ## Invariants the consumer depends on
 

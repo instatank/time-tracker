@@ -4014,6 +4014,47 @@ mark.hl {
 }
 .wr-patterns { display: flex; flex-direction: column; gap: 0.4rem; }
 
+/* Open Loops — render-time ledger of unfinished journal tasks / session
+   pending items / today's DFT, shown on the current + just-ended week. */
+.wr-loops { display: flex; flex-direction: column; gap: 0.4rem; }
+.wr-loop-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.wr-loop-age {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text3);
+  min-width: 2rem;
+}
+.wr-loop-text { flex: 1 1 auto; color: var(--text); }
+.wr-loop-origin {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: var(--text3);
+  white-space: nowrap;
+}
+.wr-loops-stale {
+  font-size: 0.75rem;
+  color: var(--text2);
+  padding: 0.3rem 0.2rem 0;
+}
+.wr-loops-asof {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--text3);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 /* Weekly Review tasks block — list of dj-task-rows + "+ Add task" button. */
 .wr-prev-tasks-score {
   font-size: 0.78rem;
@@ -5720,11 +5761,28 @@ function armOrConfirmDelete(key, doDelete) {
     toast('Tap again to delete', 3000);
   }
 }
+// Canonical tag body shared by BOTH tag entry paths — inline #hashtags
+// (extractTags) and the picker's custom input (normalizeTag). Hyphens join
+// (#side-project → #sideproject, matching every picker-stored tag to date);
+// any other invalid character ends the tag (matching inline typing to date).
+// Tags are load-bearing beyond this app: the Journal filter pills, project
+// linking, exact-tag search, AND the second-brain mirror's tag views all key
+// on the stored form — any charset change must go through this one function.
+function canonicalTagBody(body) {
+  const m = String(body || '').replace(/-+/g, '').match(/^[a-z0-9_%]+/);
+  return m ? m[0] : '';
+}
 function extractTags(text) {
-  // Match #Word or #Two Words (CapCase continuation) then strip spaces + lowercase
-  const matches = text.match(/#[a-zA-Z0-9_%]+(?:\s[A-Z][a-zA-Z0-9_%]*)*/g);
+  // Match #Word or #Two Words (CapCase continuation) then strip spaces +
+  // lowercase. Hyphens are captured so #side-project no longer truncates
+  // to #side before canonicalization.
+  const matches = text.match(/#[a-zA-Z0-9_%-]+(?:\s[A-Z][a-zA-Z0-9_%-]*)*/g);
   if (!matches) return [];
-  return [...new Set(matches.map(t => t.toLowerCase().replace(/\s+/g, '')))];
+  const tags = matches
+    .map(t => canonicalTagBody(t.toLowerCase().replace(/[\s#]+/g, '')))
+    .filter(Boolean)
+    .map(b => '#' + b);
+  return [...new Set(tags)];
 }
 function catById(id) { return CATS.find(c => c.id === id) || CATS[0]; }
 function ctypeById(id) { return CTYPES.find(c => c.id === id) || LEGACY_CTYPES[id] || CTYPES[0]; }
@@ -7565,12 +7623,11 @@ window.confirmTagCustom = function(ctx) {
 
 function normalizeTag(raw) {
   if (!raw) return '';
-  let t = raw.trim().toLowerCase().replace(/\s+/g, '');
-  if (!t) return '';
-  if (!t.startsWith('#')) t = '#' + t;
-  // Strip anything that isn't a valid tag char (keep # letters digits _ %)
-  t = t.replace(/[^#a-z0-9_%]/g, '');
-  return t.length > 1 ? t : '';
+  // Same canonical form as extractTags — the two entry paths must agree
+  // (see canonicalTagBody).
+  const body = canonicalTagBody(
+    String(raw).trim().toLowerCase().replace(/\s+/g, '').replace(/^#+/, ''));
+  return body ? '#' + body : '';
 }
 
 // Add tags to persistent history with recency ordering. New + reused tags
@@ -8091,6 +8148,7 @@ function getRelatedCapturesFor(projectName) {
   if (!slug) return [];
   const refs = [];
   captures.forEach(c => {
+    if (!notTrashed(c)) return;
     // Post-unification: `tags[]` is the single source of truth for project
     // affiliation. The migration backfilled tags[] from any legacy
     // project_tag, so the legacy-fallback branch is no longer needed.
@@ -8105,6 +8163,7 @@ function getRelatedCapturesFor(projectName) {
     });
   });
   learning.forEach(e => {
+    if (!notTrashed(e)) return;
     if (!(e.tags || []).some(t => projectSlug(t) === slug)) return;
     refs.push({
       sourceType: 'learning',
@@ -11273,6 +11332,83 @@ function fmtDeltaPct(currPct, prevPct) {
   return `<div class="wr-tile-delta ${cls}">${arrow} ${Math.abs(diff)}pp vs last week</div>`;
 }
 
+// ── Open Loops (render-time lens) ─────────────────────────────
+// "Everything I said I'd do that isn't done", computed fresh on every render
+// — no new collection, nothing persisted. Mirrors the ledger the second-brain
+// agent builds from this same data (instatank42 dayos_digest.render_open_loops)
+// so the app and the agent agree on what's open. Three sources:
+//   • unchecked Daily Journal tasks — carried-forward copies of one task
+//     collapse into a single loop dated from the start of its current
+//     unchecked streak; ticking the LATEST copy closes it
+//   • pending[] items from each project's LATEST session (older sessions'
+//     lists are superseded, not open)
+//   • today's DFT while still pending
+// Loops older than OPEN_LOOP_ACTIVE_DAYS drop to a "never closed" count —
+// an old loop clears by ticking (or deleting) it at the source.
+const OPEN_LOOP_ACTIVE_DAYS = 10;
+function computeOpenLoops() {
+  const td = todayStr();
+  const items = []; // { since, origin, text }
+
+  // Journal tasks, deduped by normalized text across days.
+  const occ = {};  // norm -> { [date]: completedThatDay }
+  const disp = {}; // norm -> display text
+  (dailyJournals || [])
+    .filter(j => j && notTrashed(j) && j.date)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .forEach(j => (j.tasks || []).forEach(t => {
+      const text = ((t && t.text) || '').trim();
+      if (!text) return;
+      const norm = text.toLowerCase().split(/\s+/).join(' ');
+      const dayMap = occ[norm] = occ[norm] || {};
+      dayMap[j.date] = !!dayMap[j.date] || !!t.completed;
+      disp[norm] = text;
+    }));
+  Object.keys(occ).forEach(norm => {
+    const dayMap = occ[norm];
+    const dates = Object.keys(dayMap).sort();
+    if (dayMap[dates[dates.length - 1]]) return; // latest copy ticked → closed
+    let since = dates[dates.length - 1];
+    for (let i = dates.length - 1; i >= 0; i--) {
+      if (dayMap[dates[i]]) break;
+      since = dates[i];
+    }
+    items.push({ since, origin: 'journal', text: disp[norm] });
+  });
+
+  // Each project's LATEST session (by date, then createdAt) → its pending[].
+  const latest = {}; // slug -> { key, s }
+  Object.values(sessions || {}).forEach(list => (list || []).forEach(s => {
+    if (!s || !notTrashed(s) || !s.date || !s.projectName) return;
+    const slug = projectSlug(s.projectName);
+    const key = String(s.date) + '\n' + String(s.createdAt || '');
+    if (!latest[slug] || key > latest[slug].key) latest[slug] = { key, s };
+  }));
+  Object.keys(latest).sort().forEach(slug => {
+    const s = latest[slug].s;
+    (s.pending || []).forEach(p => {
+      const text = String(p || '').trim();
+      if (text) items.push({ since: s.date, origin: s.projectName, text });
+    });
+  });
+
+  // Today's DFT while pending. (Older pending DFTs auto-skip on init —
+  // they're history, not loops.)
+  const dft = getDft(td);
+  if (dft && dft.status === 'pending' && (dft.text || '').trim()) {
+    items.push({ since: td, origin: 'DFT', text: dft.text.trim() });
+  }
+
+  const age = d => Math.max(0, Math.round(
+    (new Date(td + 'T00:00:00') - new Date(d + 'T00:00:00')) / 86400000));
+  items.forEach(it => { it.ageDays = age(it.since); });
+  const bySince = (a, b) => a.since.localeCompare(b.since) || a.text.localeCompare(b.text);
+  return {
+    active:      items.filter(it => it.ageDays <= OPEN_LOOP_ACTIVE_DAYS).sort(bySince),
+    neverClosed: items.filter(it => it.ageDays >  OPEN_LOOP_ACTIVE_DAYS).sort(bySince),
+  };
+}
+
 function renderWeeklyReview() {
   const td = todayStr();
   const currentWeekStart = getWeekStart(td);
@@ -11383,6 +11519,29 @@ function renderWeeklyReview() {
             : `<div class="wr-observation">No standout patterns this week.</div>`)}
     </div>`;
 
+  // ── Open Loops ──
+  // Only where the review is actionable (current week + the week just
+  // ended); older weeks are read-only history and a live "as of today"
+  // ledger would repeat identically on every one of them.
+  let loopsSection = '';
+  if (weekStart >= addDays(currentWeekStart, -7)) {
+    const loops = computeOpenLoops();
+    const rows = loops.active.length
+      ? loops.active.map(l => `
+          <div class="wr-loop-row">
+            <span class="wr-loop-age">${l.ageDays}d</span>
+            <span class="wr-loop-text">${esc(l.text)}</span>
+            <span class="wr-loop-origin">${esc(l.origin)}</span>
+          </div>`).join('')
+      : `<div class="wr-observation">Nothing pending from the last ${OPEN_LOOP_ACTIVE_DAYS} days — all clear.</div>`;
+    const staleNote = loops.neverClosed.length
+      ? `<div class="wr-loops-stale">${loops.neverClosed.length} older item${loops.neverClosed.length === 1 ? '' : 's'} open ${OPEN_LOOP_ACTIVE_DAYS}+ days — tick or delete at the source to clear.</div>`
+      : '';
+    loopsSection = `
+    <div class="wr-section-title">Open Loops <span class="wr-loops-asof">as of today</span></div>
+    <div class="wr-loops">${rows}${staleNote}</div>`;
+  }
+
   // ── Plan Next Week ──
   const prevWeekReview = weeklyReviews[addDays(weekStart, -7)];
   const prevIntention  = prevWeekReview && prevWeekReview.nextWeekIntention || prevWeekReview && prevWeekReview.intention;
@@ -11424,6 +11583,8 @@ function renderWeeklyReview() {
 
     ${patternsSection}
 
+    ${loopsSection}
+
     ${renderReviewAiSummary('week', weekStart)}
 
     ${planSection}
@@ -11458,11 +11619,7 @@ function persistWeeklyReviewTasks(weekStart, tasks) {
   existing.savedAt = nowISTIso();
   weeklyReviews[weekStart] = existing;
   saveLocal('dayos_weekly_reviews_v1', weeklyReviews);
-  if (user) {
-    setDoc(doc(db, 'users', user.uid, 'weeklyReviews', weekStart), existing).catch(err => {
-      console.error('[DayOS] Weekly review task save error:', err);
-    });
-  }
+  syncWeeklyReviewDoc(existing);
 }
 
 // ── AI review summary (Tier 2) ───────────────────────────────
@@ -14654,6 +14811,24 @@ async function loadMonthlyReviewsFromCloud(uid) {
   }
 }
 
+// Cloud sync — one doc per week at users/{uid}/weeklyReviews/{week-start Sunday}.
+async function syncWeeklyReviewDoc(review) {
+  if (!user || !review || !review.weekStart) return;
+  try { await setDoc(doc(db, 'users', user.uid, 'weeklyReviews', review.weekStart), review); }
+  catch (err) { console.error('[DayOS] Weekly review sync error:', err); }
+}
+async function loadWeeklyReviewsFromCloud(uid) {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'weeklyReviews'));
+    const remote = {};
+    snap.docs.forEach(d => { remote[d.id] = d.data() || {}; });
+    weeklyReviews = { ...weeklyReviews, ...remote };
+    saveLocal('dayos_weekly_reviews_v1', weeklyReviews);
+  } catch (err) {
+    console.error('[DayOS] Weekly reviews load error:', err);
+  }
+}
+
 // ── DFT (Daily Focus Task) cloud sync ─────────────────────────
 // One doc per date at users/{uid}/dfts/{YYYY-MM-DD} with shape { text, status }.
 // Per-write fire-and-forget mirrors the ratings/EOD pattern: on save we push,
@@ -15155,11 +15330,7 @@ window.saveWeeklyReview = function() {
 
   weeklyReviews[weekStart] = review;
   saveLocal('dayos_weekly_reviews_v1', weeklyReviews);
-  if (user) {
-    setDoc(doc(db, 'users', user.uid, 'weeklyReviews', weekStart), review).catch(err => {
-      console.error('[DayOS] Weekly review save error:', err);
-    });
-  }
+  syncWeeklyReviewDoc(review);
   toast('Weekly review saved ✓');
   // Return to the Trends tab.
   closeWeeklyReview();
@@ -17859,12 +18030,14 @@ window.forcePushToCloud = async function() {
     const learningDocs = (learning || []).filter(e => e && e.id);
     const dailyDocs    = (dailyJournals || []).filter(j => j && j.date && !isDailyEntryEmpty(j));
     const monthlyDocs  = Object.values(monthlyReviews || {}).filter(r => r && r.month);
+    const weeklyDocs   = Object.values(weeklyReviews || {}).filter(r => r && r.weekStart);
     const dftDates     = Object.keys(dfts || {}).filter(d => dfts[d]);
     const perDocPushes = [
       ...sessionDocs.map(s  => syncSessionDoc(s)),
       ...learningDocs.map(e => syncLearningDoc(e)),
       ...dailyDocs.map(j    => syncDailyJournalDoc(j)),
       ...monthlyDocs.map(r  => syncMonthlyReviewDoc(r)),
+      ...weeklyDocs.map(r   => syncWeeklyReviewDoc(r)),
       ...dftDates.map(d     => syncDftDoc(d)),
     ];
     // allSettled so one failed write doesn't kill the rest.
@@ -17886,8 +18059,9 @@ window.forcePushToCloud = async function() {
     setSyncStatus('ok');
     console.log('[DayOS] Push verified ✓ — blocks:', blocks.length, 'captures:', captures.length,
       'sessions:', sessionDocs.length, 'learning:', learningDocs.length,
-      'daily:', dailyDocs.length, 'monthly:', monthlyDocs.length, 'dfts:', dftDates.length);
-    toast(`✓ Pushed ${blocks.length} blocks · ${captures.length} captures · ${sessionDocs.length} sessions · ${learningDocs.length} learning · ${dailyDocs.length} daily · ${monthlyDocs.length} monthly · ${dftDates.length} dfts`, 5000);
+      'daily:', dailyDocs.length, 'weekly:', weeklyDocs.length,
+      'monthly:', monthlyDocs.length, 'dfts:', dftDates.length);
+    toast(`✓ Pushed ${blocks.length} blocks · ${captures.length} captures · ${sessionDocs.length} sessions · ${learningDocs.length} learning · ${dailyDocs.length} daily · ${weeklyDocs.length} weekly · ${monthlyDocs.length} monthly · ${dftDates.length} dfts`, 5000);
     openSettingsSync();
   } catch (err) {
     setSyncStatus('error');
@@ -17971,6 +18145,7 @@ window.forcePullFromCloud = async function() {
       loadSessionsFromCloud(user.uid),
       loadLearningFromCloud(user.uid),
       loadMonthlyReviewsFromCloud(user.uid),
+      loadWeeklyReviewsFromCloud(user.uid),
       loadProjectsFromCloud(user.uid),
       loadTagHistoryFromCloud(user.uid),
       loadAdherenceConfigFromCloud(user.uid),
@@ -18129,6 +18304,7 @@ async function initialSync(uid) {
     loadAdherenceConfigFromCloud(uid),
     loadDismissalsFromCloud(uid),
     loadMonthlyReviewsFromCloud(uid),
+    loadWeeklyReviewsFromCloud(uid),
     loadSessionsFromCloud(uid),
     loadLearningFromCloud(uid),
     loadDftsFromCloud(uid),
