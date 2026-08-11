@@ -1,3 +1,5 @@
+Before any work in this repo: run git fetch && git status. If behind origin/main, pull and npm install before proceeding. Report if diverged.
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
