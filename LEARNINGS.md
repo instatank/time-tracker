@@ -84,3 +84,11 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 - Why (his words): "Tier 3A sounds good! … I'll go with your recommendation for now, i.e. GitHub repo. I will create a new repo for this called '2nd brain'." (Also asked about Obsidian — the GitHub route turned out to BE the Obsidian route: plain-markdown repo → clone → vault.)
 - Follow-on decision, same session: after his leaked fine-grained tokens were deleted at source, he chose **not to rotate** them ("do I really need to rotate?? I think we should be fine") — reasonable because they were narrowly scoped fine-grained tokens that never went public; rotation was flagged as mandatory only if any had been broad classic tokens.
 - Status: shipped + verified live by him same day (memory/ folder visible in the repo after the first successful run)
+
+---
+
+### 2026-08-15 — Simple + button reuse over per-page custom long-press (decision card)
+- The choice: replicate the Today page's `+` button (tap → full add picker, long-press → today's Daily Journal) onto Journal and Projects exactly as-is, instead of building custom long-press targets per page (e.g. Projects → jump straight into a new session/learning entry matching whichever project tag was active). The live alternative — bespoke per-page logic — was floated first but made conditional on its own complexity.
+- Why (his words): "I think we were intending to do custom long press functionality for each page... but if this kind of customization is more complex, let's just replicate the same functionality from today page across all pages."
+- The principle: when a fancier, tailored version of a feature would require new branching logic per surface, and a plain surface (max ~1 hour to build) already exists and works, default to reusing it — pay for the custom version only when the plain one is later shown to fall short in practice, not upfront on a guess.
+- Status: watching (asked at this wrap — picked "always pick the fastest build," the speed-framing near-miss, over "reuse until proven insufficient"; re-explained, no penalty, will resurface as a scenario quiz in a different form)
