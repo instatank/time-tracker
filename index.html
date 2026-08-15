@@ -6222,7 +6222,7 @@ function renderToday() {
     : `<div class="proj-top-row">
         <button class="proj-search-icon-btn" onclick="openHomeSearch()" aria-label="Search">&#128269;</button>
         ${renderQuickCaptureBar()}
-        ${renderTodayAddControl()}
+        ${renderAddControl()}
       </div>`;
 
   // Active search query → keep the page's top context (banners + action-row)
@@ -6786,11 +6786,11 @@ window.lpAddCancel = function(_e) {
   _lpAddFired = false;
 };
 
-function renderLongPressAddBtn() {
+function renderLongPressAddBtn(extraStyle) {
   // Note: NOT using onclick — pointer events handle both quick tap and
   // long press. Inline pointer handlers survive re-renders without us
   // having to re-attach listeners after every renderMain.
-  return `<button class="add-fab-square long-press-add"
+  return `<button class="add-fab-square long-press-add"${extraStyle ? ` style="${extraStyle}"` : ''}
     onpointerdown="lpAddDown(event)"
     onpointerup="lpAddUp(event)"
     onpointercancel="lpAddCancel(event)"
@@ -6799,13 +6799,18 @@ function renderLongPressAddBtn() {
     title="Tap for options · hold for Daily Journal">+</button>`;
 }
 
-// Decides which + control the action row renders. Note: this is now
-// only about the small round + on the action row — the 3-button
-// experiment lives on its OWN row below (see renderThreeAddBar) and
-// no longer replaces the +.
-function renderTodayAddControl() {
-  if (expEnabled('longPressAdd')) return renderLongPressAddBtn();
-  return `<button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>`;
+// Decides which + control an action row renders. Shared by Today,
+// Journal, and Projects so all three pages' + buttons behave
+// identically — tap = full add picker; with the 'longPressAdd'
+// experiment on, long-press also jumps straight into today's Daily
+// Journal entry, same as Today. Note: this is now only about the small
+// round + on the action row — the 3-button experiment (Today-only)
+// lives on its OWN row below (see renderThreeAddBar) and no longer
+// replaces the +. `extraStyle` lets callers position the button (e.g.
+// Journal's margin-left:auto) without duplicating the tap/long-press wiring.
+function renderAddControl(extraStyle) {
+  if (expEnabled('longPressAdd')) return renderLongPressAddBtn(extraStyle);
+  return `<button class="add-fab-square" onclick="openAddPicker()"${extraStyle ? ` style="${extraStyle}"` : ''} aria-label="Add new entry" title="Add new entry">+</button>`;
 }
 
 // ── Quick Capture Bar ─────────────────────────────────────────
@@ -7341,7 +7346,7 @@ function renderJournal() {
           <button class="proj-pill-lg ${journalFilter===f?'active':''}" onclick="setJFilter('${f}')">
             ${lbl}
           </button>`).join('')}
-        <button class="add-fab-square" style="margin-left:auto" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
+        ${renderAddControl('margin-left:auto')}
       </div>`;
 
   const row2 = `<div class="filter-row" style="margin-top:-0.25rem">
@@ -8015,7 +8020,7 @@ function renderProjects() {
           <button class="subtab-btn ${projectsSubTab === 'projects' ? 'active' : ''}" onclick="setProjectsSubTab('projects')">Projects</button>
           <button class="subtab-btn ${projectsSubTab === 'learning' ? 'active' : ''}" onclick="setProjectsSubTab('learning')">Learning</button>
         </div>
-        <button class="add-fab-square" onclick="openAddPicker()" aria-label="Add new entry" title="Add new entry">+</button>
+        ${renderAddControl()}
       </div>`;
 
   // Active search query → top row stays, body becomes unified results across
