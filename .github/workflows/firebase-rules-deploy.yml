@@ -93,22 +93,29 @@ jobs:
           node -e 'JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP + "/sa.json", "utf8"))' \
             || { echo "::error title=Bad secret::FIREBASE_SERVICE_ACCOUNT is not valid JSON. Re-paste the entire downloaded file, including the outer curly braces."; exit 1; }
 
-      # Deployed as two steps, not one `--only firestore:rules,storage`.
-      # Storage's deploy begins with a preflight that reads the project's
-      # enabled-services list via serviceusage.googleapis.com, which needs a
-      # permission the Firestore deploy does not. Bundled, one 403 on that
-      # preflight aborted the whole command and the Firestore rules - the more
-      # security-critical half - never shipped. Split, the important one lands
-      # first and a Storage-side problem names itself instead of masquerading
-      # as a total failure.
+      # Deployed as two steps rather than one `--only firestore:rules,storage`,
+      # purely so a failure names which half broke. Note what this does NOT buy:
+      # BOTH targets open with the same preflight that reads the project's
+      # enabled-services list from serviceusage.googleapis.com, so a service
+      # account missing Service Usage Consumer fails both alike - splitting them
+      # does not let Firestore through. (Assumed otherwise on 2026-08-16; the
+      # second run disproved it. The role is the fix, the split is just
+      # legibility.)
       - name: Deploy Firestore rules
         if: steps.secret.outputs.present == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-        run: npx --yes firebase-tools@15 deploy --only firestore:rules --non-interactive
+        run: |
+          if ! npx --yes firebase-tools@15 deploy --only firestore:rules --non-interactive; then
+            echo "::error title=Firestore rules not deployed::If this says 'Permission denied to get service', the service account is missing the Service Usage Consumer role. See 'Rules-change ritual' in playbook/SOP-deploy.md."
+            exit 1
+          fi
 
+      # Runs even if Firestore failed: the two deploys are independent, and when
+      # the cause is the shared missing role, seeing both fail is the signal
+      # that it is the role and not something specific to one target.
       - name: Deploy Storage rules
-        if: steps.secret.outputs.present == 'true'
+        if: always() && steps.secret.outputs.present == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
