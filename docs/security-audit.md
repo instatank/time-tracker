@@ -68,10 +68,14 @@ hole the July incident fell through and it is still open. Today there is no way
 to answer "is there a password in my journal?" short of reading every entry.
 → Phases 1 + 3.
 
-**S2 — `firestore.rules` is not in the repo.** *(Partly closed 2026-08-16 — the live
-Console rules are now transcribed into `firestore.rules` and declared in `firebase.json`.
-The reviewed delta (see "Firestore rules review" below) is proposed, not applied, and
-nothing is deployed until someone runs `firebase deploy --only firestore:rules`.)*
+**S2 — `firestore.rules` is not in the repo.** ~~The rules preventing another signed-in
+Google account from reading `users/{yourUid}/…` exist only in the Firebase Console.~~
+**CLOSED 2026-08-16.** `firestore.rules` is in the repo, declared in `firebase.json`,
+reviewed (see "Firestore rules review" below), and **deployed and verified green** —
+Firestore and Storage rules now ship automatically on every merge to `main` via
+`.github/workflows/firebase-rules-deploy.yml`. The repo is the source of truth; a Console
+hand-edit is overwritten by the next commit. The one open item is a *content* decision,
+not a plumbing one: the proposed `projectRefs` rule is still unapplied.
 `firebase.json` declares Storage rules only. The rules preventing another
 signed-in Google account from reading `users/{yourUid}/…` exist *only* in the
 Firebase Console: unreviewable, unbacked-up, not redeployable from code, and a
