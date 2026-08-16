@@ -9,7 +9,17 @@
 // Zero deps — Google OAuth JWT signing uses node:crypto, Firestore +
 // FCM are hit via raw fetch against their REST APIs.
 
-import { createSign } from 'node:crypto';
+import { createSign, timingSafeEqual } from 'node:crypto';
+
+// Constant-time string compare. Length is checked first with a plain
+// comparison so timingSafeEqual is never handed mismatched buffers (it
+// throws on those) — the length of a secret is not the part worth hiding.
+export function safeEqual(a, b) {
+  const ab = Buffer.from(String(a ?? ''), 'utf8');
+  const bb = Buffer.from(String(b ?? ''), 'utf8');
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
 
 const FCM_SCOPE       = 'https://www.googleapis.com/auth/firebase.messaging';
 const DS_SCOPE        = 'https://www.googleapis.com/auth/datastore';
@@ -196,7 +206,7 @@ async function sendFcm(projectId, accessToken, deviceToken, title, body, dataExt
 export default async function handler(req, res) {
   // Auth: only accept invocations from Vercel's cron with our shared secret.
   const auth = req.headers.authorization || '';
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || !safeEqual(auth, `Bearer ${process.env.CRON_SECRET}`)) {
     return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
 
@@ -235,24 +245,47 @@ export default async function handler(req, res) {
     (byUid[d.uid] = byUid[d.uid] || []).push(d);
   }
 
+  // The response is returned to whoever can reach the endpoint, so it carries
+  // counts and per-device delivery status only — never uids, device ids, or
+  // FCM response bodies. Those identify the user base and are of no use to
+  // the cron caller.
+  let usersSkipped = 0;
+  let sent = 0;
+  let failed = 0;
+  let tokensDeleted = 0;
+
   for (const [uid, devices] of Object.entries(byUid)) {
     if (window.skipIfActiveWithinMin) {
       const last = await lastActivityISTMin(projectId, uid, accessToken);
       if (last !== null && (nowMin - last) < window.skipIfActiveWithinMin) {
-        results.push({ uid, skip: 'recent-activity', minutesSince: nowMin - last });
+        usersSkipped++;
         continue;
       }
     }
     for (const d of devices) {
       const r = await sendFcm(projectId, accessToken, d.token, window.title, window.body, { window: window.label });
-      results.push({ uid, deviceId: d.deviceId, ...r });
+      if (r.ok) sent++; else failed++;
+      results.push({ ok: r.ok, status: r.status });
       // Clean up dead tokens — FCM returns 404/UNREGISTERED for endpoints
       // that have unsubscribed (uninstalled PWA, denied permissions, etc).
       if (!r.ok && (r.status === 404 || /UNREGISTERED|INVALID_ARGUMENT/i.test(r.body))) {
         await deleteDevice(projectId, uid, d.deviceId, accessToken);
+        tokensDeleted++;
       }
     }
   }
 
-  return res.status(200).json({ ok: true, window: window.label, count: allDevices.length, results });
+  return res.status(200).json({
+    ok: true,
+    window: window.label,
+    counts: {
+      devices: allDevices.length,
+      users: Object.keys(byUid).length,
+      usersSkipped,
+      sent,
+      failed,
+      tokensDeleted,
+    },
+    results,
+  });
 }
