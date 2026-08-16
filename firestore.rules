@@ -1,0 +1,42 @@
+rules_version = '2';
+
+// Firestore security rules for DayOS.
+//
+// BASELINE — this file is a faithful transcription of the rules that were live
+// in the Firebase Console as of 2026-08-16, brought into version control
+// unchanged so that the repo and production agree before anything is edited.
+// Semantics here are byte-for-byte equivalent to what was already running; only
+// formatting and comments were added. Proposed changes are tracked separately
+// (see docs/security-audit.md, gap S2) and must be applied deliberately.
+//
+// Model: one signed-in user may touch only their own data. Sign-in is open to
+// any Google account, so these rules — not the sign-in screen — are what keeps
+// a stranger's session out of this data.
+//
+// Firestore verb note: `read` covers get + list; `write` covers create + update
+// + DELETE. There is no separate `delete` verb to add — allowing `write` here
+// already scopes deletes to the owning uid.
+//
+// IMPORTANT: Vercel does NOT deploy these rules. Push them to Firebase with
+//   firebase deploy --only firestore:rules
+// or paste them into Firebase Console → Firestore → Rules.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Every per-user collection: blocks, captures, sessions, learning,
+    // dailyJournal, ratings, life_ratings, eod, dfts, dismissals,
+    // weeklyReviews, monthlyReviews, devices, meta/*. The recursive wildcard
+    // means a new collection under users/{uid}/ is covered the day it ships.
+    //
+    // Note: `{document=**}` matches one or more segments, so the parent
+    // document users/{userId} itself is NOT matched by this rule. The app
+    // never reads or writes that document directly, so it stays default-deny.
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Everything else is denied by Firestore's default-deny. No test-mode
+    // `allow ... if request.time < ...` rule exists in this file.
+  }
+}

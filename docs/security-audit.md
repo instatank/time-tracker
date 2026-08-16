@@ -68,7 +68,10 @@ hole the July incident fell through and it is still open. Today there is no way
 to answer "is there a password in my journal?" short of reading every entry.
 → Phases 1 + 3.
 
-**S2 — `firestore.rules` is not in the repo.**
+**S2 — `firestore.rules` is not in the repo.** *(Partly closed 2026-08-16 — the live
+Console rules are now transcribed into `firestore.rules` and declared in `firebase.json`.
+The reviewed delta (see "Firestore rules review" below) is proposed, not applied, and
+nothing is deployed until someone runs `firebase deploy --only firestore:rules`.)*
 `firebase.json` declares Storage rules only. The rules preventing another
 signed-in Google account from reading `users/{yourUid}/…` exist *only* in the
 Firebase Console: unreviewable, unbacked-up, not redeployable from code, and a
@@ -89,10 +92,12 @@ Confirm in Phase 4 whether the mirror writes these URLs out.
 Firestore for 7 days, while the second brain pulls every 2h. For a secret, the
 default path is the wrong one. → Phase 2 adds purge-now.
 
-**W3 — AI proxy has no allowlist or rate limit.** It accepts any valid token
+**W3 — AI proxy has no allowlist or rate limit.** ~~It accepts any valid token
 from the Firebase project, and sign-in is open to all Google accounts. A stranger
-who signs in can spend the Anthropic key. Not a data leak (uid-isolated) — a
-bill. Fix: one-line uid allowlist + per-user daily cap. → Phase 4.
+who signs in can spend the Anthropic key.~~ **CLOSED 2026-08-16 (`0a52195`)** — `ALLOWED_UIDS`
+allow-list (non-listed uid → 403), context capped and moved out of the system prompt, RS256
+pinned, stable error codes, `timingSafeEqual` on `CRON_SECRET`. Set `ALLOWED_UIDS` in Vercel —
+unset still allows any verified user. A per-user daily cap is still not implemented.
 
 **W4 — No CSP; Chart.js loads from a CDN with no integrity hash.** A compromised
 CDN could read every entry in memory and in `localStorage` and exfiltrate it.
@@ -102,9 +107,8 @@ Low likelihood, total impact. Fix: SRI hash or self-host, plus a CSP. → Phase 
 
 ## Can't be checked from code — console tasks
 
-- **Live Firestore rules.** Confirm `users/{uid}` *and* `projectRefs/{uid}` both
-  require `request.auth.uid == uid`, and no test-mode `allow … if request.time <`
-  rule survives.
+- ~~**Live Firestore rules.**~~ **Done 2026-08-16** — the Console text was pulled into
+  `firestore.rules`; findings in "Firestore rules review" below.
 - **Firebase Web API key restrictions.** Google Cloud Console → Credentials.
   Should be limited to the app's domains.
 - **Who else has signed in.** Authentication → Users. Decide whether to restrict
@@ -112,6 +116,73 @@ Low likelihood, total impact. Fix: SRI hash or self-host, plus a CSP. → Phase 
 - **Anthropic retention terms** for the raw journal text the AI features send.
 
 ---
+
+## Firestore rules review — 2026-08-16
+
+The Console text is now in `firestore.rules` **unchanged**. It is one rule:
+`match /users/{userId}/{document=**}` → `allow read, write: if request.auth != null &&
+request.auth.uid == userId`. Reviewed against the data model in `CLAUDE.md`:
+
+**Correct as-is.** Every synced per-user collection — blocks, captures, sessions,
+learning, dailyJournal, ratings, life_ratings, eod, dfts, dismissals, weeklyReviews,
+monthlyReviews, devices, meta/\* — lives under `users/{uid}/` and is covered by the
+recursive wildcard. **`write` already includes delete** in Firestore (create + update +
+delete), so the "read, write and delete must all check the uid" requirement is met for
+these; there is no separate `delete` verb to add.
+
+**No test-mode rule survives.** No `allow … if request.time < …` in the pasted text.
+
+### F1 — `projectRefs/{uid}/…` has no rule at all *(functional bug, not a hole)*
+
+`index.html` writes `projectRefs/{uid}/{projectSlug}/{refId}` from `writeProjectRef` /
+`deleteProjectRef` (7 call sites via `syncProjectRefsForEntry`). The rules never mention
+`projectRefs`, so Firestore's **default-deny** applies: every one of those writes is
+rejected. It fails *silently* — both functions swallow the error into `console.error`, and
+the second brain does not consume the collection (`docs/second-brain-integration.md`), so
+nothing surfaces it. Security posture is fine (deny is the safe direction); the feature is
+simply not working in the cloud. **Verify before fixing:** open DevTools, save a note tagged
+with a project name, and look for `permission-denied` on a `projectRefs` write.
+
+### F2 — Unreachable by design (no change needed)
+
+`{document=**}` matches *one or more* segments, so the parent document `users/{userId}`
+itself is not matched and stays default-deny. The app never touches that document
+directly, so this is correct — worth knowing only so a future `users/{uid}` profile doc
+doesn't get mysteriously rejected.
+
+### F3 — Overbroad, accepted
+
+The recursive wildcard grants a user everything under their own subtree with no field,
+shape, or size validation, and auto-covers collections that don't exist yet. For a
+single-user app that is the right trade (new collections ship without a rules deploy). The
+cost: a compromised client can write unbounded junk into its own subtree. Not worth
+per-collection schemas here.
+
+### F4 — Rules cannot fix open sign-up
+
+Sign-in accepts any Google account, so a stranger gets their own valid `users/{theirUid}`
+sandbox. Rules keep them out of *this* data, which is their whole job, but they cannot stop
+a stranger from creating data at all. That is an Authentication-console decision (see W3 and
+the console-tasks list), not a rules change.
+
+### Proposed delta — NOT applied, needs a decision
+
+```diff
+     match /users/{userId}/{document=**} {
+       allow read, write: if request.auth != null && request.auth.uid == userId;
+     }
++
++    // F1: cross-project reference pointers, written by writeProjectRef().
++    // Path is projectRefs/{uid}/{projectSlug}/{refId} — same owner check.
++    match /projectRefs/{userId}/{document=**} {
++      allow read, write: if request.auth != null && request.auth.uid == userId;
++    }
+```
+
+Deploying this turns project-ref writes back on, which starts writing 80-char `preview`
+strings into Firestore again — a second copy of each entry's first line, hop 2 in the copy
+graph. Decide whether that feature is wanted before deploying; if it isn't, the honest fix
+is to delete the `projectRefs` code rather than leave writes failing in the background.
 
 ## Detector tuning doctrine — founder ruling, 2026-08-16
 

@@ -11,12 +11,16 @@
 
 | Repo | App deploy | Rules | Functions/cron | Notes |
 |---|---|---|---|---|
-| time-tracker (DayOS) | push `claude/*` → Action auto-merges to `main` → Vercel | **Storage rules: `firebase deploy --only storage` — manual, Vercel never does it** | `api/cron-reminders.mjs` via `vercel.json` cron | Hobby plan = max **one cron/day**; sub-daily schedules are **silently rejected and block the deploy** |
+| time-tracker (DayOS) | push `claude/*` → Action auto-merges to `main` → Vercel | **Both rule files are manual — Vercel never deploys either.** Storage: `firebase deploy --only storage`. Firestore: `firebase deploy --only firestore:rules` | `api/cron-reminders.mjs` via `vercel.json` cron | Hobby plan = max **one cron/day**; sub-daily schedules are **silently rejected and block the deploy** |
 | BillOS | push to production branch `claude/design-system` → Vercel (NOT `main`) | Firestore rules + indexes + functions: GitHub Action `firebase-deploy.yml`; **Storage rules: in the Action as of 2026-07 (was manual)** | Functions via the same Action; may fail on missing IAM roles — the Action log names them | If Vercel shows new commits as "Preview": disconnect + reconnect the git integration (it caches the production branch at connect time) |
 | Cadence | push → Vercel | Firestore rules manual via `firebase deploy` | — | Schema migrations: bump `_meta.version` + seeder gate together |
 | PartySpark | PR → protected `main` → Vercel prod; branch push → preview | — | Serverless `api/*` deploy with the app | Preview URLs have Deployment Protection (ignore the manifest 401) |
 | TradeGenie | push `main` → Vercel prod (standing authorization; never push red) | Firestore via service account envs | — | |
 | Penalty-Shootout | push → Vercel | — (Firebase only arrives at Milestone 8) | — | |
+
+### Rules-change ritual (DayOS)
+
+`firestore.rules` and `storage.rules` are both in the repo, and **committing them changes nothing in production** — the Firebase CLI is the only thing that deploys them. After editing either: `firebase deploy --only firestore:rules` / `firebase deploy --only storage`, then confirm the new text in the Console (Firestore → Rules / Storage → Rules) — that page shows what is actually enforcing, which is the only source of truth. Editing rules in the Console instead makes the repo copy a lie; if that happens, copy the Console text back into the repo before touching anything else.
 
 ### Env-var change ritual (Vercel, any repo)
 
