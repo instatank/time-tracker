@@ -89,3 +89,14 @@ jobs:
               pull_number: context.payload.pull_request.number,
               merge_method: 'squash'
             })
+
+  # The second door into main. This path is rarely used (the repo normally
+  # merges without opening a PR) but it reaches main just the same, and a merge
+  # made through the API with GITHUB_TOKEN starts no new workflow run either —
+  # so the rules deploy is called from here too. Gating only the busy door is
+  # how you end up with a guard that looks present and isn't.
+  deploy-rules:
+    name: Deploy Firebase rules
+    needs: auto-merge
+    uses: ./.github/workflows/firebase-rules-deploy.yml
+    secrets: inherit

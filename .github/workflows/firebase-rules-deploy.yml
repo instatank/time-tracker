@@ -1,0 +1,107 @@
+name: Deploy Firebase rules
+
+# Firestore + Storage rules are the one part of DayOS that Vercel never
+# deploys. This workflow closes that gap so a rules change ships with its
+# commit like everything else.
+#
+# WHY THIS IS NOT JUST `on: push: branches: [main]`:
+# Both routes into main merge using GITHUB_TOKEN — create-pr-for-claude.yml's
+# sync-to-main job (git push with the default token) and auto-merge-claude.yml's
+# squash merge via the API. GitHub deliberately refuses to start new workflow
+# runs from a GITHUB_TOKEN push, to stop workflows triggering each other in a
+# loop. So a purely push-triggered deploy would never fire on this repo's normal
+# flow — it would sit green and idle while rules silently never shipped.
+# Both of those workflows therefore CALL this one directly (workflow_call).
+# The push trigger below is the third door: a rules change pushed to main from
+# a laptop, which is a real user token and does fire workflows.
+# See the "two doors into main" card in LEARNINGS.md.
+#
+# Every merge to main runs this, not only rules changes. Deploying rules is
+# idempotent and takes seconds, and re-asserting the repo's copy on every merge
+# is the point: it means a hand-edit in the Firebase Console cannot quietly
+# outlive the next commit. The repo is the source of truth.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - 'storage.rules'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/firebase-rules-deploy.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-rules-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: firebase rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # A missing secret is a WARNING, not a failure, and deliberately so.
+      # Per the detector-tuning doctrine in docs/security-audit.md, precision
+      # is set by interruption cost: a red X on every single merge, for config
+      # that was simply never set up, would train the founder to ignore red X's
+      # — including the one time it means something. It is loud in the job
+      # summary instead. A secret that IS set and then fails to deploy fails
+      # hard, because that one is a real broken thing.
+      - name: Check for the service-account secret
+        id: secret
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Firebase rules NOT deployed::FIREBASE_SERVICE_ACCOUNT is not set, so firestore.rules and storage.rules were left untouched. Setup steps are in playbook/SOP-deploy.md."
+            {
+              echo "### :warning: Firebase rules were not deployed"
+              echo ""
+              echo "The \`FIREBASE_SERVICE_ACCOUNT\` secret is not set on this repository,"
+              echo "so this workflow skipped the deploy. **Nothing is broken** — the rules"
+              echo "currently live on Firebase are simply still the ones deployed by hand."
+              echo ""
+              echo "To turn automatic deploys on, follow *Rules-change ritual* in"
+              echo "\`playbook/SOP-deploy.md\`. Until then, deploy manually with:"
+              echo ""
+              echo '```'
+              echo "npx firebase-tools deploy --only firestore:rules,storage"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write the key to a temporary file
+        if: steps.secret.outputs.present == 'true'
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          node -e 'JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP + "/sa.json", "utf8"))' \
+            || { echo "::error title=Bad secret::FIREBASE_SERVICE_ACCOUNT is not valid JSON. Re-paste the entire downloaded file, including the outer curly braces."; exit 1; }
+
+      - name: Deploy Firestore + Storage rules
+        if: steps.secret.outputs.present == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: npx --yes firebase-tools@15 deploy --only firestore:rules,storage --non-interactive
+
+      # The runner is destroyed after the job, but never leave a private key
+      # sitting on disk for the remaining steps of a job that might be extended
+      # later.
+      - name: Shred the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"

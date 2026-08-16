@@ -105,3 +105,14 @@ jobs:
           git checkout "$BRANCH"
           git rebase origin/main
           git push --force-with-lease origin "$BRANCH"
+
+  # The push to main above is made with GITHUB_TOKEN, and GitHub will not start
+  # a new workflow run from such a push. So the rules deploy has to be CALLED
+  # from here rather than triggered by the push it just made — otherwise it
+  # would never run on this repo's normal flow. Runs after the merge, so a
+  # failed deploy shows red without holding up or undoing the merge.
+  deploy-rules:
+    name: Deploy Firebase rules
+    needs: sync-to-main
+    uses: ./.github/workflows/firebase-rules-deploy.yml
+    secrets: inherit

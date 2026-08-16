@@ -11,7 +11,7 @@
 
 | Repo | App deploy | Rules | Functions/cron | Notes |
 |---|---|---|---|---|
-| time-tracker (DayOS) | push `claude/*` → Action auto-merges to `main` → Vercel | **Both rule files are manual — Vercel never deploys either.** Storage: `firebase deploy --only storage`. Firestore: `firebase deploy --only firestore:rules` | `api/cron-reminders.mjs` via `vercel.json` cron | Hobby plan = max **one cron/day**; sub-daily schedules are **silently rejected and block the deploy** |
+| time-tracker (DayOS) | push `claude/*` → Action auto-merges to `main` → Vercel | **Vercel never deploys either rules file.** Now `firebase-rules-deploy.yml`, called from *both* merge workflows — **but only once `FIREBASE_SERVICE_ACCOUNT` is set**; until then it warns and skips, and rules stay manual: `npx firebase-tools deploy --only firestore:rules,storage` | `api/cron-reminders.mjs` via `vercel.json` cron | Hobby plan = max **one cron/day**; sub-daily schedules are **silently rejected and block the deploy** |
 | BillOS | push to production branch `claude/design-system` → Vercel (NOT `main`) | Firestore rules + indexes + functions: GitHub Action `firebase-deploy.yml`; **Storage rules: in the Action as of 2026-07 (was manual)** | Functions via the same Action; may fail on missing IAM roles — the Action log names them | If Vercel shows new commits as "Preview": disconnect + reconnect the git integration (it caches the production branch at connect time) |
 | Cadence | push → Vercel | Firestore rules manual via `firebase deploy` | — | Schema migrations: bump `_meta.version` + seeder gate together |
 | PartySpark | PR → protected `main` → Vercel prod; branch push → preview | — | Serverless `api/*` deploy with the app | Preview URLs have Deployment Protection (ignore the manifest 401) |
@@ -20,7 +20,20 @@
 
 ### Rules-change ritual (DayOS)
 
-`firestore.rules` and `storage.rules` are both in the repo, and **committing them changes nothing in production** — the Firebase CLI is the only thing that deploys them. After editing either: `firebase deploy --only firestore:rules` / `firebase deploy --only storage`, then confirm the new text in the Console (Firestore → Rules / Storage → Rules) — that page shows what is actually enforcing, which is the only source of truth. Editing rules in the Console instead makes the repo copy a lie; if that happens, copy the Console text back into the repo before touching anything else.
+`firestore.rules` and `storage.rules` live in the repo. **Automated as of 2026-08-16** via `.github/workflows/firebase-rules-deploy.yml`, which deploys both on every merge to `main`.
+
+**One-time setup (not done until `FIREBASE_SERVICE_ACCOUNT` exists as a repo secret).** Until it is set the workflow *warns and skips* rather than failing — a red X on every merge for unset config just teaches you to ignore red X's (the detector-tuning doctrine in `docs/security-audit.md`, applied to CI). Steps:
+
+1. Firebase Console → ⚙ **Project settings** → **Service accounts** → **Generate new private key** → confirm. A `.json` file downloads.
+2. GitHub → the repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Name it exactly `FIREBASE_SERVICE_ACCOUNT`, paste the **entire** file contents including the outer `{ }`.
+3. Delete the downloaded file from Downloads. It is a live credential; per the copy-graph principle it should exist in exactly one place.
+4. Verify: GitHub → **Actions** → **Deploy Firebase rules** → **Run workflow**. Green with a "released rules" line means it works.
+
+**Why it is wired the way it is.** Both routes into `main` merge with `GITHUB_TOKEN`, and GitHub refuses to start a workflow run from a `GITHUB_TOKEN` push (loop protection). A plain `on: push: branches: [main]` deploy would therefore *never fire* on this repo's normal flow — present, green, and doing nothing. So both merge workflows **call** the deploy workflow directly via `workflow_call`. If a third route into `main` is ever added, it needs the same call.
+
+**Manual deploy** (before setup, or to push rules without a commit): `npx firebase-tools deploy --only firestore:rules,storage`. Then confirm the text in the Console (Firestore → Rules / Storage → Rules) — that page shows what is actually enforcing, which is the only source of truth. **Never run `firebase init`** in this repo: it offers to overwrite `firestore.rules` with a starter template. `.firebaserc` pins the project so you never need it.
+
+**Console edits do not survive.** The workflow re-asserts the repo's copy on every merge, deliberately — so a hand-edit in the Console gets overwritten by the next commit. If you must hotfix in the Console, copy the text back into the repo immediately or you will lose it.
 
 ### Env-var change ritual (Vercel, any repo)
 
