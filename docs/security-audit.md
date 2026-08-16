@@ -142,6 +142,28 @@ attachments off permanent token URLs. Then, separately, the second brain.
 
 ---
 
+## Shipped — repo-side guardrail (2026-08-16)
+
+Ahead of the phases above, the *repository* side is now closed. This covers the
+laptop → public repo → Vercel path only; it does nothing about what is already
+inside Firestore, which is still what Phases 1–4 are for.
+
+- `.gitignore` covers env files, service-account JSON, `*.pem` / `*.key` /
+  `*.p12`, firebase artifacts and OS noise. `.claude/settings.local.json` is
+  untracked — it was machine-specific and carried local filesystem paths.
+- `.github/workflows/ci.yml` runs `scripts/check.sh` on every push and PR.
+- `.github/workflows/secret-scan.yml` runs gitleaks on the pushed commit range,
+  with `--redact` so a caught secret is never reprinted into this public repo's
+  Actions logs.
+- Both routes into `main` — the PR path and the direct `claude/**` sync — wait
+  for those two checks before merging.
+- `.gitleaks.toml` extends the stock ruleset with the **worded** secrets push
+  protection structurally cannot see, since it only matches shaped tokens.
+  Tuned to sit quiet on prose: the separator must follow the keyword
+  immediately, and the value must carry a digit. An all-letters phrase written
+  out in prose is still missed — closing that would mean flagging ordinary
+  English, and a scanner that cries wolf is one you stop reading.
+
 ## Principle
 
 From `LEARNINGS.md`, 2026-07-16: **"notes apps copy; vaults don't."** Everything
