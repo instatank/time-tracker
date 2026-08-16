@@ -27,7 +27,10 @@
 1. Firebase Console → ⚙ **Project settings** → **Service accounts** → **Generate new private key** → confirm. A `.json` file downloads.
 2. GitHub → the repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Name it exactly `FIREBASE_SERVICE_ACCOUNT`, paste the **entire** file contents including the outer `{ }`.
 3. Delete the downloaded file from Downloads. It is a live credential; per the copy-graph principle it should exist in exactly one place.
-4. Verify: GitHub → **Actions** → **Deploy Firebase rules** → **Run workflow**. Green with a "released rules" line means it works.
+4. **Grant the key one extra role, or the Storage half fails.** Google Cloud Console → **IAM** → find the `firebase-adminsdk-…@time-tracker-f07da.iam.gserviceaccount.com` principal → pencil icon → **Add another role** → **Service Usage Consumer** → Save. Without it the Storage deploy dies on its preflight with `403, Permission denied to get service [firebasestorage.googleapis.com]` — the key is fine, it just can't read whether the Storage API is switched on. (Hit on first run, 2026-08-16.)
+5. Verify: GitHub → **Actions** → **Deploy Firebase rules** → **Run workflow**. Green with a "released rules" line means it works.
+
+**Firestore and Storage deploy as two separate steps** for this reason: bundled as `--only firestore:rules,storage`, the Storage preflight 403 aborted the command before the Firestore rules — the more security-critical half — were deployed at all. Split, Firestore lands first and a Storage failure names itself.
 
 **Why it is wired the way it is.** Both routes into `main` merge with `GITHUB_TOKEN`, and GitHub refuses to start a workflow run from a `GITHUB_TOKEN` push (loop protection). A plain `on: push: branches: [main]` deploy would therefore *never fire* on this repo's normal flow — present, green, and doing nothing. So both merge workflows **call** the deploy workflow directly via `workflow_call`. If a third route into `main` is ever added, it needs the same call.
 
