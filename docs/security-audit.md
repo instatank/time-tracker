@@ -113,6 +113,41 @@ Low likelihood, total impact. Fix: SRI hash or self-host, plus a CSP. → Phase 
 
 ---
 
+## Detector tuning doctrine — founder ruling, 2026-08-16
+
+**Every phase below inherits this.** Precision is set per *surface*, by whether a
+false alarm interrupts him or waits for him — not once, globally, for the whole
+project.
+
+| Surface | Interrupts? | Tune for |
+|---|---|---|
+| CI gitleaks (blocks a merge) | Blocks work | **Near-zero false alarms.** Second layer — push protection already has the shaped secrets, so its real job is the worded rules. A blocked merge he doesn't believe just teaches him to bypass the gate, and then it catches nothing. |
+| In-app save-time warning + pre-AI-send check (Phase 3) | Mid-sentence | **Strictest precision of all.** "Wrong twice and I'll dismiss it reflexively forever, including the time it's right." |
+| In-app Security Check sweep (Phase 1) | Never — read-only, batch-reviewed | **Be sensitive.** "A false positive costs me one glance, a miss costs a leaked credential." |
+
+*Numbering note:* he referred to the sweep as "Phase 4" and the save-time /
+pre-AI-send check as "Phase 6". This doc's plan has four phases, where the sweep
+is **Phase 1** and the save-time + pre-AI-send checks are **Phase 3**; the table
+uses this doc's numbers. If a separate six-phase plan exists elsewhere, reconcile
+the two before building — the surfaces are what matter, not the labels.
+
+**Keep the two categories tuned separately — never average them.**
+
+- **Shaped** secrets (`ghp_`, `AKIA`, `sk-ant-`) are precise by nature. Treat a
+  hit as a *finding* and act on it.
+- **Worded** secrets are inherently fuzzy. Tuning these to zero false positives
+  deletes the category — and the category is the only reason a detector exists
+  here at all beyond what push protection already does. Surface worded hits as
+  **"worth a look"**, not as alarms.
+
+*Engineering note on the seam:* a blocking CI gate has no "worth a look" tier —
+gitleaks fails the job on any rule that fires, so in CI both categories currently
+carry alarm weight, which is why the shipped worded rules are tuned tight. The
+two-tier split becomes real in the Phase 1 sweep, where a read-only batch view
+can rank findings instead of blocking. Build the tiering there, not in CI.
+
+---
+
 ## Plan
 
 **Phase 1 — Find out (read-only, changes nothing).**
