@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Cancel an in-flight run when the same branch/PR gets a new push.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # This job name is the status-check string to require in branch protection.
+    name: check.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The existing pre-push gate: extracts + syntax-checks the inline module
+      # in index.html, syntax-checks api/**/*.mjs, runs tests/*.mjs sims.
+      - name: Run pre-push gate
+        run: bash scripts/check.sh

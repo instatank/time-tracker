@@ -1,10 +1,82 @@
 name: Auto-sync Claude branch to main
+
 on:
   push:
     branches: ['claude/**']
 
 jobs:
+  # This path merges straight into main with no pull request, so the PR-level
+  # gate in auto-merge-claude.yml never sees it. Without this job a secret would
+  # still go laptop -> public repo -> Vercel with nothing in the way, which is
+  # the exact hole the other workflows exist to close.
+  gate:
+    name: Wait for CI + secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+    steps:
+      - name: Wait for required checks
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const REQUIRED = ['check.sh', 'gitleaks'];
+            const sha = context.sha;
+            const deadline = Date.now() + 20 * 60 * 1000; // 20 minutes
+
+            while (true) {
+              const { data } = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: sha,
+                per_page: 100,
+              });
+
+              const newest = new Map();
+              for (const run of data.check_runs) {
+                if (!REQUIRED.includes(run.name)) continue;
+                const prev = newest.get(run.name);
+                if (!prev || new Date(run.started_at) > new Date(prev.started_at)) {
+                  newest.set(run.name, run);
+                }
+              }
+
+              const missing = REQUIRED.filter(n => !newest.has(n));
+              const pending = [...newest.values()].filter(r => r.status !== 'completed');
+              const failed  = [...newest.values()].filter(
+                r => r.status === 'completed' && r.conclusion !== 'success'
+              );
+
+              if (failed.length) {
+                core.setFailed(
+                  'Not merging to main — required checks did not pass: ' +
+                  failed.map(r => `${r.name} (${r.conclusion})`).join(', ')
+                );
+                return;
+              }
+
+              if (!missing.length && !pending.length) {
+                core.info(`All required checks green for ${sha}: ${REQUIRED.join(', ')}`);
+                return;
+              }
+
+              if (Date.now() > deadline) {
+                core.setFailed(
+                  'Not merging to main — timed out waiting for required checks. ' +
+                  `missing=[${missing.join(', ')}] pending=[${pending.map(r => r.name).join(', ')}]`
+                );
+                return;
+              }
+
+              core.info(
+                `Waiting… missing=[${missing.join(', ')}] ` +
+                `pending=[${pending.map(r => r.name).join(', ')}]`
+              );
+              await new Promise(r => setTimeout(r, 15000));
+            }
+
   sync-to-main:
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write

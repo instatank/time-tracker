@@ -1,1 +1,22 @@
+# Deploy tooling
 .vercel
+
+# Secrets — never commit these to a public repo
+.env*
+*serviceAccount*.json
+*service-account*.json
+*.pem
+*.key
+*.p12
+
+# Firebase local artifacts
+firebase-debug.log
+.firebase/
+
+# OS / editor noise
+.DS_Store
+node_modules/
+
+# Machine-specific Claude Code config (leaks local paths).
+# .claude/settings.json stays tracked — that one is shared config.
+.claude/settings.local.json

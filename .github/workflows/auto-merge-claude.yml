@@ -1,4 +1,5 @@
 name: Auto-merge Claude branches
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -11,8 +12,74 @@ jobs:
     permissions:
       pull-requests: write
       contents: write
+      checks: read
     steps:
-      - uses: actions/github-script@v7
+      # Block until CI and the secret scan have both finished green for this
+      # exact commit. Anything other than success (failure, cancelled, timed
+      # out) fails this job, and the merge step below never runs.
+      - name: Wait for required checks
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const REQUIRED = ['check.sh', 'gitleaks'];
+            const sha = context.payload.pull_request.head.sha;
+            const deadline = Date.now() + 20 * 60 * 1000; // 20 minutes
+
+            while (true) {
+              const { data } = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: sha,
+                per_page: 100,
+              });
+
+              // Keep only the newest run of each required check.
+              const newest = new Map();
+              for (const run of data.check_runs) {
+                if (!REQUIRED.includes(run.name)) continue;
+                const prev = newest.get(run.name);
+                if (!prev || new Date(run.started_at) > new Date(prev.started_at)) {
+                  newest.set(run.name, run);
+                }
+              }
+
+              const missing = REQUIRED.filter(n => !newest.has(n));
+              const pending = [...newest.values()].filter(r => r.status !== 'completed');
+              const failed  = [...newest.values()].filter(
+                r => r.status === 'completed' && r.conclusion !== 'success'
+              );
+
+              if (failed.length) {
+                core.setFailed(
+                  'Not merging — required checks did not pass: ' +
+                  failed.map(r => `${r.name} (${r.conclusion})`).join(', ')
+                );
+                return;
+              }
+
+              if (!missing.length && !pending.length) {
+                core.info(`All required checks green for ${sha}: ${REQUIRED.join(', ')}`);
+                return;
+              }
+
+              if (Date.now() > deadline) {
+                core.setFailed(
+                  'Not merging — timed out waiting for required checks. ' +
+                  `missing=[${missing.join(', ')}] pending=[${pending.map(r => r.name).join(', ')}]`
+                );
+                return;
+              }
+
+              core.info(
+                `Waiting… missing=[${missing.join(', ')}] ` +
+                `pending=[${pending.map(r => r.name).join(', ')}]`
+              );
+              await new Promise(r => setTimeout(r, 15000));
+            }
+
+      - name: Squash merge
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

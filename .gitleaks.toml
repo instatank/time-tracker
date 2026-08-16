@@ -1,0 +1,100 @@
+# gitleaks config for DayOS (public repo)
+title = "DayOS secret scanning"
+
+# Start from the upstream ruleset (ghp_, AKIA, sk-ant-, GCP keys, ...).
+# That layer mostly duplicates GitHub push protection; the rules that earn
+# their keep are the custom ones below.
+[extend]
+useDefault = true
+
+# ─────────────────────────────────────────────────────────────────────
+# Worded secrets — the gap push protection cannot cover.
+#
+# Push protection matches SHAPED tokens. A free-text password ("the wifi
+# password is hunter2") has no shape and sails straight through. These rules
+# look for a credential WORD followed immediately by an assignment-ish
+# separator and a value.
+#
+# Two tuning decisions keep this quiet enough to stay trusted:
+#
+#  1. The separator must come IMMEDIATELY after the keyword (only spaces or
+#     tabs between). So "password rotation is 90 days" and "is there a
+#     password in my journal?" never match — there is no separator adjacent
+#     to the keyword.
+#
+#  2. The value must CONTAIN A DIGIT. Prose continuations are words
+#     ("a spoken password is as exposed as a typed one" -> "as"); real
+#     passwords, OTPs, PINs and keys carry digits. This is what stops the
+#     keyword lists in docs/security-audit.md from tripping the scanner.
+#
+# Word boundaries (\b) also mean a random Firestore doc ID like "x7Kcvv9mQ2"
+# does not match the cvv rule — "cvv" there is mid-word, not a word of its own.
+#
+# Trade-off, stated honestly: an all-letters password ("password is
+# butterfly") is NOT caught. Catching that would mean flagging ordinary
+# English and the scanner would become noise. This net is deliberately
+# sized to stay green so a red run always means something.
+# ─────────────────────────────────────────────────────────────────────
+
+[[rules]]
+id = "dayos-worded-password"
+description = "Password/passphrase stated in free text or assigned inline"
+# password | passwd | pwd | passphrase  +  is/was/:/=  +  value containing a digit
+regex = '''(?i)\b(?:pass(?:word|wd|phrase)|pwd)\b[ \t]*(?:is|was|:|=|=>|->)[ \t]*["'`]?([A-Za-z0-9._\-!@#$%^&*+=?~/]*[0-9][A-Za-z0-9._\-!@#$%^&*+=?~/]*)'''
+secretGroup = 1
+tags = ["password", "worded"]
+
+[[rules]]
+id = "dayos-worded-secret"
+description = "A secret stated in free text or assigned inline"
+regex = '''(?i)\b(?:secret|credential|passcode)\b[ \t]*(?:is|was|:|=|=>|->)[ \t]*["'`]?([A-Za-z0-9._\-!@#$%^&*+=?~/]*[0-9][A-Za-z0-9._\-!@#$%^&*+=?~/]*)'''
+secretGroup = 1
+tags = ["secret", "worded"]
+
+[[rules]]
+id = "dayos-worded-api-key"
+description = "An API key written out in free text or assigned inline"
+regex = '''(?i)\bapi[ \t_\-]?key\b[ \t]*(?:is|was|:|=|=>|->)[ \t]*["'`]?([A-Za-z0-9._\-!@#$%^&*+=?~/]*[0-9][A-Za-z0-9._\-!@#$%^&*+=?~/]*)'''
+secretGroup = 1
+tags = ["apikey", "worded"]
+
+[[rules]]
+id = "dayos-worded-numeric-code"
+description = "OTP / PIN / CVV / 2FA / backup / recovery code written out"
+# Numeric-only values, 3-10 digits. Very tight on purpose: these are the
+# rules most at risk of matching random IDs, so they demand a real code.
+regex = '''(?i)\b(?:otp|pin|cvv|cvc|(?:2fa|mfa|totp|auth(?:enticator)?|backup|recovery|security|verification)[ \t\-]?code)\b[ \t]*(?:is|was|:|=|=>|->)[ \t]*["'`]?([0-9]{3,10})\b'''
+secretGroup = 1
+tags = ["otp", "worded"]
+
+[[rules]]
+id = "dayos-worded-seed-phrase"
+description = "Wallet seed / recovery / mnemonic phrase written out"
+# A real seed phrase is >=6 lowercase words. Requiring that shape keeps the
+# literal words "seed phrase" in prose and keyword lists from matching.
+regex = '''(?i)\b(?:seed|recovery|mnemonic|backup)[ \t\-]?phrase\b[ \t]*(?:is|was|:|=|=>|->)[ \t]*["'`]?((?:[a-z]{3,10}[ \t]+){5,23}[a-z]{3,10})'''
+secretGroup = 1
+tags = ["seedphrase", "worded"]
+
+# ─────────────────────────────────────────────────────────────────────
+# Allowlist — known-public values and self-references.
+# Each entry is here because it was verified NOT to be a credential.
+# ─────────────────────────────────────────────────────────────────────
+[allowlist]
+description = "Known-public keys, this config itself, and local scan artifacts"
+paths = [
+  # This file quotes every trigger word by definition.
+  '''\.gitleaks\.toml$''',
+]
+regexes = [
+  # Firebase WEB config apiKey — a public app identifier, not a credential.
+  # Security is enforced by Firestore/Storage rules, not by hiding this.
+  # See playbook/PLAYBOOK.md L7.
+  '''AIzaSyAxVCwVHFxRSHNXDhAoCGhj4Y1yfs6qUks''',
+  # FCM VAPID key — this is the PUBLIC half of the pair, shipped to browsers
+  # by design (index.html says so at the declaration).
+  '''BBbnsiy08BdT-TIBn0MQgPpuABGpe0lWoGGr91MIO2H0phQ6r7mM6CEszGh3nBnnO9pD1xxHmUaPMY0XRifQdrw''',
+  # localStorage key names (dayos_*_v1) look like high-entropy strings to the
+  # stock generic-api-key rule. They are variable names, not secrets.
+  '''dayos_[a-z0-9_]+_v[0-9]+''',
+]
