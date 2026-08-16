@@ -27,7 +27,17 @@
 1. Firebase Console → ⚙ **Project settings** → **Service accounts** → **Generate new private key** → confirm. A `.json` file downloads.
 2. GitHub → the repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Name it exactly `FIREBASE_SERVICE_ACCOUNT`, paste the **entire** file contents including the outer `{ }`.
 3. Delete the downloaded file from Downloads. It is a live credential; per the copy-graph principle it should exist in exactly one place.
-4. **Grant the key one extra role, or nothing deploys at all.** Google Cloud Console → **IAM** → find the `firebase-adminsdk-…@time-tracker-f07da.iam.gserviceaccount.com` principal → pencil icon → **Add another role** → **Service Usage Consumer** → Save, then wait ~1 min for propagation. Without it *both* deploys die on their preflight with `403, Permission denied to get service [firestore.googleapis.com]` / `[firebasestorage.googleapis.com]`. The key itself is fine — it just can't read whether those APIs are switched on. Generating a key does **not** grant this; it is a separate, easily-missed step. (Hit on the first two runs, 2026-08-16.)
+4. **Grant the key its roles, or nothing deploys at all.** Generating a key grants it *nothing*; Firebase issues the key, Google Cloud IAM decides what it can open. Google Cloud Console → **IAM** → find the `firebase-adminsdk-…@time-tracker-f07da.iam.gserviceaccount.com` principal → pencil icon → **Add another role** → **Firebase Admin** (`roles/firebase.admin`) → Save, then wait ~1 min for propagation.
+
+   **Grant the umbrella role, not the minimal set.** Deploying rules touches three separate Google APIs and each 403s independently, so a least-privilege hunt costs one failed run per missing permission — this was learned the slow way on 2026-08-16, three rounds deep:
+
+   | Round | Error | Permission behind it |
+   |---|---|---|
+   | 1–2 | `Permission denied to get service [firestore\|firebasestorage].googleapis.com` | `serviceusage.services.get` |
+   | 3 | `firebaserules.googleapis.com/…:test → 403 caller does not have permission` | `firebaserules.*` |
+   | 3 | `Permission 'firebasestorage.defaultBucket.get' denied` | `firebasestorage.defaultBucket.get` |
+
+   `roles/firebase.admin` covers all three and stays scoped to Firebase — it is **not** project-wide `Editor`, which is the lazy answer and hands the key compute, billing and IAM it will never use. Least privilege is right in principle; the unit to be least-privileged about here is "deploy Firebase rules", not each individual API call.
 5. Verify: GitHub → **Actions** → **Deploy Firebase rules** → **Run workflow**. Green with a "released rules" line means it works.
 
 **Firestore and Storage deploy as two separate steps**, but only so a failure says which half broke — **it does not make them independent for this error.** Both open with the same `serviceusage.googleapis.com` preflight, so the missing role fails both alike. Splitting them was tried on the assumption Firestore would get through; it did not. If both halves 403 identically, that is the role, not the rules.

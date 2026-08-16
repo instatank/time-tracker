@@ -107,7 +107,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
           if ! npx --yes firebase-tools@15 deploy --only firestore:rules --non-interactive; then
-            echo "::error title=Firestore rules not deployed::If this says 'Permission denied to get service', the service account is missing the Service Usage Consumer role. See 'Rules-change ritual' in playbook/SOP-deploy.md."
+            echo "::error title=Firestore rules not deployed::Read the real error above this line. Any 403 means the service account is missing a role - grant it Firebase Admin (roles/firebase.admin); see 'Rules-change ritual' in playbook/SOP-deploy.md."
             exit 1
           fi
 
@@ -120,7 +120,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
           if ! npx --yes firebase-tools@15 deploy --only storage --non-interactive; then
-            echo "::error title=Storage rules not deployed::If this says 'Permission denied to get service', the service account is missing the Service Usage Consumer role. See 'Rules-change ritual' in playbook/SOP-deploy.md."
+            echo "::error title=Storage rules not deployed::Read the real error above this line. Any 403 means the service account is missing a role - grant it Firebase Admin (roles/firebase.admin); see 'Rules-change ritual' in playbook/SOP-deploy.md."
             exit 1
           fi
 
