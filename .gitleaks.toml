@@ -85,6 +85,18 @@ description = "Known-public keys, this config itself, and local scan artifacts"
 paths = [
   # This file quotes every trigger word by definition.
   '''\.gitleaks\.toml$''',
+  # The in-app detector's corpus (docs/security-audit.md Phase 1). Same reason
+  # as this config: a detector corpus is, by construction, a file full of the
+  # exact shapes a secret scanner looks for — ~30 fabricated true positives and
+  # ~40 true negatives. Without these two entries every push would be red and
+  # the gate would stop meaning anything.
+  #
+  # THE COST, stated plainly: a real secret pasted into either file would not
+  # be caught. Both files must contain FABRICATED values only — AWS/Anthropic
+  # documentation samples and made-up tokens. Never paste a live credential in
+  # to "test the detector"; the corpus is the test.
+  '''tests/security-detector\.mjs$''',
+  '''tests/security-screen\.mjs$''',
 ]
 regexes = [
   # Firebase WEB config apiKey — a public app identifier, not a credential.

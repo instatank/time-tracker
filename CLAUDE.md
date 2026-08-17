@@ -76,6 +76,34 @@ renderMain() → switch(activeTab) → renderToday() | renderJournal() | renderP
 ```
 Tabs (`_VALID_TABS`): `today`, `journal`, `projects`, `dashboard` (labelled "Trends"). All render functions return HTML strings injected via `innerHTML`. Sheet modals are static HTML toggled via `.open` class. Inline `onclick="x()"` handlers require `window.x = …` — module-scope functions are invisible to inline handlers.
 
+### Security check (read-only secret sweep)
+
+**Settings → Security check** answers "is there a password in my journal?" without
+sending anything anywhere. Two pieces, both in `index.html`:
+
+- **The detector** — `scanText(text) -> [{ kind, category, masked, line, start, end }]`,
+  a pure dependency-free function fenced between `// ── BEGIN secret-detector ──`
+  and `// ── END secret-detector ──`. `category` is `shaped` (token shapes:
+  `sk-ant-`, `ghp_`, `AKIA`, `AIza`, `xox…`, JWT, PEM, `sk_live_`, high-entropy)
+  or `worded` (password/pin/otp/cvv/seed phrase/api key/aadhaar/…). `masked`
+  shows first 4 + last 2 chars only and **never** the raw secret; shaped matches
+  are masked in place inside the `line` field too. The Firebase Web API key is a
+  **hardcoded exception** — it's public by design and ships in this page.
+- **The screen** — `runSecuritySweep()` + `openSettingsSecurity()`. Sweeps every
+  collection including trashed entries, voice-note titles and attachment
+  filenames. **Zero writes, zero deletes, zero network calls** — this is a hard
+  constraint, enforced by `tests/security-screen.mjs` with trapped `localStorage`
+  / `fetch` / `setDoc`. A trashed finding routes to Trash rather than the entry
+  editor, because those editors autosave.
+
+**Tuning is per-surface, not global.** This sweep is read-only and batch-reviewed,
+so it's tuned for *sensitivity* — the opposite of the CI gitleaks gate in
+`.gitleaks.toml`, which blocks a merge and is tuned tight. Read
+`docs/security-audit.md` → "Detector tuning doctrine" before changing a rule.
+The corpus (`tests/security-detector.mjs`, 34 true positives / 49 true negatives)
+is the spec; both test files are path-allowlisted in `.gitleaks.toml` because a
+detector corpus is by construction full of what a scanner looks for.
+
 ### Soft-delete + Trash
 
 Entries (captures, daily journals, sessions, learning) and individual voice notes are **soft-deleted**: tapping × stamps `deletedAt: ISO` rather than removing. Soft-deleted items are filtered out of every render via `notTrashed()` / `liveVoiceNotes()` but listed in **Settings → Trash** with restore + delete-forever (multi-select + bulk). A `sweepTrash()` on init + post-sign-in hard-deletes anything older than `TRASH_TTL_MS` (7 days). Hard-delete uses the existing tombstone+cloud-verify path.
@@ -167,6 +195,9 @@ Respects `env(safe-area-inset-*)` for status bar + home indicator. `apple-mobile
 - `docs/ai-features.md` — full AI architecture + prompt locations + tuning.
 - `playbook/SOP-firebase-sync.md` — Firestore sync gotchas (shared playbook; `docs/sync-lessons.md` is a superseded stub).
 - `docs/experiments.md` — per-flag tracker for everything under Settings → Experiments. Lists exact functions, CSS blocks, sheets, and wiring sites to delete when graduating or killing each experiment.
+- `docs/security-audit.md` — the sensitive-data audit: copy graph, open gaps, the
+  per-surface **detector tuning doctrine**, and the as-built record of the Phase 1
+  detector + Security Check screen. **Read before touching any detector rule.**
 - `docs/second-brain-integration.md` — the Firestore data contract for the personal AI agent that reads DayOS as a memory bank. **Update it in the same commit as any synced-schema change.**
 - `docs/dayos-sop.md` — the user's own plain-English founder-learnings doc.
 

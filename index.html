@@ -426,6 +426,84 @@ body.ios-pwa #hdr {
 .trash-restore-btn:hover { background: var(--accent-soft); }
 .trash-purge-btn { color: var(--danger); border-color: var(--danger); }
 .trash-purge-btn:hover { background: var(--danger-soft); }
+
+/* Settings → Security check (read-only sweep, docs/security-audit.md Phase 1) */
+.sec-body { display: flex; flex-direction: column; gap: 0.5rem; }
+.sec-note {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.7rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text2);
+}
+.sec-note strong { color: var(--text); }
+.sec-tally { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.sec-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.22rem 0.6rem;
+  font-size: 0.7rem;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.sec-chip.shaped { color: var(--danger); border-color: var(--danger); }
+.sec-chip.worded { color: var(--text);   border-color: var(--border2); }
+.sec-chip.clean  { color: var(--accent); border-color: var(--accent); }
+.sec-section-hdr {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+  margin: 0.7rem 0 0.1rem 0.15rem;
+}
+.sec-section-sub { font-size: 0.7rem; color: var(--text3); margin: 0 0 0.25rem 0.15rem; }
+.sec-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border2);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.sec-row:hover { background: var(--surface2); }
+.sec-row.shaped { border-left-color: var(--danger); }
+.sec-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--text3);
+}
+.sec-row-kind { color: var(--text); font-weight: 600; font-size: 0.78rem; }
+.sec-row-trash {
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  padding: 0 0.35rem;
+  font-size: 0.62rem;
+}
+.sec-row-masked {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  color: var(--text);
+  margin-top: 0.25rem;
+  word-break: break-all;
+}
+.sec-row-line {
+  font-size: 0.72rem;
+  color: var(--text2);
+  margin-top: 0.2rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
 .settings-row.placeholder .settings-row-sub   { font-style: italic; }
 
 /* Settings sub-screen header (back arrow + section title) */
@@ -15419,6 +15497,7 @@ const SETTINGS_SECTIONS = [
   { id: 'notify',     icon: '🔔', label: 'Notifications',   sub: 'Daily reminders · per-device toggle'    },
   { id: 'defaults',   icon: '🔁', label: 'Daily defaults',  sub: 'Auto-create blocks each day (e.g. sleep, night routine)' },
   { id: 'trash',      icon: '🗑',  label: 'Trash',           sub: 'Recover deleted entries · 7-day window' },
+  { id: 'security',   icon: '🛡',  label: 'Security check',  sub: 'Scan your entries for passwords & keys · read-only' },
   { id: 'experiments',icon: '🧪', label: 'Experiments',     sub: 'Try preview features · this device only' },
   { id: 'about',      icon: 'ℹ️', label: 'About',           sub: 'DayOS · version · feedback'             },
 ];
@@ -15466,6 +15545,7 @@ window.openSettingsSection = function(id) {
     case 'lifecheck':  return openSettingsLifeCheck();
     case 'defaults':   return openSettingsDefaults();
     case 'trash':      return openSettingsTrash();
+    case 'security':   return openSettingsSecurity();
     case 'experiments':return openSettingsExperiments();
     case 'notify':     return openSettingsNotify();
     default: {
@@ -16737,6 +16817,516 @@ window.toggleNotifyOff = async function() {
   toast('Notifications turned off');
   openSettingsNotify();
 };
+
+// ── BEGIN secret-detector ──
+// Everything between this sentinel and the END sentinel is a PURE, dependency-
+// free unit: no DOM, no state, no network, no writes. tests/security-detector.mjs
+// extracts this exact region out of index.html and runs a corpus against it, so
+// the sim tests the shipped code rather than a copy. Keep it self-contained —
+// if it starts calling app helpers, the sim stops being able to load it.
+//
+// WHAT IT IS FOR: docs/security-audit.md gap S1 — "nothing anywhere looks for
+// secrets". This is the detector behind Settings → Security check (Phase 1).
+//
+// TUNING: this feeds the READ-ONLY, batch-reviewed sweep, so it is tuned for
+// SENSITIVITY, not precision — a false positive costs one glance, a miss costs
+// a leaked credential. That is deliberately the OPPOSITE of the CI gitleaks
+// gate in .gitleaks.toml, which blocks a merge and is therefore tuned tight.
+// See docs/security-audit.md → "Detector tuning doctrine" before loosening or
+// tightening anything here. The two categories are tuned SEPARATELY and must
+// never be averaged: `shaped` hits are findings, `worded` hits are "worth a look".
+
+// Known-public strings that must never be reported. Hardcoded on purpose.
+// The Firebase Web API key is a public app identifier that ships in this very
+// page by design — security is enforced by the Firestore/Storage rules, not by
+// hiding it (docs/security-audit.md → "Verified clean" #1). Without this
+// exception, every scan would flag the app's own config forever and the sweep
+// would be useless on its first run.
+const SECRET_KNOWN_PUBLIC = [
+  'AIzaSyAxVCwVHFxRSHNXDhAoCGhj4Y1yfs6qUks', // Firebase Web API key (public by design)
+];
+
+// SHAPED rules — precise by nature. A hit is a finding, act on it.
+// `kind` is the stable identifier the UI groups and labels by.
+const SECRET_SHAPED_RULES = [
+  { kind: 'anthropic-key',     label: 'Anthropic API key',   re: /\bsk-ant-[A-Za-z0-9_-]{16,}/g },
+  { kind: 'github-token',      label: 'GitHub token',        re: /\bgh[pousr]_[A-Za-z0-9]{20,}/g },
+  { kind: 'github-token',      label: 'GitHub token',        re: /\bgithub_pat_[A-Za-z0-9_]{20,}/g },
+  { kind: 'aws-access-key-id', label: 'AWS access key ID',   re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
+  { kind: 'google-api-key',    label: 'Google API key',      re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  { kind: 'slack-token',       label: 'Slack token',         re: /\bxox[abopsr]-[A-Za-z0-9-]{10,}/g },
+  { kind: 'jwt',               label: 'JWT',                 re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}/g },
+  { kind: 'stripe-live-key',   label: 'Stripe live key',     re: /\bsk_live_[A-Za-z0-9]{10,}/g },
+  // The END half is optional: a half-pasted key is still a pasted key.
+  { kind: 'private-key',       label: 'Private key block',   re: /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----)?/g },
+];
+
+// AWS secret access keys have no prefix — they are just 40 base64-ish chars.
+// Matched separately because the shape alone would also match a 40-char git
+// SHA, which DayOS entries genuinely contain. Requiring lower AND upper AND a
+// digit excludes hex of either case, which is what a SHA is.
+const SECRET_AWS_SECRET_RE = /(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])/g;
+
+// WORDED rules — inherently fuzzy, surfaced as "worth a look", never as alarms.
+// Tuning these to zero false positives would delete the category, and the
+// category is the only reason this detector exists beyond what GitHub push
+// protection already does.
+//
+// Where a rule has a capture group it is the VALUE following the keyword; the
+// finding's masked span covers the value when present, the keyword otherwise.
+//
+// The keyword-only rules ("password" alone, "pin" alone) deliberately require
+// an is/was/:/= immediately after the word. That single constraint is what
+// keeps "need to reset my password" — an extremely common journal sentence —
+// off the screen while "the wifi password is <value>" lands on it.
+const SECRET_WORDED_RULES = [
+  { kind: 'password',       label: 'Password',       re: /\bpass(?:word|phrase)\b[ \t]*(?:is\b|was\b|[:=])[ \t]*(\S{1,60})?/gi },
+  { kind: 'passwd',         label: 'passwd',         re: /\bpasswd\b[ \t]*[:=]?[ \t]*(\S{1,60})?/gi },
+  { kind: 'pwd',            label: 'pwd',            re: /\bpwd\b[ \t]*[:=][ \t]*(\S{1,60})?/gi },
+  { kind: 'pin',            label: 'PIN',            re: /\bpin\b[ \t]*(?:is\b|was\b|[:=])[ \t]*([0-9][0-9 -]{2,14}|\S{1,40})?/gi },
+  { kind: 'otp',            label: 'OTP',            re: /\botp\b[ \t]*(?:is\b|was\b|[:=])?[ \t]*([0-9][0-9 -]{2,14})?/gi },
+  { kind: 'cvv',            label: 'CVV',            re: /\bcvv\b[ \t]*(?:is\b|was\b|[:=])?[ \t]*([0-9]{3,4})?/gi },
+  // A seed phrase IS a run of words, so this one keeps the whole tail.
+  { kind: 'seed-phrase',    label: 'Seed phrase',    re: /\bseed[ \t-]?phrase\b[ \t]*(?:is\b|was\b|[:=])?[ \t]*([^\n]{1,140})?/gi },
+  { kind: 'recovery-code',  label: 'Recovery code',  re: /\brecovery[ \t-]?codes?\b[ \t]*(?:is\b|are\b|was\b|[:=])?[ \t]*(\S{1,60})?/gi },
+  { kind: 'backup-code',    label: 'Backup code',    re: /\bbackup[ \t-]?codes?\b[ \t]*(?:is\b|are\b|was\b|[:=])?[ \t]*(\S{1,60})?/gi },
+  { kind: 'api-key',        label: 'API key',        re: /\bapi[ \t_-]?keys?\b[ \t]*(?:is\b|was\b|[:=])?[ \t]*(\S{1,60})?/gi },
+  { kind: 'secret',         label: 'Secret',         re: /\bsecret\b[ \t]*(?:is\b|was\b|[:=])[ \t]*(\S{1,60})?/gi },
+  { kind: '2fa-code',       label: '2FA code',       re: /\b(?:2fa|mfa|totp)[ \t-]?code\b[ \t]*(?:is\b|was\b|[:=])?[ \t]*([0-9][0-9 -]{2,14}|\S{1,40})?/gi },
+  { kind: 'account-number', label: 'Account number', re: /\baccount[ \t]+(?:number|no\.?)\b[ \t]*(?:is\b|was\b|[:=])?[ \t]*([0-9][0-9 -]{4,30}|\S{1,40})?/gi },
+  { kind: 'aadhaar',        label: 'Aadhaar',        re: /\baadha?ar\b[ \t]*(?:number|no\.?)?[ \t]*(?:is\b|was\b|[:=])?[ \t]*([0-9][0-9 -]{6,20})?/gi },
+  { kind: 'pan-number',     label: 'PAN number',     re: /\bpan[ \t]+(?:number|no\.?|card)\b[ \t]*(?:is\b|was\b|[:=])?[ \t]*([A-Z0-9]{5,15}|\S{1,40})?/gi },
+];
+
+// High-entropy fallback: any contiguous run of 25+ alphanumerics that looks
+// random. Deliberately excludes `-` and `_` from the run, which is what keeps
+// slugs, deterministic block ids (`default-<tpl>-<date>`), UUID device ids and
+// `dayos_*_v1` storage keys off the screen — a real opaque token is contiguous.
+const SECRET_ENTROPY_RE = /[A-Za-z0-9]{25,}/g;
+const SECRET_ENTROPY_MIN = 3.5;
+
+// Pasted screenshots arrive as data: URIs whose base64 payload is, correctly,
+// high-entropy. Suppressing those regions is the difference between a sweep
+// that lists real findings and one that lists every image the user ever pasted.
+// Applied to the entropy rule ONLY — a shaped rule matching inside base64
+// noise is astronomically unlikely and worth seeing if it ever happens.
+const SECRET_IGNORE_RE = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+/gi;
+
+function shannonEntropy(s) {
+  if (!s) return 0;
+  const counts = Object.create(null);
+  for (const ch of s) counts[ch] = (counts[ch] || 0) + 1;
+  let h = 0;
+  for (const k in counts) {
+    const p = counts[k] / s.length;
+    h -= p * Math.log2(p);
+  }
+  return h;
+}
+
+// Never return the raw secret. First 4 and last 2 characters only; anything
+// 6 chars or shorter is hidden entirely, because 4+2 of a 6-char string is
+// the whole string. The bullet run is capped so a pasted PEM block does not
+// produce a 3,000-character "masked" value.
+function maskSecret(s) {
+  const str = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  if (!str) return '';
+  if (str.length <= 6) return '•'.repeat(str.length);
+  const hidden = Math.min(str.length - 6, 12);
+  return str.slice(0, 4) + '•'.repeat(hidden) + str.slice(-2);
+}
+
+function _secretIsKnownPublic(raw) {
+  return SECRET_KNOWN_PUBLIC.some(k => raw === k || raw.indexOf(k) !== -1 || k.indexOf(raw) !== -1);
+}
+
+// Byte ranges the entropy rule must not look inside (base64 image payloads).
+function _secretIgnoredRanges(text) {
+  const out = [];
+  for (const m of text.matchAll(SECRET_IGNORE_RE)) out.push([m.index, m.index + m[0].length]);
+  return out;
+}
+
+function _secretOverlaps(ranges, start, end) {
+  return ranges.some(([a, b]) => start < b && end > a);
+}
+
+// Line containing `idx`, as [startOffset, endOffset).
+function _secretLineBounds(text, idx) {
+  const start = text.lastIndexOf('\n', Math.max(0, idx - 1)) + 1;
+  let end = text.indexOf('\n', idx);
+  if (end === -1) end = text.length;
+  return [start, end];
+}
+
+// scanText(text) -> [{ kind, category, masked, line, start, end }]
+//
+//   kind     — stable rule id ('github-token', 'password', …)
+//   category — 'shaped' | 'worded' (tuned separately, never averaged)
+//   masked   — the matched span, first 4 + last 2 chars only. NEVER raw.
+//   line     — the surrounding line, for context. Shaped matches inside it are
+//              masked in place, so a shaped secret never appears in full in any
+//              field of any finding. Worded lines are returned whole: the
+//              wording IS the evidence, and this never leaves the device.
+//   start/end— offsets into `text` of the matched span.
+//
+// Pure and side-effect free: no DOM, no state, no writes, no network.
+function scanText(text) {
+  if (typeof text !== 'string' || !text) return [];
+
+  const raw = [];   // { kind, category, start, end, value }
+  const seen = new Set();
+  const add = (kind, category, start, end, value) => {
+    const key = kind + ':' + start + ':' + end;
+    if (seen.has(key)) return;
+    seen.add(key);
+    raw.push({ kind, category, start, end, value });
+  };
+
+  // 1. Shaped rules.
+  for (const rule of SECRET_SHAPED_RULES) {
+    for (const m of text.matchAll(rule.re)) {
+      if (_secretIsKnownPublic(m[0])) continue;
+      add(rule.kind, 'shaped', m.index, m.index + m[0].length, m[0]);
+    }
+  }
+
+  // 2. AWS secret access key — shape-only, so it needs the mixed-case guard
+  //    that separates a real key from a 40-char git SHA.
+  for (const m of text.matchAll(SECRET_AWS_SECRET_RE)) {
+    const v = m[0];
+    if (!/[a-z]/.test(v) || !/[A-Z]/.test(v) || !/[0-9]/.test(v)) continue;
+    if (_secretIsKnownPublic(v)) continue;
+    add('aws-secret-key', 'shaped', m.index, m.index + v.length, v);
+  }
+
+  // 3. High-entropy fallback, last so it can defer to the named rules above.
+  const ignored = _secretIgnoredRanges(text);
+  for (const m of text.matchAll(SECRET_ENTROPY_RE)) {
+    const v = m[0];
+    const start = m.index, end = start + v.length;
+    if (_secretIsKnownPublic(v)) continue;
+    if (_secretOverlaps(ignored, start, end)) continue;
+    if (!/[0-9]/.test(v) || !/[A-Za-z]/.test(v)) continue;   // needs both to be a token
+    if (/^[0-9a-f]+$/i.test(v)) continue;                     // hex = git SHA / hex id
+    if (shannonEntropy(v) < SECRET_ENTROPY_MIN) continue;
+    // Already covered by a named shaped rule? Report it once, under that name.
+    if (raw.some(r => r.category === 'shaped' && start < r.end && end > r.start)) continue;
+    add('high-entropy', 'shaped', start, end, v);
+  }
+
+  // 4. Worded rules. The capture group, when the line has one, is the value —
+  //    that is what gets masked; otherwise the keyword itself is the span.
+  for (const rule of SECRET_WORDED_RULES) {
+    for (const m of text.matchAll(rule.re)) {
+      const whole = m[0];
+      let start = m.index, end = start + whole.length, value = whole;
+      // Trailing sentence punctuation is never part of the value.
+      const captured = (m[1] || '').replace(/[.,;:!?)\]}'"]+$/, '');
+      if (captured && captured.trim()) {
+        const rel = whole.lastIndexOf(captured);
+        if (rel !== -1) {
+          start = m.index + rel;
+          end = start + captured.length;
+          value = captured;
+        }
+      } else {
+        // Keyword-only hit: trim any trailing separator off the reported span.
+        value = whole.replace(/[ \t:=]+$/, '');
+        end = start + value.length;
+      }
+      add(rule.kind, 'worded', start, end, value);
+    }
+  }
+
+  if (!raw.length) return [];
+  raw.sort((a, b) => a.start - b.start || a.end - b.end);
+
+  // 5. Render each finding's context line, with shaped spans masked in place.
+  const shaped = raw.filter(r => r.category === 'shaped');
+  return raw.map(r => {
+    const [ls, le] = _secretLineBounds(text, r.start);
+    let line = text.slice(ls, le);
+    const inLine = shaped
+      .filter(s => s.start >= ls && s.end <= le)
+      .sort((a, b) => b.start - a.start); // right-to-left keeps earlier offsets valid
+    for (const s of inLine) {
+      line = line.slice(0, s.start - ls) + maskSecret(s.value) + line.slice(s.end - ls);
+    }
+    return {
+      kind: r.kind,
+      category: r.category,
+      masked: maskSecret(r.value),
+      line: line.replace(/\s+/g, ' ').trim().slice(0, 220),
+      start: r.start,
+      end: r.end,
+    };
+  });
+}
+
+// Human labels for the UI, keyed by `kind`. Kept beside the rules so a new
+// rule that forgets its label is obvious.
+function secretKindLabel(kind) {
+  const all = SECRET_SHAPED_RULES.concat(SECRET_WORDED_RULES);
+  const hit = all.find(r => r.kind === kind);
+  if (hit) return hit.label;
+  if (kind === 'aws-secret-key') return 'AWS secret access key';
+  if (kind === 'high-entropy')   return 'High-entropy string';
+  return kind;
+}
+// ── END secret-detector ──
+
+// ── Settings → Security check ────────────────────────────────
+// Phase 1 of docs/security-audit.md: FIND OUT. A read-only sweep of every
+// collection already on this device, answering the question nothing in DayOS
+// could answer before — "is there a password in my journal?".
+//
+// HARD CONSTRAINT, load-bearing: this screen performs ZERO writes, ZERO
+// deletes and ZERO network calls. It reads module state, runs the pure
+// detector over it, and paints HTML. Nothing is persisted — not even the scan
+// result, which lives in a module var and dies with the page. If you add a
+// save/purge/redact action here, that is Phase 2 and it needs its own review.
+//
+// WHAT IT COVERS: blocks, captures, daily journals, sessions, learning, EOD
+// notes, DFTs, weekly + monthly reviews — INCLUDING soft-deleted ones, plus
+// voice-note titles and attachment filenames. Trashed entries matter most:
+// they are the ones the founder believes are already gone, while they stay
+// fully readable in Firestore for 7 days (audit gap W2).
+//
+// WHAT IT DOES NOT COVER, and says so on screen: the second-brain VPS mirror
+// and the 2ndbrain backup repo (hops 6 and 7 of the copy graph), and the audio
+// inside voice notes — a spoken password is invisible to a text scanner.
+
+let _securityScan = null; // { scanned, findings } — in-memory only, never persisted
+
+// Fields whose contents are machine-generated, not typed by the user. Walking
+// them would flag Firebase Storage download URLs (which embed a 28-char uid)
+// on every single attachment, which is exactly how a sweep becomes unreadable.
+const SEC_SKIP_KEYS = new Set(['id', 'url', 'storagePath', 'mime', 'ext', 'size', '_synced', '_templateId']);
+
+// Collect user-authored strings out of a review object of unknown shape, so a
+// new review field is scanned the day it ships rather than the day someone
+// remembers to add it here.
+function _secWalkStrings(v, path, out, depth) {
+  if (depth > 5 || v == null) return;
+  if (typeof v === 'string') { if (v.trim()) out.push({ field: path, text: v }); return; }
+  if (Array.isArray(v)) { v.forEach(x => _secWalkStrings(x, path, out, depth + 1)); return; }
+  if (typeof v === 'object') {
+    for (const k of Object.keys(v)) {
+      if (SEC_SKIP_KEYS.has(k)) continue;
+      _secWalkStrings(v[k], path ? path + '.' + k : k, out, depth + 1);
+    }
+  }
+}
+
+// Voice-note titles + attachment filenames ride on every entry type. Trashed
+// ones are included on purpose — same reason trashed entries are.
+function _secMediaFields(entry) {
+  const out = [];
+  (entry.voiceNotes || []).forEach(v => { if (v && v.title) out.push({ field: 'voice note title', text: v.title }); });
+  (entry.attachments || []).forEach(a => { if (a && a.title) out.push({ field: 'attachment filename', text: a.title }); });
+  return out;
+}
+
+function _secJs(s) { return esc(String(s == null ? '' : s)).replace(/'/g, "\\'"); }
+
+// How many calendar weeks back a weekStart sits, for openWeeklyReviewAt().
+function _secWeekOffset(weekStart) {
+  const cur = getWeekStart(todayStr());
+  const ms = new Date(weekStart + 'T00:00:00Z') - new Date(cur + 'T00:00:00Z');
+  return Math.round(ms / (7 * 24 * 60 * 60 * 1000));
+}
+
+// The sweep. Returns { scanned, findings } and touches nothing.
+function runSecuritySweep() {
+  const findings = [];
+  let scanned = 0;
+
+  // meta: { type, typeLabel, icon, date, sortKey, trashed, open }
+  const take = (fields, meta) => {
+    scanned++;
+    for (const { field, text } of fields) {
+      for (const hit of scanText(text)) findings.push({ ...hit, field, ...meta });
+    }
+  };
+
+  // Trashed entries route to Settings → Trash rather than the editor: those
+  // editors autosave, and the sweep must not be a path that writes.
+  const openFor = (trashed, call) => trashed ? 'secOpenTrash()' : call;
+
+  (blocks || []).forEach(b => {
+    if (!b) return;
+    take(
+      [{ field: 'label', text: b.label || '' }, { field: 'note', text: b.note || '' }].concat(_secMediaFields(b)),
+      { type: 'block', typeLabel: 'Activity block', icon: '⏱', date: b.date || '', sortKey: (b.date || '') + ' ' + (b.start_time || ''),
+        trashed: isTrashed(b), open: openFor(isTrashed(b), `openBlockOpts('${_secJs(b.id)}')`) }
+    );
+  });
+
+  (captures || []).forEach(c => {
+    if (!c) return;
+    const date = (c.timestamp || '').slice(0, 10);
+    take(
+      [{ field: 'body', text: c.body || '' }].concat(_secMediaFields(c)),
+      { type: 'capture', typeLabel: (ctypeById(c.type) || {}).label || 'Note', icon: '📝', date, sortKey: c.timestamp || date,
+        trashed: isTrashed(c), open: openFor(isTrashed(c), `openCaptureEdit('${_secJs(c.id)}')`) }
+    );
+  });
+
+  (dailyJournals || []).forEach(d => {
+    if (!d) return;
+    const fields = [
+      { field: 'thoughts',   text: d.thoughts   || '' },
+      { field: 'reflection', text: d.reflection || '' },
+    ];
+    (d.tasks || []).forEach(t => { if (t && t.text) fields.push({ field: 'task', text: t.text }); });
+    take(fields.concat(_secMediaFields(d)),
+      { type: 'daily', typeLabel: 'Daily Journal', icon: '📓', date: d.date || '', sortKey: d.date || '',
+        trashed: isTrashed(d), open: openFor(isTrashed(d), `openDailyJournalEditor('${_secJs(d.date)}')`) });
+  });
+
+  Object.values(sessions || {}).flat().forEach(s => {
+    if (!s) return;
+    const fields = [
+      { field: 'before', text: s.before || '' },
+      { field: 'during', text: s.during || '' },
+      { field: 'after',  text: s.after  || '' },
+    ];
+    ['done', 'pending', 'learned'].forEach(k => (s[k] || []).forEach(v => {
+      if (typeof v === 'string' && v.trim()) fields.push({ field: k, text: v });
+      else if (v && typeof v.text === 'string') fields.push({ field: k, text: v.text });
+    }));
+    take(fields.concat(_secMediaFields(s)),
+      { type: 'session', typeLabel: 'Session · ' + (s.projectName || ''), icon: '🎯', date: s.date || '', sortKey: s.date || '',
+        trashed: isTrashed(s),
+        open: openFor(isTrashed(s), `openEditSession('${_secJs(s.id)}','${_secJs(s.projectName || '')}')`) });
+  });
+
+  (learning || []).forEach(e => {
+    if (!e) return;
+    take([
+      { field: 'source',    text: e.sourceName || '' },
+      { field: 'takeaway',  text: e.takeaway   || '' },
+      { field: 'full notes', text: e.fullNotes || '' },
+    ].concat(_secMediaFields(e)),
+      { type: 'learning', typeLabel: 'Learning', icon: '📚', date: e.date || '', sortKey: e.date || '',
+        trashed: isTrashed(e), open: openFor(isTrashed(e), `openEditLearning('${_secJs(e.id)}')`) });
+  });
+
+  Object.keys(eodNotes || {}).forEach(date => {
+    const text = eodNotes[date];
+    if (typeof text !== 'string') return;
+    take([{ field: 'EOD review', text }],
+      { type: 'eod', typeLabel: 'EOD review', icon: '🌙', date, sortKey: date,
+        trashed: false, open: `pickDateAndOpenTrends('${_secJs(date)}')` });
+  });
+
+  Object.keys(dfts || {}).forEach(date => {
+    const v = dfts[date];
+    const text = (v && typeof v === 'object') ? (v.text || '') : (typeof v === 'string' ? v : '');
+    take([{ field: 'focus task', text }],
+      { type: 'dft', typeLabel: 'Daily Focus Task', icon: '🎯', date, sortKey: date,
+        trashed: false, open: `pickDateAndOpenTrends('${_secJs(date)}')` });
+  });
+
+  Object.keys(weeklyReviews || {}).forEach(weekStart => {
+    const fields = [];
+    _secWalkStrings(weeklyReviews[weekStart], '', fields, 0);
+    take(fields,
+      { type: 'weekly', typeLabel: 'Weekly review', icon: '📅', date: weekStart, sortKey: weekStart,
+        trashed: false, open: `openWeeklyReviewAt(${_secWeekOffset(weekStart)})` });
+  });
+
+  Object.keys(monthlyReviews || {}).forEach(ym => {
+    const fields = [];
+    _secWalkStrings(monthlyReviews[ym], '', fields, 0);
+    take(fields,
+      { type: 'monthly', typeLabel: 'Monthly review', icon: '🗓', date: ym, sortKey: ym + '-01',
+        trashed: false, open: `openMonthlyReviewAt('${_secJs(ym)}')` });
+  });
+
+  // Newest first within a category (the UI groups by category, shaped first).
+  findings.sort((a, b) => String(b.sortKey || '').localeCompare(String(a.sortKey || '')));
+  return { scanned, findings };
+}
+
+function _secRowHtml(f) {
+  return `
+    <button class="sec-row ${f.category === 'shaped' ? 'shaped' : ''}" onclick="${f.open}">
+      <div class="sec-row-top">
+        <span class="sec-row-kind">${esc(secretKindLabel(f.kind))}</span>
+        <span>${esc(f.icon)} ${esc(f.typeLabel)}</span>
+        ${f.date ? `<span>· ${esc(f.date)}</span>` : ''}
+        <span>· ${esc(f.field)}</span>
+        ${f.trashed ? `<span class="sec-row-trash">in Trash</span>` : ''}
+      </div>
+      <div class="sec-row-masked">${esc(f.masked)}</div>
+      <div class="sec-row-line">${esc(f.line)}</div>
+    </button>`;
+}
+
+function openSettingsSecurity() {
+  const body = document.getElementById('settings-body');
+  if (!_securityScan) _securityScan = runSecuritySweep();
+  const { scanned, findings } = _securityScan;
+
+  const shaped = findings.filter(f => f.category === 'shaped');
+  const worded = findings.filter(f => f.category === 'worded');
+  const trashedCount = findings.filter(f => f.trashed).length;
+
+  // Per-kind tally chips, so "what did it find" is answerable without scrolling.
+  const tally = (list, cls) => {
+    const counts = {};
+    list.forEach(f => { counts[f.kind] = (counts[f.kind] || 0) + 1; });
+    return Object.keys(counts).sort((a, b) => counts[b] - counts[a])
+      .map(k => `<span class="sec-chip ${cls}">${esc(secretKindLabel(k))} · ${counts[k]}</span>`).join('');
+  };
+
+  const section = (title, sub, list, cls) => list.length ? `
+    <div class="sec-section-hdr">${esc(title)} · ${list.length}</div>
+    <div class="sec-section-sub">${esc(sub)}</div>
+    <div class="sec-tally" style="margin-bottom:0.35rem">${tally(list, cls)}</div>
+    ${list.map(_secRowHtml).join('')}` : '';
+
+  const clean = findings.length === 0
+    ? `<div class="empty" style="padding:1.5rem;text-align:center;color:var(--text3)">
+         Nothing found.<br><span style="font-size:0.75rem">No shaped keys and no worded credentials in ${scanned} entries.</span>
+       </div>`
+    : '';
+
+  body.innerHTML = settingsSubhdrHtml('Security check') + `
+    <div class="sec-body">
+      <div class="sec-note">
+        <strong>Scanned ${scanned} entries. Nothing was sent anywhere.</strong>
+        This does not scan the second-brain mirror or the 2ndbrain backup repo — those hold separate copies.
+      </div>
+      <div class="sec-tally">
+        <span class="sec-chip ${shaped.length ? 'shaped' : 'clean'}">Shaped keys · ${shaped.length}</span>
+        <span class="sec-chip ${worded.length ? 'worded' : 'clean'}">Worth a look · ${worded.length}</span>
+        ${trashedCount ? `<span class="sec-chip shaped">In Trash · ${trashedCount}</span>` : ''}
+        <button class="sec-chip" onclick="rerunSecuritySweep()" style="cursor:pointer;background:none">↻ Re-scan</button>
+      </div>
+      ${clean}
+      ${section('Shaped keys', 'Token shapes — treat a hit as a finding. Tap to open the entry.', shaped, 'shaped')}
+      ${section('Worth a look', 'Wording that often carries a credential. Fuzzy by design — some of these will be fine.', worded, 'worded')}
+      <div class="sec-note" style="margin-top:0.6rem">
+        Read-only: this screen changes nothing and sends nothing. Covers entries in Trash, voice-note titles
+        and attachment filenames — but <strong>not the audio inside a voice note</strong>: a spoken password is
+        invisible to a text scan. Masked values show the first 4 and last 2 characters only.
+      </div>
+    </div>`;
+}
+
+window.rerunSecuritySweep = function() {
+  _securityScan = null;
+  openSettingsSecurity();
+  toast('Re-scanned');
+};
+
+// Inline onclick handlers can only see window, and openSettingsTrash is
+// module-scope. Wrapper (not a bare alias) per the repo convention — a bare
+// assignment would capture undefined if the target is defined later.
+window.secOpenTrash = function() { openSettingsTrash(); };
 
 // ── Settings → Trash ─────────────────────────────────────────
 // Surfaces every soft-deleted item (entries + individual voice notes).

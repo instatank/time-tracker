@@ -62,11 +62,13 @@ Cleaning DayOS does **not** reach back and clean hops 6 and 7.
 
 ### Serious
 
-**S1 — Nothing anywhere looks for secrets.**
-No detection at input, at save, before AI send, or at rest. This is the exact
-hole the July incident fell through and it is still open. Today there is no way
-to answer "is there a password in my journal?" short of reading every entry.
-→ Phases 1 + 3.
+**S1 — Nothing anywhere looks for secrets.** ~~No detection at input, at save,
+before AI send, or at rest.~~ **PARTIALLY CLOSED 2026-08-17 (Phase 1).**
+*At rest* is now covered: **Settings → Security check** sweeps every collection
+on the device — see "Shipped — Phase 1" below. The question "is there a password
+in my journal?" is now answerable in one tap instead of by reading every entry.
+Still open: detection **at input / at save / before AI send** (Phase 3), and
+anything already copied out to hops 6–7 of the copy graph. → Phase 3.
 
 **S2 — `firestore.rules` is not in the repo.** ~~The rules preventing another signed-in
 Google account from reading `users/{yourUid}/…` exist only in the Firebase Console.~~
@@ -273,6 +275,102 @@ inside Firestore, which is still what Phases 1–4 are for.
   immediately, and the value must carry a digit. An all-letters phrase written
   out in prose is still missed — closing that would mean flagging ordinary
   English, and a scanner that cries wolf is one you stop reading.
+
+## Shipped — Phase 1: the detector + Security Check screen (2026-08-17)
+
+Phase 1 as described above, built in one pass. **Read-only by construction:
+zero writes, zero deletes, zero network calls.** Nothing is persisted, not even
+the scan result — it lives in a module variable and dies with the page.
+
+### The detector — `scanText(text)`
+
+A pure, dependency-free function in `index.html`, fenced between
+`// ── BEGIN secret-detector ──` and `// ── END secret-detector ──`. It returns
+`[{ kind, category, masked, line, start, end }]`.
+
+- `category` is **`shaped`** or **`worded`** — the two tiers the doctrine above
+  says to tune separately and never average. The UI groups by it: shaped hits
+  are *findings*, worded hits are surfaced as *"worth a look"*.
+- **Shaped rules:** `sk-ant-`, `ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`/`github_pat_`,
+  `AKIA`/`ASIA`, the 40-char AWS secret shape, `AIza`, `xox[abopsr]-`, JWTs,
+  PEM `PRIVATE KEY` blocks (END half optional — a half-pasted key is still a
+  pasted key), `sk_live_`, and a high-entropy fallback for 25+ character
+  contiguous alphanumeric runs.
+- **Worded rules:** password / passphrase, `passwd`, `pwd:`, pin, otp, cvv,
+  seed phrase, recovery code, backup code, api key, secret, 2fa code, account
+  number, aadhaar, pan number — each returning the whole surrounding line,
+  because with worded hits the wording *is* the evidence.
+- **`masked` never contains the raw secret**: first 4 and last 2 characters
+  only, and anything ≤6 characters is hidden entirely (4+2 of a 6-char string
+  is the whole string). The `line` field masks shaped matches **in place**, so
+  a shaped secret never appears in full in any field of any finding.
+
+Three tuning decisions carry the weight, all in service of *sensitivity* —
+this is the read-only, batch-reviewed surface, so a false positive costs one
+glance and a miss costs a credential:
+
+1. **The Firebase Web API key is hardcoded as an exception.** It ships in
+   `index.html` by design (see "Verified clean" #1). Without the exception the
+   sweep would flag the app's own config on every run and be useless from run one.
+2. **Worded keywords require an `is` / `was` / `:` / `=` immediately after the
+   word.** That one constraint is what keeps "need to reset my password" — an
+   extremely common journal sentence — off the screen while "the wifi password
+   is …" lands on it.
+3. **High-entropy runs exclude `-` and `_`.** Slugs, deterministic default-block
+   ids (`default-<tpl>-<date>`), UUID device ids and `dayos_*_v1` storage keys
+   therefore never qualify; a real opaque token is contiguous. Base64 payloads
+   inside `data:` URIs are suppressed outright, or every pasted screenshot
+   would be a finding. Hex of either case is rejected, because that is what a
+   git SHA is — and DayOS entries genuinely contain those.
+
+### The corpus is the spec
+
+`tests/security-detector.mjs` holds **34 true positives and 49 true negatives**,
+drawn from shapes DayOS data actually takes: hashtags, `uid()` ids, Firestore
+doc ids, git SHAs, IST timestamps, Firestore paths, pasted base64 image data,
+the public Firebase Web API key, and English sentences that merely *mention* a
+password. It extracts the real detector out of `index.html` (not a copy), so
+drift fails `scripts/check.sh`.
+
+`tests/security-screen.mjs` covers the screen: that all nine collections are
+swept, that trashed entries are included, that pasted HTML is escaped rather
+than executed, that no raw secret reaches the markup, and — with trapped
+`localStorage` / `fetch` / `setDoc` / `saveLocal` — that the sweep performs
+**zero writes and zero network calls**.
+
+**Both files are path-allowlisted in `.gitleaks.toml`,** for the same reason
+that config allowlists itself: a detector corpus is by construction a file full
+of the exact shapes a secret scanner looks for. The cost, stated plainly: a
+real secret pasted into either file would not be caught by CI. They must
+contain fabricated values only.
+
+### The screen — Settings → Security check
+
+Sweeps blocks, captures, daily journals, sessions, learning, EOD notes, DFTs,
+weekly reviews and monthly reviews — **including soft-deleted entries**, plus
+voice-note titles and attachment filenames. Trashed entries matter most: they
+are the ones you believe are gone while they stay fully readable in Firestore
+for 7 days (W2). Findings are grouped by category, shaped first, newest first;
+each row shows entry type, date, masked match and the surrounding line, and
+taps through to the entry. Everything reaches `innerHTML` through `esc()`.
+
+Two deliberate routing decisions:
+
+- **A trashed finding opens Settings → Trash, not the entry editor.** The
+  Daily Journal / Session / Learning editors autosave, so opening a trashed
+  entry from a read-only sweep would have been a write path. Trash is also
+  where the useful action lives.
+- **Machine-generated fields are not scanned** (`url`, `storagePath`, `mime`,
+  `ext`, `size`, ids). A Firebase Storage download URL embeds a 28-character
+  uid, so walking them would flag every attachment forever. Asserted in the sim.
+
+### What Phase 1 still does not answer
+
+Stated on the screen itself, not just here: it does not scan the second-brain
+VPS mirror or the `2ndbrain` backup repo (hops 6–7 — those hold separate
+copies, and git history keeps them), and it cannot hear a **spoken** password
+inside a voice note. Redaction and purge-now are Phase 2; save-time and
+pre-AI-send warnings are Phase 3.
 
 ## Principle
 

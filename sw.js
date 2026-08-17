@@ -1,4 +1,4 @@
-const CACHE = 'dayos-v138';
+const CACHE = 'dayos-v139';
 
 // Install: become active immediately, don't wait for old SW to finish
 self.addEventListener('install', () => self.skipWaiting());
