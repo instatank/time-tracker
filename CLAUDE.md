@@ -17,6 +17,15 @@ Before or after running any terminal command, always give a single plain-English
 - **Serverless functions:** `api/*.mjs` — Vercel serverless routes (cron reminders + AI proxy). These DO use ES module syntax and run on Node, separate from the no-build front end.
 - **Timezone:** All times are IST (`Asia/Kolkata`) — always use `nowIST()`, `nowISTIso()`, `todayStr()`, `capDateIST()`, `addDays()` helpers, never `new Date()` directly.
 
+## Working environment (read before giving instructions)
+
+This repo is built entirely in Claude Code cloud sessions — there is no local checkout, no local terminal, and no local dev environment for the founder. **Never hand him `cd` / `git clone` / `npm install` / `./script.sh` steps to run on his machine** — anything that must execute runs in the agent's own container, or in the deployed app.
+
+- **Egress is allowlisted.** A host can fail with "Host not in allowlist" — that means blocked, not down. Say so and propose another route.
+- **No secrets store here** (Anthropic's own docs say not to put API keys in Claude Code cloud env vars). Secrets live in Vercel's env vars — never ask the founder to paste one into chat or a local file.
+- **Blocked host or needs real credentials?** Build it as a route in the deployed app and hand over a URL to open — not a script to run.
+- **Steps the founder performs are browser/dashboard steps** — name the site, the menu, the button.
+
 ## Development Workflow
 
 No build step for the app. Edit `index.html`, open it directly in browser, or push to `main` for Vercel to auto-deploy.
