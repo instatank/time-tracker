@@ -4942,6 +4942,13 @@ select option { background: var(--surface2); }
   <button class="sheet-close-btn" onclick="closeSheets()" aria-label="Close">×</button>
   <div class="sheet-title" id="learning-sheet-title">Log Learning</div>
   <div class="sheet-body">
+    <!-- Kind toggle — mirrors the capture sheet's Type row. Rendered by
+         renderSessionKindRow(); hidden entirely when editing an existing
+         entry (see that function for why). -->
+    <div class="field" id="learn-kind-field">
+      <label class="field-label">Type</label>
+      <div class="pill-row" id="learn-kind-row"></div>
+    </div>
     <div class="field">
       <label class="session-field-label neutral">Source Name</label>
       <input type="text" id="f-learn-source" placeholder="e.g. Claude Code in Action, All-In Podcast..." autocomplete="off"
@@ -4991,6 +4998,11 @@ select option { background: var(--surface2); }
   <button class="sheet-close-btn" onclick="closeSheets()" aria-label="Close">×</button>
   <div class="sheet-title" id="session-sheet-title">New Session</div>
   <div class="sheet-body">
+    <!-- Kind toggle — see the twin in #sheet-learning. -->
+    <div class="field" id="sess-kind-field">
+      <label class="field-label">Type</label>
+      <div class="pill-row" id="sess-kind-row"></div>
+    </div>
     <div class="field">
       <label class="session-field-label before">Goals and Intentions</label>
       <textarea class="session-textarea" id="f-sess-before" placeholder="What do you want to accomplish?"
@@ -5090,9 +5102,10 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 <!-- Sheet: Add picker — the single + button on Today / Journal / Projects
      opens this. Rows route to the existing Log Activity / Capture /
      Session / Learning paths. Note: Quick Note, Daily Journal and Project
-     Note deliberately collapse into ONE "Add note" row — the note sheet
-     already carries a type pill row, so picking between them belongs
-     inside that sheet, not in this list. -->
+     Note deliberately collapse into ONE "Add note" row, and Project
+     Session + Learning into ONE "Add Session" row — both destination
+     sheets carry a type pill row, so picking between them belongs inside
+     the sheet, not in this list. -->
 <div id="sheet-add-picker" class="sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title">Add new entry</div>
@@ -5113,19 +5126,11 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('session')">
+    <button class="add-pick-row" onclick="dispatchAdd('sessionEntry')">
       <span class="add-pick-icon">▶️</span>
       <div class="add-pick-text">
-        <div class="add-pick-label">Project Session</div>
-        <div class="add-pick-sub">Before / During / After session log</div>
-      </div>
-      <span class="add-pick-chev">›</span>
-    </button>
-    <button class="add-pick-row" onclick="dispatchAdd('learning')">
-      <span class="add-pick-icon">📚</span>
-      <div class="add-pick-text">
-        <div class="add-pick-label">Learning Session</div>
-        <div class="add-pick-sub">Source + key takeaway + tags</div>
+        <div class="add-pick-label">Add Session</div>
+        <div class="add-pick-sub">Project Session — switch to Learning inside</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
@@ -8565,6 +8570,77 @@ window.toggleSessionExpand = function(id) {
 // ── New Session form ─────────────────────────────────────────
 let selSessionDur = 60;  // default
 
+// ── Session kind toggle (Project Session ⇄ Learning) ──────────
+// Both sheets carry the same two-pill row at the top, mirroring the
+// capture sheet's cap-type-row, so "Add Session" can be ONE row in the
+// add picker with the choice made inside the sheet.
+//
+// Only offered while creating a NEW entry. Project Sessions and Learning
+// entries live in SEPARATE collections with different fields — a saved
+// session cannot become a learning entry without a migration, so showing
+// the pill while editing would promise a conversion we don't do. Editing
+// hides the row entirely rather than disabling it.
+const SESSION_KINDS = [
+  { id: 'session',  label: 'Project Session', icon: '▶️' },
+  { id: 'learning', label: 'Learning',        icon: '📚' },
+];
+
+function renderSessionKindRow(fieldId, rowId, active, isNew) {
+  const field = document.getElementById(fieldId);
+  const row   = document.getElementById(rowId);
+  if (!field || !row) return;
+  field.style.display = isNew ? '' : 'none';
+  if (!isNew) { row.innerHTML = ''; return; }
+  row.innerHTML = SESSION_KINDS.map(k => `
+    <button type="button" class="pill ${active === k.id ? 'active' : ''}"
+            style="${active === k.id ? 'background:var(--accent);border-color:var(--accent);' : ''}"
+            onclick="switchSessionKind('${k.id}')">
+      ${k.icon} ${k.label}
+    </button>`).join('');
+}
+
+// Which kind is on screen right now. The open sheet is the honest source
+// of truth — the two drafts are independent module vars and a stale one
+// can outlive its sheet.
+function currentSessionKind() {
+  return document.getElementById('sheet-session')?.classList.contains('open')
+    ? 'session'
+    : (document.getElementById('sheet-learning')?.classList.contains('open') ? 'learning' : null);
+}
+
+// Switch the open NEW entry to the other kind.
+//
+// Three things this has to get right, all of them silent-loss paths:
+//
+// 1. Tapping the ALREADY-ACTIVE pill must do nothing. Falling through
+//    would call openNewSession/openNewLearning, which overwrite the
+//    draft var with a fresh one WITHOUT flushing — every keystroke gone,
+//    no error, no toast.
+// 2. The flush is load-bearing. openSheet() only swaps which sheet is
+//    visible; unlike closeSheets() it does NOT flush the autosave drafts.
+//    Flushing first promotes a non-empty draft into its own collection
+//    (and syncs it) before we leave it, so switching mid-thought keeps
+//    the entry rather than discarding it. An empty draft flushes to
+//    nothing — the common case for a mis-tap.
+// 3. With no projects yet, openNewSession bails on a toast and opens no
+//    sheet. Switching anyway would leave the Learning sheet on screen
+//    with its draft already flushed away — visible fields, nothing
+//    behind them. So refuse the switch and say why.
+window.switchSessionKind = function(kind) {
+  if (kind === currentSessionKind()) return;
+  if (kind === 'session') {
+    if (projects.length === 0) {
+      toast('Add a project first to log a Project Session');
+      return;
+    }
+    flushLearningIfOpen();
+    dispatchAdd('session');
+  } else {
+    flushSessionIfOpen();
+    dispatchAdd('learning');
+  }
+};
+
 window.openNewSession = function() {
   if (!selectedProject) { toast('Pick a project above to log a session'); return; }
   // Build a fresh draft up front — autosave promotes it into sessions[] on
@@ -8602,6 +8678,7 @@ window.openNewSession = function() {
   setSessionAutoSavedLabel('');
   resetOrganizeWidget('sess-during');
   resetOrganizeWidget('sess-after');
+  renderSessionKindRow('sess-kind-field', 'sess-kind-row', 'session', true);
   document.getElementById('session-sheet-title').textContent = `New Session · ${selectedProject}`;
   openSheet('sheet-session');
 };
@@ -8641,6 +8718,7 @@ window.openEditSession = function(sessionId, projectName) {
   setSessionAutoSavedLabel('Auto-saved');
   resetOrganizeWidget('sess-during');
   resetOrganizeWidget('sess-after');
+  renderSessionKindRow('sess-kind-field', 'sess-kind-row', 'session', false);
   document.getElementById('session-sheet-title').textContent = `Edit Session · ${projectName}`;
   openSheet('sheet-session');
 };
@@ -9259,6 +9337,7 @@ window.openNewLearning = function() {
   renderLearningAttachList();
   setLearningAutoSavedLabel('');
   resetOrganizeWidget('learn-notes');
+  renderSessionKindRow('learn-kind-field', 'learn-kind-row', 'learning', true);
   document.getElementById('learning-sheet-title').textContent = 'Log Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -9297,6 +9376,7 @@ window.openEditLearning = function(entryId) {
   renderLearningAttachList();
   setLearningAutoSavedLabel('Auto-saved');
   resetOrganizeWidget('learn-notes');
+  renderSessionKindRow('learn-kind-field', 'learn-kind-row', 'learning', false);
   document.getElementById('learning-sheet-title').textContent = 'Edit Learning';
   openSheet('sheet-learning');
   setTimeout(() => document.getElementById('f-learn-source').focus(), 300);
@@ -18398,6 +18478,15 @@ window.dispatchAdd = function(action) {
       return;
     case 'projectNote':
       openCapture('project');
+      return;
+    case 'sessionEntry':
+      // "Add Session" → Project Session by default; the kind toggle inside
+      // the sheet switches to Learning (see renderSessionKindRow). With no
+      // projects created yet, openNewSession bails with a "Pick a project"
+      // toast and no sheet opens at all — which would also put the toggle
+      // out of reach — so fall through to Learning, which needs no project
+      // and carries the same toggle back the other way.
+      dispatchAdd(projects.length > 0 ? 'session' : 'learning');
       return;
     case 'session': {
       // Project Session lives on the Projects tab. Switch there, ensure
