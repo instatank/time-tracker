@@ -5087,9 +5087,12 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
   <div class="sheet-body" id="home-calendar-body"></div>
 </div>
 
-<!-- Sheet: Add picker — single + button on Journal (initial test surface)
-     opens this. Six options route to existing Log Activity / Capture /
-     Session / Learning paths. -->
+<!-- Sheet: Add picker — the single + button on Today / Journal / Projects
+     opens this. Rows route to the existing Log Activity / Capture /
+     Session / Learning paths. Note: Quick Note, Daily Journal and Project
+     Note deliberately collapse into ONE "Add note" row — the note sheet
+     already carries a type pill row, so picking between them belongs
+     inside that sheet, not in this list. -->
 <div id="sheet-add-picker" class="sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title">Add new entry</div>
@@ -5102,27 +5105,11 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('daily')">
-      <span class="add-pick-icon">📓</span>
-      <div class="add-pick-text">
-        <div class="add-pick-label">Daily Journal</div>
-        <div class="add-pick-sub">Today's tasks, thoughts, reflection</div>
-      </div>
-      <span class="add-pick-chev">›</span>
-    </button>
     <button class="add-pick-row" onclick="dispatchAdd('note')">
       <span class="add-pick-icon">📝</span>
       <div class="add-pick-text">
-        <div class="add-pick-label">Quick Note</div>
-        <div class="add-pick-sub">A fast capture, any tags</div>
-      </div>
-      <span class="add-pick-chev">›</span>
-    </button>
-    <button class="add-pick-row" onclick="dispatchAdd('projectNote')">
-      <span class="add-pick-icon">📁</span>
-      <div class="add-pick-text">
-        <div class="add-pick-label">Project Note</div>
-        <div class="add-pick-sub">Tagged to a specific project</div>
+        <div class="add-pick-label">Add note</div>
+        <div class="add-pick-sub">Quick Note — switch to Daily Journal or Project Note inside</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
@@ -5162,8 +5149,8 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 </div>
 
 <!-- Sheet: Note sub-picker (experiment: 'threeAdd' — the Note button on
-     the Today action row opens this 4-option list instead of the full
-     7-option add-picker. Each row reuses dispatchAdd so the underlying
+     the Today action row opens this 4-option list instead of the main
+     add-picker. Each row reuses dispatchAdd so the underlying
      open paths are unchanged. -->
 <div id="sheet-note-picker" class="sheet">
   <div class="sheet-handle"></div>
@@ -6814,7 +6801,7 @@ window.tlBlockCancel = function(_e) {
 // AI Log Activities is reachable from inside the Log Activity sheet
 // via the switcher we added earlier. Because this is a row of its own,
 // the existing + (and search / DFT) stay untouched on the action row —
-// the + remains as a fallback into the full 7-option picker.
+// the + remains as a fallback into the full add picker.
 function renderThreeAddBar() {
   return `
     <div class="three-add-row">
@@ -6833,13 +6820,36 @@ window.openNotePicker = function() {
 };
 
 // ── Long-Press + (experiment: 'longPressAdd') ─────────────────
-// A single + button whose short tap opens the full 7-option add picker,
-// and whose long press jumps straight into today's Daily Journal entry.
+// A single + button whose short tap opens the add picker, and whose long
+// press jumps straight into the entry that page is actually about.
 // iOS callout is suppressed via CSS (-webkit-touch-callout: none +
 // user-select).
 const LONG_PRESS_MS = 420;
 let _lpAddTimer = null;
 let _lpAddFired = false;
+
+// Which entry the long press opens depends on the page you're holding on,
+// so the gesture always lands on that page's "main thing":
+//   Today / Journal       → today's Daily Journal entry
+//   Projects › Projects   → a new Project Session
+//   Projects › Learning   → a new Learning entry
+// Returns a dispatchAdd() action id rather than calling an opener directly,
+// so long press and the picker share one set of open paths (sub-tab
+// switching, project pre-selection, the render-then-open delay).
+function longPressAddAction() {
+  if (activeTab === 'projects') {
+    return projectsSubTab === 'learning' ? 'learning' : 'session';
+  }
+  return 'daily';
+}
+
+// Human-readable name of each long-press target, for the button's
+// tooltip + aria-label so the gesture is discoverable per page.
+const LP_ADD_LABELS = {
+  daily:    'Daily Journal',
+  session:  'Project Session',
+  learning: 'Learning entry',
+};
 
 window.lpAddDown = function(_e) {
   _lpAddFired = false;
@@ -6847,16 +6857,16 @@ window.lpAddDown = function(_e) {
   _lpAddTimer = setTimeout(() => {
     _lpAddFired = true;
     try { if (navigator.vibrate) navigator.vibrate(15); } catch {}
-    // Long press → default action: today's Daily Journal entry. Mirrors
-    // the add picker's 'daily' branch (openCapture('daily')) so a journal
-    // started here is indistinguishable from one started via the picker.
-    openCapture('daily');
+    // Long press → this page's default entry. Routed through dispatchAdd
+    // so an entry started by the gesture is indistinguishable from one
+    // started via the picker.
+    dispatchAdd(longPressAddAction());
   }, LONG_PRESS_MS);
 };
 window.lpAddUp = function(e) {
   if (_lpAddTimer) { clearTimeout(_lpAddTimer); _lpAddTimer = null; }
   if (_lpAddFired) { e && e.preventDefault && e.preventDefault(); return; }
-  // Short tap → reveal the full 7-option add picker.
+  // Short tap → reveal the add picker.
   openAddPicker();
 };
 window.lpAddCancel = function(_e) {
@@ -6868,20 +6878,22 @@ function renderLongPressAddBtn(extraStyle) {
   // Note: NOT using onclick — pointer events handle both quick tap and
   // long press. Inline pointer handlers survive re-renders without us
   // having to re-attach listeners after every renderMain.
+  const holdLabel = LP_ADD_LABELS[longPressAddAction()] || 'Daily Journal';
   return `<button class="add-fab-square long-press-add"${extraStyle ? ` style="${extraStyle}"` : ''}
     onpointerdown="lpAddDown(event)"
     onpointerup="lpAddUp(event)"
     onpointercancel="lpAddCancel(event)"
     onpointerleave="lpAddCancel(event)"
-    aria-label="Add new entry (tap = options, hold = Daily Journal)"
-    title="Tap for options · hold for Daily Journal">+</button>`;
+    aria-label="Add new entry (tap = options, hold = ${holdLabel})"
+    title="Tap for options · hold for ${holdLabel}">+</button>`;
 }
 
 // Decides which + control an action row renders. Shared by Today,
-// Journal, and Projects so all three pages' + buttons behave
-// identically — tap = full add picker; with the 'longPressAdd'
-// experiment on, long-press also jumps straight into today's Daily
-// Journal entry, same as Today. Note: this is now only about the small
+// Journal, and Projects so all three pages' + buttons tap the same way
+// (the add picker); with the 'longPressAdd' experiment on, long-press
+// additionally jumps into that page's default entry — Daily Journal on
+// Today/Journal, Project Session or Learning on Projects (see
+// longPressAddAction). Note: this is now only about the small
 // round + on the action row — the 3-button experiment (Today-only)
 // lives on its OWN row below (see renderThreeAddBar) and no longer
 // replaces the +. `extraStyle` lets callers position the button (e.g.
@@ -15510,7 +15522,7 @@ const EXPERIMENTS_CATALOG = [
   { key: 'heatmap',      label: 'Journal Heatmap',  desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
   { key: 'onthisday',    label: 'On This Day',      desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
   { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Replaces the single + on the Today page with three direct buttons — Activity ⏱, Journal 📓, Note 📝 — so the two most-common structured entries open in one tap. Note opens a small sub-picker for Quick / Project / Session / Learning." },
-  { key: 'longPressAdd', label: 'Long-Press +',     desc: 'Single tap on + reveals the full 7-option add picker. Long-press (~0.4s) jumps straight into today\'s Daily Journal entry. Keeps the chrome minimal while keeping every option one gesture away.' },
+  { key: 'longPressAdd', label: 'Long-Press +',     desc: 'Single tap on + reveals the add picker. Long-press (~0.4s) jumps straight into the entry that page is about — Daily Journal on Today and Journal, Project Session or Learning on Projects (whichever sub-tab is open). Keeps the chrome minimal while keeping every option one gesture away.' },
   { key: 'daybar',       label: 'Day Ratio Bar',    desc: "A single horizontal stacked bar on the Today page (between Day Score and Today's Log) showing how the elapsed waking day (8am → now, capped at 16h) has been split across categories. One glance, no scrolling." },
 ];
 
