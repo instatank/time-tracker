@@ -17,6 +17,45 @@ Before or after running any terminal command, always give a single plain-English
 - **Serverless functions:** `api/*.mjs` — Vercel serverless routes (cron reminders + AI proxy). These DO use ES module syntax and run on Node, separate from the no-build front end.
 - **Timezone:** All times are IST (`Asia/Kolkata`) — always use `nowIST()`, `nowISTIso()`, `todayStr()`, `capDateIST()`, `addDays()` helpers, never `new Date()` directly.
 
+## Current phase: CONTRACTION (declared 2026-08-30) — read before proposing anything
+
+DayOS is deliberately built in two phases, and **it is now in the second one.**
+
+> **The founder's strategy, in his words:** *"Try out different features, see what works, what
+> doesn't, and what breaks everything. Once all of that is done, clean it up, delete, and
+> simplify. That way we've tested all possibilities out, and then we're just clearing up the
+> noise and really stripping it down to the essentials."*
+
+**Phase 1 — expansion (through 2026-08):** add generously, gate risky things behind
+experiment flags, find out what actually gets used. This is done. It produced the feature
+surface described in Architecture below.
+
+**Phase 2 — contraction (now):** merge, delete, and simplify toward a minimal UI. The
+default answer to "should we add this?" is now **no**. The default answer to "can this be
+merged into something that already exists?" is **yes, try**.
+
+### What this changes about how a session behaves
+
+- **Adding a feature now needs a justification; removing one does not.** Reverse the usual
+  burden of proof. If asked for something new, say plainly what it would cost in surface
+  area and whether an existing screen could carry it instead.
+- **Prefer merging over deleting; prefer deleting over hiding.** The 2026-08-30 add-picker
+  work is the reference example: 8 rows → 3, with *nothing* made unreachable — each option
+  moved onto the screen it belongs to (a type pill row inside the sheet, a button inside the
+  Log Activity sheet). A menu that duplicates a choice its destination already presents is
+  pure cost.
+- **Before deleting any entry point, prove the thing is still reachable** and write where it
+  went into a comment at the deletion site. Both 2026-08-30 removals (AI Log Activities,
+  Add attachments) were verified reachable first — `ai-switch-btn` inside the Log Activity
+  sheet, and `openAttachMenu('capture')` inside the capture sheet.
+- **Deleting UI is not deleting data.** A removed feature may still own a `localStorage` key,
+  a Firestore collection, and an entry in `docs/second-brain-integration.md`. Cutting the
+  screen while leaving the data orphaned is the characteristic failure of this phase, the way
+  duplicate auto-blocks were the characteristic failure of the last one. Check all three.
+- **Experiment flags are contraction targets, not features.** Every flag in
+  `EXPERIMENTS_CATALOG` is a *permanent second code path*. The graduate-or-kill rule below
+  is now enforced, not aspirational.
+
 ## Working environment (read before giving instructions)
 
 This repo is built entirely in Claude Code cloud sessions — there is no local checkout, no local terminal, and no local dev environment for the founder. **Never hand him `cd` / `git clone` / `npm install` / `./script.sh` steps to run on his machine** — anything that must execute runs in the agent's own container, or in the deployed app.

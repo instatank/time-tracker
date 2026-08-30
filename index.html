@@ -4799,10 +4799,11 @@ select option { background: var(--surface2); }
       <label class="field-label">Project tag <span style="color:var(--text3);font-weight:400">(optional)</span></label>
       <div class="proj-scroller" id="f-block-project-row" style="margin:0;padding:0.2rem 0 0"></div>
     </div>
-    <!-- Shortcut: jump straight from the manual Log Activity sheet into the
-         AI extractor without going back to the + picker. openAiBlocksSheet()
-         calls openSheet(), which closes this sheet first, so it's effectively
-         a tab switch between the two flows. -->
+    <!-- The ONLY route to the AI extractor since the + picker was trimmed to
+         three rows (2026-08-30) — it used to be a shortcut alongside a picker
+         row. Don't remove it without putting the entry point somewhere else.
+         openAiBlocksSheet() calls openSheet(), which closes this sheet first,
+         so it's effectively a tab switch between the two flows. -->
     <button class="btn-ghost ai-switch-btn" onclick="openAiBlocksSheet()" title="Switch to AI extractor — paste / dictate a dump and let Claude propose blocks">
       ✨ AI Log Activities
     </button>
@@ -5100,12 +5101,20 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
 </div>
 
 <!-- Sheet: Add picker — the single + button on Today / Journal / Projects
-     opens this. Rows route to the existing Log Activity / Capture /
-     Session / Learning paths. Note: Quick Note, Daily Journal and Project
-     Note deliberately collapse into ONE "Add note" row, and Project
-     Session + Learning into ONE "Add Session" row — both destination
-     sheets carry a type pill row, so picking between them belongs inside
-     the sheet, not in this list. -->
+     opens this. THREE rows, deliberately. Every option that used to have
+     its own row still exists; each one now lives on the screen it belongs
+     to, one tap deeper:
+       · Quick Note / Daily Journal / Project Note → the "Add Note/Journal"
+         row opens the capture sheet, whose #cap-type-row pills switch.
+       · Project Session / Learning → the "Add Session" row opens the
+         session sheet, whose kind pills switch (renderSessionKindRow).
+       · AI Log Activities → the "✨ AI Log Activities" button INSIDE the
+         Log Activity sheet (search `ai-switch-btn`).
+       · Attachments → the "➕ Add voice, photo or file" button inside the
+         capture sheet (openAttachMenu('capture')), which is what the old
+         row opened anyway.
+     Don't re-add a row here without first checking the option isn't
+     already reachable from its own screen. -->
 <div id="sheet-add-picker" class="sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title">Add new entry</div>
@@ -5121,7 +5130,7 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
     <button class="add-pick-row" onclick="dispatchAdd('note')">
       <span class="add-pick-icon">📝</span>
       <div class="add-pick-text">
-        <div class="add-pick-label">Add note</div>
+        <div class="add-pick-label">Add Note/Journal</div>
         <div class="add-pick-sub">Quick Note — switch to Daily Journal or Project Note inside</div>
       </div>
       <span class="add-pick-chev">›</span>
@@ -5131,22 +5140,6 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       <div class="add-pick-text">
         <div class="add-pick-label">Add Session</div>
         <div class="add-pick-sub">Project Session — switch to Learning inside</div>
-      </div>
-      <span class="add-pick-chev">›</span>
-    </button>
-    <button class="add-pick-row" onclick="dispatchAdd('aiBlocks')">
-      <span class="add-pick-icon">✨</span>
-      <div class="add-pick-text">
-        <div class="add-pick-label">AI Log Activities</div>
-        <div class="add-pick-sub">Dump your day → AI proposes blocks</div>
-      </div>
-      <span class="add-pick-chev">›</span>
-    </button>
-    <button class="add-pick-row" onclick="dispatchAdd('attachment')">
-      <span class="add-pick-icon">📎</span>
-      <div class="add-pick-text">
-        <div class="add-pick-label">Add attachments as quick note</div>
-        <div class="add-pick-sub">Voice, photo or file → saved as a Quick Note</div>
       </div>
       <span class="add-pick-chev">›</span>
     </button>
@@ -18514,18 +18507,6 @@ window.dispatchAdd = function(action) {
       setTimeout(() => openNewLearning(), 30);
       return;
     }
-    case 'aiBlocks':
-      openAiBlocksSheet();
-      return;
-    case 'attachment':
-      // Go straight into the Quick Note modal with the attach menu already
-      // open — a Quick Note is what an attachment becomes anyway, and this
-      // reuses its existing attach flow (voice / photo / file + optional
-      // text + tags). openCapture mounts the sheet (and focuses its body at
-      // ~300ms); we pop the attach overlay just after so it layers on top.
-      openCapture('note');
-      setTimeout(() => openAttachMenu('capture'), 350);
-      return;
   }
 };
 

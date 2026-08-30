@@ -57,6 +57,38 @@ document points at.
 | D | **L1–L2** | You brief well in English and iterate well, but by your own description you don't know what skills, subagents, connectors, or plan mode are — you're using maybe 30% of the instrument. This is the cheapest big win available. |
 | O | **L2** | You've shipped ~8 products to Vercel, handled env vars, upgraded plans for cron, survived a model retirement. Gap: it's pattern-following; incidents still require Claude to diagnose. |
 
+## 2b. The build shape: expand, then contract (named 2026-08-30)
+
+Ankit named his own method during the DayOS contraction session, unprompted:
+
+> *"Try out different features, see what works, what doesn't, and what breaks everything.
+> Once all of that is done, clean it up, delete, and simplify. That way we've tested all
+> possibilities out, and then we're just clearing up the noise and stripping it down to the
+> essentials."*
+
+This is a **P-track (product judgment) method**, and it is the first one he has stated as a
+repeatable procedure rather than exercised as instinct — which is exactly the gap the
+starting assessment named ("reactive taste, not yet a repeatable method you could run on a
+stranger's product"). Worth watching as evidence toward P:L3.
+
+**What makes it work:** deletion decisions get *cheaper and better* after use, because you
+are choosing against evidence instead of prediction. Building minimal from the start means
+guessing what matters; building wide then cutting means knowing.
+
+**What makes it fail, and the guard for each:**
+- *The contraction never comes.* Expansion is more fun, and there's no forcing function.
+  Guard: declare the phase in writing, in the repo (DayOS: `CLAUDE.md` → "Current phase"),
+  so every session inherits the posture instead of re-litigating it.
+- *Cutting by mood instead of evidence.* The whole point is to decide from real usage; doing
+  it by feel discards the advantage the expansion bought. Guard: count actual usage before
+  cutting.
+- *The scaffolding outlives the experiment.* Flags, dead branches and orphaned data are the
+  residue of a wide phase, and they're invisible. Guard: treat the flag catalog as the
+  deletion queue.
+
+Applicable to any project in the portfolio, and it composes with the tiering below: Tier-1
+projects earn a contraction phase; throwaways don't.
+
 ## 3. The portfolio, tiered
 
 Every repo now has a job. The tier decides how sessions treat it. (Assignments below are my

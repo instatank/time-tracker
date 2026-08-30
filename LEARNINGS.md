@@ -184,3 +184,12 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 - Where else: any modal/route/tab switcher over autosaving editors — the Daily Journal, Session and Learning sheets here all have their own flush; a future "next entry" or "duplicate" affordance would hit this same gap. Also browser `beforeunload` vs in-app navigation, and React `useEffect` cleanup vs an early `return`.
 - Quiz question: "You add a button that switches directly from one autosaving editor to another. It calls the same function that opens the editor normally. What did you skip, and how would the failure present to the user?"
 - Internalized: no
+
+---
+
+### 2026-08-30 — Expand wide, then contract (decision card)
+- The choice: the founder declared DayOS's build phase over and named the successor — stop adding, start merging and deleting toward a minimal UI. Stated as deliberate method, not fatigue: build wide *first* so the cutting is informed. The live alternative is the one most advice recommends — build minimal from the start and add only on proven demand.
+- Why (his words): "the idea is to try out different features, see what works, what doesn't, and what breaks everything. Once all of that is done, then it's to clean it up, delete, and simplify. That way, we've tested all possibilities out, and then we're just clearing up the noise and really stripping it down to the essentials."
+- The principle: **building minimal from the start means guessing what matters; building wide then cutting means knowing.** The expansion buys evidence, and the contraction spends it — which is why the cut has to be made *against usage data*, not against mood, or it throws away the only thing the wide phase was for. The method's real failure mode isn't over-building, it's that the contraction never arrives, because expansion is more fun and nothing forces the turn.
+- Where it's recorded: `CLAUDE.md` → "Current phase: CONTRACTION" (so every session inherits the posture — adding now carries the burden of proof, removing doesn't), and `playbook/NORTH_STAR.md` §2b as a cross-project P-track method with its three failure guards.
+- Status: **watching** — declared today, first application shipped the same session (add picker 8 rows → 3, nothing made unreachable). Re-score at the next monthly review: did the contraction actually continue, or did it stop after the easy row-trimming?
