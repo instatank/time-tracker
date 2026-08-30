@@ -1,69 +1,144 @@
-# Experiments — tracker + cleanup checklist
+# Optional features — tracker + cleanup checklist
 
-Local-only feature flags surfaced in **Settings → 🧪 Experiments**. Each flag is opt-in per device and **NOT synced** — turning one on on phone won't affect laptop. Default OFF.
+> **Renamed 2026-08-30** (was `Experiments`). The file keeps its name so old links
+> still resolve; the *concept* changed. See "What changed" below.
 
-This doc exists so when a feature graduates (becomes permanent) or gets killed, the cleanup is mechanical: each row below names the exact symbols + files to delete, so you can grep-and-go.
+Local-only toggles surfaced in **Settings → 🎛 Optional features**. Each is opt-in per
+device and **NOT synced** — turning one on on phone won't affect laptop. Default OFF.
+
+This doc exists so that when a feature is switched to always-on or removed, the cleanup is
+mechanical: each row names the exact symbols + files to delete, so you can grep-and-go.
 
 ---
 
-## How to graduate an experiment (= make it permanent)
+## What changed on 2026-08-30 (contraction pass)
 
-1. Remove its row from `EXPERIMENTS_CATALOG` in `index.html`.
-2. Replace every `${expEnabled('<key>') ? ... : ''}` site with the unconditional render call.
-3. (If applicable) Remove the experimental-only CSS block's "(experiment)" label.
-4. Delete this row from the table below.
+These started as **experiments**: previews of unfinished work, on a graduate-or-kill clock.
+That clock did its job — of six flags, two were killed and one graduated in a single pass.
+The three that remain are **finished features the founder wants to switch on and off**, which
+is a different thing from an experiment, so the framing changed with them:
+
+| | Experiments (old) | Optional features (now) |
+|---|---|---|
+| What's in the list | unfinished previews | finished, self-contained features |
+| Expiry | graduate or kill in ~4 weeks | none — a toggle can live indefinitely |
+| Why it's a toggle | not ready for everyone | the founder wants it *some* of the time |
+
+**A genuinely unfinished preview can still go here** — the list just isn't *for* that any
+more, and anything parked here should still be resolved rather than left to rot.
+
+**The localStorage key is still `dayos_experiments_v1`, deliberately.** Renaming it would
+silently reset every toggle on every device — the exact data-orphaning failure the
+contraction phase is meant to avoid. The key is an implementation detail; the label is what
+the user sees. Same reason `SK.EXPERIMENTS` keeps its name.
+
+**Open question, raised not assumed:** these toggles are local-only, which was right when
+they were half-baked experiments (don't leak a broken preview to your other device). Now
+that they're real preferences, it's arguably wrong — you'd probably want Day Ratio Bar on
+in both places. Switching to synced means a new `users/{uid}/meta/*` doc and a place in the
+sync checklist, so it's a real change, not a tweak. Not done.
+
+---
+
+## How to make a feature always-on (remove the toggle, keep the feature)
+
+1. Remove its row from `FEATURE_TOGGLES` in `index.html`.
+2. Replace every `${featureEnabled('<key>') ? ... : ''}` site with the unconditional call.
+3. Drop any "(optional feature)" label from its CSS block comment.
+4. Move its row to the **Removed from the toggle list** section below, saying which way it went.
 5. Bump SW cache (`sw.js` → `dayos-vN+1`).
 
-## How to kill an experiment
+## How to delete a feature outright
 
-1. Remove its row from `EXPERIMENTS_CATALOG`.
-2. Delete every `expEnabled('<key>') ? renderX() : ''` site.
-3. Delete the render function(s) + helpers listed below.
+1. Remove its row from `FEATURE_TOGGLES`.
+2. Delete every `featureEnabled('<key>') ? renderX() : ''` site.
+3. Delete the render function(s) + helpers listed below — **but grep each one first.** Two of
+   the three 2026-08-30 deletions had a helper that another feature also used (see the
+   Removed section); a delete-list in this doc is a starting point, not an authority.
 4. Delete the CSS block.
-5. Delete any new sheets / supporting HTML.
-6. Delete this row from the table below.
+5. Delete any sheets / supporting HTML.
+6. Move its row to **Removed from the toggle list**, recording where anything shared went.
 7. Bump SW cache.
-
-Each cleanup should be 5–15 minutes and confined to `index.html` (+ sometimes one sheet block).
 
 ---
 
-## Active experiments
+## Active toggles
 
 | Key | Label | Touches data? | Render fn(s) | CSS block | HTML | Wired in |
 |---|---|---|---|---|---|---|
-| `classicLog` | Classic Activity Log | **No** (read-only) | `renderBlock` (the original stacked-card list + `visBks`/`moreBks` paging — all still in `renderToday`) | — (reuses existing block-card CSS) | — | `renderToday` (Today's Log section — swaps the default timeline for the old card list when ON) |
-| `heatmap` | Journal Heatmap | **No** (read-only) | `renderJournalHeatmap`, helper `_dayHasContent`, const `HEATMAP_DAYS` | `/* Journal Heatmap (experiment) */` | — | `renderJournal` (between row1 and row2) |
-| `onthisday` | On This Day | **No** (read-only) | `renderOnThisDay`, helpers `_shiftByMonths` / `_otdSnippet`, const `OTD_INTERVALS` | `/* On This Day (experiment) */` | — | `renderToday` (below action row) |
-| `threeAdd` | 3-Button Add Bar | **No** (just routes to existing dispatchAdd) | `renderThreeAddBar`, `openNotePicker` | `/* 3-Button Add Bar (experiment) */` | `<div id="sheet-note-picker">` | `renderToday` — own row below action row (action row + stays untouched) |
+| `onthisday` | On This Day | **No** (read-only) | `renderOnThisDay`, helpers `_shiftByMonths` / `_otdSnippet`, const `OTD_INTERVALS`. **Also uses the shared `_dayHasContent`** — do not delete that with this feature | `/* On This Day (optional feature: 'onthisday') */` | — | `renderToday` (below action row) |
+| `threeAdd` | 3-Button Add Bar | **No** (routes to existing `dispatchAdd`) | `renderThreeAddBar`, `openNotePicker` | `/* 3-Button Add Bar (optional feature: 'threeAdd') */` | `<div id="sheet-note-picker">` | `renderToday` — own row below the action row (the `+` stays either way) |
+| `daybar` | Day Ratio Bar | **No** (read-only) | `renderDayRatioBar`, handler `toggleDaybarExpanded`, state `_daybarExpanded` | `/* Day Ratio Bar (optional feature: 'daybar') */` | — | `renderToday` (between Day Score and Wins) |
 
-> **Graduated** (now permanent, listed here for traceability):
-> - `capturebar` — Quick Capture Bar graduated when the DFT moved into the Daily Journal modal; the bar now lives permanently in the Today action row in the slot the inline DFT used to occupy. Render fn `renderQuickCaptureBar` + `saveQuickCaptureBarEntry` are still in the codebase (now unconditional), CSS block renamed to "Quick Capture Bar (action-row compact)".
-> - `timeline` — Day Timeline graduated to the DEFAULT Today's Log view. `renderTodayTimeline` / `tlBlockHeight` / `toggleTimeline` / `_timelineExpanded` / `TL_*` are now unconditional. Timeline rows reuse the shared card-swipe mechanism for Edit/Delete (`.tl-block` added to the swipe selector + CSS) and use long-press-to-edit handlers `tlBlockDown`/`tlBlockMove`/`tlBlockUp`/`tlBlockCancel`. The inverse `classicLog` flag (above) brings back the old card list.
-| `longPressAdd` | Long-Press + | **No** (just routes to existing entry points) | `renderLongPressAddBtn`, `renderAddControl` (renamed from `renderTodayAddControl` 2026-08-15 — no longer Today-only), `longPressAddAction` (page-aware target, added 2026-08-30), handlers `lpAddDown` / `lpAddUp` / `lpAddCancel`, consts `LONG_PRESS_MS` / `LP_ADD_LABELS`, state `_lpAddTimer` / `_lpAddFired` | `/* Long-Press + (experiment) */` | — | `renderToday`, `renderJournal`, `renderProjects` action rows (all three call `renderAddControl()`, replacing the `+`'s gesture handling identically on each page since 2026-08-15). Since 2026-08-30 the long-press *target* is page-aware via `longPressAddAction()`: Daily Journal on Today/Journal, `dispatchAdd('session')` on Projects › Projects, `dispatchAdd('learning')` on Projects › Learning |
-| `daybar` | Day Ratio Bar | **No** (read-only) | `renderDayRatioBar`, handler `toggleDaybarExpanded`, state `_daybarExpanded` (uses shared time helpers — see note) | `/* Day Ratio Bar (experiment) */` | — | `renderToday` (between Day Score and Wins) |
+> **Known inconsistency, not yet fixed:** `threeAdd`'s `sheet-note-picker` still lists Quick
+> Note / Project Note / Project Session / Learning as four separate rows — the arrangement the
+> main add picker moved away from on 2026-08-30 (it now has three rows, with the choice made
+> by pills inside each sheet). If `threeAdd` ever comes on for real, that sheet should follow
+> the same collapse.
 
-> **Shared time helpers:** the Day Timeline (now default) and `daybar` both depend on the "Shared time-math + sleep-window helpers" block above `renderDayRatioBar` — `hhmmToMin`, `minToHHMM`, `fmtMins`, `_nowMinutesIST`, `isSleepWindowBlock`, `elapsedWakingMin`, and consts `SLEEP_WINDOW_START_MIN` / `SLEEP_WINDOW_END_MIN` / `WAKING_TOTAL_MIN`. The timeline is permanent now, so this block stays regardless of `daybar`.
-
-> **Data-touching experiments are flagged in bold.** These leave normal entries behind on disk even after removal — that's intentional (entries the user created via the experiment should survive cleanup). What needs deleting is just the *entry surface*, not the data.
+> **Shared time helpers:** the Day Timeline (default) and `daybar` both depend on the "Shared
+> time-math + sleep-window helpers" block above `renderDayRatioBar` — `hhmmToMin`,
+> `minToHHMM`, `fmtMins`, `_nowMinutesIST`, `isSleepWindowBlock`, `elapsedWakingMin`, and
+> consts `SLEEP_WINDOW_START_MIN` / `SLEEP_WINDOW_END_MIN` / `WAKING_TOTAL_MIN`. The timeline
+> is permanent, so this block stays regardless of `daybar`.
 
 ---
 
-## Shared experiment infrastructure (keep these — they're the platform)
+## Removed from the toggle list
 
-- `SK.EXPERIMENTS` localStorage key (`dayos_experiments_v1`)
-- `experiments` state + `expEnabled(key)` helper
-- `EXPERIMENTS_CATALOG` array
-- `openSettingsExperiments` + `toggleExperiment` (Settings → Experiments section)
-- `SETTINGS_SECTIONS` row for `experiments` + the `openSettingsSection` dispatch case
+Kept for traceability — so a future session doesn't rebuild something that was tried and
+rejected, or hunt for a symbol that moved.
 
-These cost ~30 lines total and are the substrate for all the experiments. Only delete them if you decide to drop the experiments mechanism entirely.
+- **`classicLog` — Classic Activity Log · DELETED 2026-08-30.** Tested; the vertical timeline
+  is what the founder wants. The `expEnabled('classicLog')` branch in `renderToday` is gone
+  and `renderTodayTimeline(bks)` is unconditional. Its paging state went with it
+  (`todayBksExpanded`, `window.toggleTodayBks`, and the `visBks`/`moreBks` locals).
+  ⚠️ **`renderBlock` was NOT deleted** despite being this flag's render function — Trends →
+  Calendar renders a day's blocks as those same stacked cards. A note at the definition says
+  so.
+- **`heatmap` — Journal Heatmap · DELETED 2026-08-30.** Tested; not wanted. Removed:
+  `renderJournalHeatmap`, `HEATMAP_DAYS`, the injection in `renderJournal`, and the
+  `.heatmap-strip` / `.heatmap-cell` CSS block.
+  ⚠️ **`_dayHasContent` was NOT deleted** — On This Day calls it. It was promoted out of the
+  heatmap block into general helper code, with a comment recording where it came from. (This
+  is rule 3 below having been broken when the heatmap was built.)
+- **`longPressAdd` — Long-Press + · NOW ALWAYS ON 2026-08-30.** `renderAddControl` no longer
+  branches; it just returns `renderLongPressAddBtn(extraStyle)`, and the plain-tap fallback
+  button is gone. `renderLongPressAddBtn`, `longPressAddAction`, `LP_ADD_LABELS`,
+  `LONG_PRESS_MS` and the `lpAdd*` handlers are all unconditional. Long press targets the
+  page's own entry: Daily Journal on Today/Journal, Project Session or Learning on Projects
+  (by sub-tab).
+- **`capturebar` — Quick Capture Bar · became always-on** when the DFT moved into the Daily
+  Journal modal; the bar lives permanently in the Today action row.
+- **`timeline` — Day Timeline · became always-on**, the default Today's Log view.
+  `renderTodayTimeline` / `tlBlockHeight` / `toggleTimeline` / `_timelineExpanded` / `TL_*`
+  are unconditional; rows reuse the shared card-swipe mechanism and the
+  `tlBlockDown`/`Move`/`Up`/`Cancel` long-press-to-edit handlers.
+
+---
+
+## Shared toggle infrastructure (keep — it's the platform)
+
+- `SK.EXPERIMENTS` localStorage key (`dayos_experiments_v1` — name retained on purpose, above)
+- `featureToggles` state + `featureEnabled(key)` helper
+- `FEATURE_TOGGLES` array
+- `openSettingsFeatures` + `toggleFeature` (Settings → Optional features)
+- `SETTINGS_SECTIONS` row for `features` + the `openSettingsSection` dispatch case
+
+~30 lines total. Only delete if you drop switchable features entirely.
 
 ---
 
 ## Rules to keep this tidy
 
-1. **Read-only by default.** New experiments should render existing data, not create new data shapes. If an experiment *needs* a new field or collection, raise it as a real architecture change — not a flag-gated try.
-2. **One injection site per experiment** where possible. Two is OK; three means promote the helper to general code.
-3. **No cross-experiment helpers.** If `experiment A`'s helper would be useful to `experiment B`, promote it out of A's block into the general helpers section first.
-4. **Graduate or kill within ~4 weeks of building.** Long-lived flags accumulate dead branches in render functions.
+1. **Read-only by default.** A toggle should render existing data, not create new data
+   shapes. If it *needs* a new field or collection, that's a real architecture change — not a
+   flag-gated try. (See Daily Defaults in `CLAUDE.md` for how a real one is built.)
+2. **One injection site where possible.** Two is OK; three means promote the helper to
+   general code.
+3. **No cross-feature helpers.** If A's helper would be useful to B, promote it out of A's
+   block into general helpers *first*. Breaking this is what made the heatmap deletion
+   riskier than it should have been — `_dayHasContent` was sitting inside the heatmap block
+   while On This Day quietly depended on it.
+4. **Every toggle is a permanent second code path.** That's the standing cost. Three is a
+   reasonable number; six was not.

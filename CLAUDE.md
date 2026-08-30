@@ -52,9 +52,10 @@ merged into something that already exists?" is **yes, try**.
   a Firestore collection, and an entry in `docs/second-brain-integration.md`. Cutting the
   screen while leaving the data orphaned is the characteristic failure of this phase, the way
   duplicate auto-blocks were the characteristic failure of the last one. Check all three.
-- **Experiment flags are contraction targets, not features.** Every flag in
-  `EXPERIMENTS_CATALOG` is a *permanent second code path*. The graduate-or-kill rule below
-  is now enforced, not aspirational.
+- **Feature toggles are a standing cost.** Every entry in `FEATURE_TOGGLES` is a *permanent
+  second code path*. The first contraction pass (2026-08-30) took six flags to three: two
+  deleted, one made always-on. Three is a reasonable number; six was not. Adding a fourth
+  needs the same justification as any other addition.
 
 ## Working environment (read before giving instructions)
 
@@ -106,7 +107,7 @@ State lives in three places, in this order of truth: module-level `let` vars →
 - `dayos_dfts_v1` — `{ 'YYYY-MM-DD': { text, status } }` status ∈ `pending | done | skipped`
 - `dayos_weekly_reviews_v1` / `dayos_monthly_reviews_v1` — structured review objects keyed by period; can carry an `aiSummary` string (see AI features)
 - `dayos_tag_history_v1` — user's custom tag history
-- `dayos_experiments_v1` — `{ [flagKey]: true }` opt-in feature flags. **Local-only / NOT synced** by design (so a half-baked experiment on phone never leaks to laptop). Surfaced in Settings → Experiments. See `docs/experiments.md`.
+- `dayos_experiments_v1` — `{ [toggleKey]: true }` optional-feature toggles. **Local-only / NOT synced** by design. Surfaced in Settings → 🎛 Optional features. Key name is historical and kept on purpose — renaming it would silently reset every toggle on every device. See `docs/experiments.md`.
 - `dayos_default_blocks_config_v1` — `{ templates: [{ id, enabled, start_time, duration_min, category, label, projectTag? }] }` user-defined daily auto-blocks (Settings → Daily defaults). Synced to `users/{uid}/meta/defaultBlocks`. The auto-creator runs at the top of every `renderToday` and uses deterministic block IDs (`default-{tplId}-{date}`) so two devices racing produce one Firestore document, not two.
 - `dayos_default_blocks_skips_v1` — `{ 'YYYY-MM-DD': { templateId: 'deleted'|'manual' } }` per-day skip record. `'deleted'` = user deleted today's auto-block (deletion sticks). `'manual'` = user manually logged an equivalent block before auto-creator ran. Synced to `users/{uid}/meta/defaultBlockSkips`.
 - `dayos_tombstones_*_v1` — hard-delete tombstones per collection (blocks/captures/sessions/learning/projects)
@@ -186,9 +187,13 @@ Results render in each type's native card, sorted by timestamp desc; trashed ent
 
 Stored in `dayos_dfts_v1`. States: `pending` → tick (`done`) or skip (`skipped`). Both auto-create a journal capture with `#dft` tag. `sweepOldDfts()` auto-skips pending DFTs from previous days on init. The Today-page DFT control is an inline strip between the search icon and + button: single tap toggles the ✓/✕ actions, double tap edits.
 
-### Experiments (local-only feature flags)
+### Optional features (local-only toggles)
 
-Opt-in previews of unfinished features. State lives in `experiments` (storage key `dayos_experiments_v1`), gated via `expEnabled(key)`. **Flags are local-only — deliberately NOT synced** so trying something on phone never leaks to laptop. Catalog lives in `EXPERIMENTS_CATALOG`; toggles render under Settings → Experiments via `openSettingsExperiments`. **House rules:** experiments must be read-only by default (no new fields/collections), have one injection site where possible, and graduate-or-kill within ~4 weeks to avoid dead branches. Every active flag is tracked in `docs/experiments.md` with its exact functions, CSS block, sheet, and wiring sites so removal is a checklist, not an archaeology dig. A feature that *needs* a new field or collection is NOT an experiment — it's a real architecture change and should be built as such (see Daily Defaults below for the canonical pattern).
+Finished, self-contained features the founder switches on and off per device. State lives in `featureToggles` (storage key `dayos_experiments_v1` — historical name, kept deliberately), gated via `featureEnabled(key)`. Catalog is `FEATURE_TOGGLES`; the screen is Settings → 🎛 Optional features (`openSettingsFeatures` / `toggleFeature`). **Local-only — deliberately NOT synced.** That was clearly right when these were half-baked experiments; now that they're real preferences it's arguably wrong, and it's flagged as an open question in `docs/experiments.md` rather than silently changed.
+
+**Reframed 2026-08-30** — this list used to be "Experiments" (previews of unfinished work on a graduate-or-kill clock). The clock worked: one pass took six flags to three. What survived isn't unfinished, so the framing changed with it. An unfinished preview can still be parked here; the list just isn't *for* that any more.
+
+**House rules:** a toggle must be read-only by default (no new fields/collections), have one injection site where possible, and own **no helper another feature uses** — breaking that last rule is what made deleting the Journal Heatmap riskier than it looked (`_dayHasContent` was sitting inside it while On This Day depended on it). Every toggle is tracked in `docs/experiments.md` with its exact functions, CSS block, sheet, and wiring sites — and that doc's delete-lists are a starting point, not an authority: **grep each symbol before deleting it.** A feature that *needs* a new field or collection is NOT a toggle — it's a real architecture change (see Daily Defaults below for the canonical pattern).
 
 ### Daily defaults (auto-blocks) — duplicate-proof pattern
 
@@ -242,7 +247,7 @@ Respects `env(safe-area-inset-*)` for status bar + home indicator. `apple-mobile
 - `docs/session-handoff.md` — current branch state, what's shipped vs pending, open items. **Read at session start.**
 - `docs/ai-features.md` — full AI architecture + prompt locations + tuning.
 - `playbook/SOP-firebase-sync.md` — Firestore sync gotchas (shared playbook; `docs/sync-lessons.md` is a superseded stub).
-- `docs/experiments.md` — per-flag tracker for everything under Settings → Experiments. Lists exact functions, CSS blocks, sheets, and wiring sites to delete when graduating or killing each experiment.
+- `docs/experiments.md` — per-toggle tracker for everything under Settings → 🎛 Optional features, plus a **Removed** ledger of what was tried and cut (so nobody rebuilds it). Lists exact functions, CSS blocks, sheets, and wiring sites — grep before trusting a delete-list.
 - `docs/security-audit.md` — the sensitive-data audit: copy graph, open gaps, the
   per-surface **detector tuning doctrine**, and the as-built record of the Phase 1
   detector + Security Check screen. **Read before touching any detector rule.**

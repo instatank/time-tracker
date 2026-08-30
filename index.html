@@ -757,7 +757,7 @@ body.ios-pwa #nav {
 .btn-log:active, .btn-cap:active { opacity: 0.8; }
 
 /* ── Block item ─────────────────────────────────────────────── */
-/* ── Day Timeline (experiment) ──────────────────────────────── */
+/* ── Day Timeline (default Today's Log view) ────────────────── */
 .day-timeline {
   margin: 0 0 0.75rem;
   padding: 0.25rem 0;
@@ -858,7 +858,7 @@ body.ios-pwa #nav {
   font-style: italic;
 }
 
-/* ── Day Ratio Bar (experiment) ────────────────────────────── */
+/* ── Day Ratio Bar (optional feature: 'daybar') ─────────────── */
 .daybar-section { margin-top: 0.25rem; }
 .day-ratio-bar {
   display: flex;
@@ -912,7 +912,7 @@ body.ios-pwa #nav {
 .db-chip-label { color: var(--text2); }
 .db-chip-val { color: var(--text3); font-variant-numeric: tabular-nums; }
 
-/* ── 3-Button Add Bar (experiment) ─────────────────────────── */
+/* ── 3-Button Add Bar (optional feature: 'threeAdd') ────────── */
 /* Dedicated row of three equal-width blue tabs under the action row.
    Same visual weight as the Save/+New/Cancel cluster inside Log
    Activity — see .btn-primary. Flex:1 on each tab guarantees equal
@@ -939,7 +939,7 @@ body.ios-pwa #nav {
 .three-add-tab:hover { box-shadow: 0 1px 6px rgba(59, 130, 246, 0.35); }
 .three-add-tab:active { transform: scale(0.97); }
 
-/* ── Long-Press + (experiment) ─────────────────────────────── */
+/* ── Long-Press + ─────────────────────────────── */
 /* iOS callout suppression: long-press would otherwise trigger the
    system text/image callout, blocking our own gesture from firing.
    touch-action: manipulation also prevents the double-tap-to-zoom
@@ -1009,45 +1009,7 @@ body.ios-pwa #nav {
 .quick-cap-bar.has-text .quick-cap-send { background: var(--accent); color: #fff; }
 .quick-cap-send:active { transform: scale(0.94); }
 
-/* ── Journal Heatmap (experiment) ──────────────────────────── */
-.heatmap-strip {
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0.5rem 0;
-  margin: 0 -1rem 0.25rem;
-  padding-left: 1rem;
-  padding-right: 1rem;
-  scrollbar-width: none;
-}
-.heatmap-strip::-webkit-scrollbar { display: none; }
-.heatmap-cell {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  font-size: 0.62rem;
-  color: var(--text3);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-variant-numeric: tabular-nums;
-  transition: transform 0.08s, border-color 0.12s;
-}
-.heatmap-cell:active { transform: scale(0.92); }
-.heatmap-cell.hm-empty { background: transparent; border-color: var(--border); }
-.heatmap-cell.hm-has   { background: var(--surface2); border-color: var(--border2); color: var(--text2); }
-.heatmap-cell.hm-r1    { background: rgba(59, 130, 246, 0.20); color: var(--text); }
-.heatmap-cell.hm-r2    { background: rgba(59, 130, 246, 0.38); color: var(--text); }
-.heatmap-cell.hm-r3    { background: rgba(59, 130, 246, 0.58); color: #fff; }
-.heatmap-cell.hm-r4    { background: rgba(59, 130, 246, 0.78); color: #fff; }
-.heatmap-cell.hm-r5    { background: rgba(59, 130, 246, 0.95); color: #fff; }
-.heatmap-cell.hm-today { box-shadow: 0 0 0 2px var(--accent); }
-
-/* ── On This Day (experiment) ──────────────────────────────── */
+/* ── On This Day (optional feature: 'onthisday') ───────────── */
 .otd-section { margin-top: 0.25rem; }
 .otd-strip {
   display: flex;
@@ -5403,12 +5365,26 @@ const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
 
-// ── Experiments (local-only feature flags) ───────────────────
-// Opt-in previews of unfinished features. Local to this device, NOT
-// synced — so trying something here never touches other devices. Each
-// flag defaults OFF; toggled from Settings → Experiments.
-let experiments = loadLocal(SK.EXPERIMENTS, {});
-function expEnabled(key) { return !!(experiments && experiments[key]); }
+// ── Optional features (local-only toggles) ───────────────────
+// Reframed 2026-08-30: these were "experiments" (previews of unfinished
+// work, graduate-or-kill within ~4 weeks). The three that survived the
+// contraction pass are FINISHED features the founder wants to switch on
+// and off at will, so the framing is now "Optional features" and there
+// is no expiry clock. A genuinely unfinished preview can still be added
+// here — it just isn't what the list is for any more.
+//
+// The localStorage key stays `dayos_experiments_v1` ON PURPOSE. Renaming
+// it would silently reset every toggle on every device the founder uses,
+// which is the exact data-orphaning failure the contraction phase is
+// supposed to avoid. The key is an implementation detail; the label is
+// what the user sees.
+//
+// Still local-only, NOT synced — a toggle set on phone doesn't move to
+// laptop. That was justified when these were half-baked experiments;
+// now that they're real preferences it's arguably wrong, but changing it
+// means a new synced meta doc, so it's raised rather than assumed.
+let featureToggles = loadLocal(SK.EXPERIMENTS, {});
+function featureEnabled(key) { return !!(featureToggles && featureToggles[key]); }
 
 // ── Daily default blocks ────────────────────────────────────
 // Templates the user defines once; the auto-creator inserts a matching
@@ -5626,7 +5602,6 @@ function metricSlug(s) {
   return (s || '').toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
-let todayBksExpanded = false;
 let todayCapsExpanded = false;
 // Daily Check-in metrics collapse under an expandable header on Today;
 // "Rate your day" stays always-visible. Default collapsed.
@@ -6173,9 +6148,7 @@ function renderToday() {
   const _yesterdayDaily = (dailyJournals || []).find(j => j && j.date === addDays(d, -1));
   const entCap = (_yesterdayDaily && _yesterdayDaily.entertainmentCap) || null;
 
-  const visBks  = todayBksExpanded  ? bks  : bks.slice(0, TODAY_PREVIEW);
   const visCapItems = todayCapsExpanded ? allCapItems : allCapItems.slice(0, TODAY_PREVIEW);
-  const moreBks  = bks.length  - TODAY_PREVIEW;
   const moreCaps = allCapItems.length - TODAY_PREVIEW;
 
   // ── Today-tab banners (B3 + C2) ──
@@ -6304,8 +6277,8 @@ function renderToday() {
     ${bannersStack}
     ${actionRowHtml}
 
-    ${expEnabled('threeAdd') ? renderThreeAddBar() : ''}
-    ${expEnabled('onthisday') ? renderOnThisDay(d) : ''}
+    ${featureEnabled('threeAdd') ? renderThreeAddBar() : ''}
+    ${featureEnabled('onthisday') ? renderOnThisDay(d) : ''}
 
     ${getDft(d) ? renderDftPanel(d) : ''}
 
@@ -6338,7 +6311,7 @@ function renderToday() {
       </div>`;
     })()}
 
-    ${expEnabled('daybar') ? renderDayRatioBar(bks) : ''}
+    ${featureEnabled('daybar') ? renderDayRatioBar(bks) : ''}
 
     ${renderWinsPanel(d)}
 
@@ -6349,9 +6322,7 @@ function renderToday() {
         <span class="sec-meta">${sc.totalHrs > 0 ? sc.totalHrs.toFixed(1) + 'h logged' : ''}</span>
       </div>
       ${bks.length
-        ? (expEnabled('classicLog')
-            ? visBks.map(renderBlock).join('') + (moreBks > 0 ? moreBtn(todayBksExpanded, moreBks, 'toggleTodayBks') : '')
-            : renderTodayTimeline(bks))
+        ? renderTodayTimeline(bks)
         : '<div class="empty">No blocks yet — tap + Log Activity to start.</div>'}
     </div>`}
 
@@ -6419,6 +6390,9 @@ function renderToday() {
   </div>`;
 }
 
+// NOTE: renderBlock is NOT dead code. The Today page renders the timeline
+// (renderTodayTimeline) since `classicLog` was deleted on 2026-08-30, but
+// Trends → Calendar still renders a day's blocks as these stacked cards.
 function renderBlock(b) {
   const cat = catById(b.category);
   const delKey = 'block-' + b.id;
@@ -6450,7 +6424,7 @@ function renderBlock(b) {
 }
 
 // ── Shared time-math + sleep-window helpers ───────────────────
-// Used by the Day Ratio Bar AND Day Timeline experiments (promoted out
+// Used by the Day Ratio Bar AND the Day Timeline (promoted out
 // of either feature so killing one doesn't strip a helper the other
 // needs). The sleep window models the user's fixed 02:00→10:00 sleep:
 // blocks starting inside it are treated as "sleep" and excluded from
@@ -6599,8 +6573,9 @@ function renderDayRatioBar(bks) {
 // ── Day Timeline (now the default Today's Log view) ───────────
 // A vertical ribbon of the day's logged blocks so the SHAPE of the day
 // reads at a glance. Graduated from the 'timeline' experiment to the
-// default; the old stacked-card list lives behind the 'classicLog' flag.
-// Pure read of the same block data the list uses.
+// default; the 'classicLog' escape hatch back to stacked cards was
+// deleted 2026-08-30 (tested, not wanted). This is the only Today's Log
+// view now. Pure read of the same block data the cards use.
 // Sleep-window blocks (02:00–10:00) are excluded — this view is about
 // waking activity. (Shared time helpers + isSleepWindowBlock live in
 // the "Shared time-math" block above renderDayRatioBar.)
@@ -6817,9 +6792,11 @@ window.openNotePicker = function() {
   openSheet('sheet-note-picker');
 };
 
-// ── Long-Press + (experiment: 'longPressAdd') ─────────────────
+// ── Long-Press + (default behaviour) ──────────────────────────
 // A single + button whose short tap opens the add picker, and whose long
 // press jumps straight into the entry that page is actually about.
+// Graduated from the 'longPressAdd' flag on 2026-08-30 — this is now the
+// only + behaviour, with no plain-tap fallback button.
 // iOS callout is suppressed via CSS (-webkit-touch-callout: none +
 // user-select).
 const LONG_PRESS_MS = 420;
@@ -6887,18 +6864,18 @@ function renderLongPressAddBtn(extraStyle) {
 }
 
 // Decides which + control an action row renders. Shared by Today,
-// Journal, and Projects so all three pages' + buttons tap the same way
-// (the add picker); with the 'longPressAdd' experiment on, long-press
-// additionally jumps into that page's default entry — Daily Journal on
-// Today/Journal, Project Session or Learning on Projects (see
-// longPressAddAction). Note: this is now only about the small
+// Journal, and Projects so all three pages' + buttons behave
+// identically — tap opens the add picker, long-press jumps into that
+// page's default entry (Daily Journal on Today/Journal, Project Session
+// or Learning on Projects — see longPressAddAction). Kept as a named
+// function rather than inlined because all three call sites should stay
+// in lockstep. Note: this is now only about the small
 // round + on the action row — the 3-button experiment (Today-only)
 // lives on its OWN row below (see renderThreeAddBar) and no longer
 // replaces the +. `extraStyle` lets callers position the button (e.g.
 // Journal's margin-left:auto) without duplicating the tap/long-press wiring.
 function renderAddControl(extraStyle) {
-  if (expEnabled('longPressAdd')) return renderLongPressAddBtn(extraStyle);
-  return `<button class="add-fab-square" onclick="openAddPicker()"${extraStyle ? ` style="${extraStyle}"` : ''} aria-label="Add new entry" title="Add new entry">+</button>`;
+  return renderLongPressAddBtn(extraStyle);
 }
 
 // ── Quick Capture Bar ─────────────────────────────────────────
@@ -7053,43 +7030,15 @@ function saveQuickCaptureBarEntry(body) {
   }
 }
 
-// ── Journal Heatmap (experiment: 'heatmap') ───────────────────
-// 30-day horizontal strip at the top of Journal. Each cell is a day;
-// fill intensity reflects that day's star rating, with a neutral fill
-// for days that have content but no rating, and a faint outline for
-// empty days. Tap → jump to Trends → Calendar for that date (reuses
-// the existing pickDateAndOpenTrends navigation primitive).
-const HEATMAP_DAYS = 30;
-
+// Does this date have anything on it at all? Promoted out of the deleted
+// Journal Heatmap block (2026-08-30) — On This Day depends on it, so it
+// is general helper code now, not one feature's private helper.
 function _dayHasContent(date) {
   if (ratings && ratings[date]) return true;
   if ((blocks || []).some(b => b.date === date)) return true;
   if ((captures || []).some(c => notTrashed(c) && capDateIST(c) === date)) return true;
   if ((dailyJournals || []).some(j => j && notTrashed(j) && j.date === date && !isDailyEntryEmpty(j))) return true;
   return false;
-}
-
-function renderJournalHeatmap() {
-  const today = todayStr();
-  const cells = [];
-  // Oldest → newest so the strip reads left-to-right as time-forward.
-  for (let i = HEATMAP_DAYS - 1; i >= 0; i--) {
-    const d = addDays(today, -i);
-    const r = (ratings && ratings[d]) || 0;
-    const has = _dayHasContent(d);
-    const cls = ['heatmap-cell'];
-    if (r > 0)             cls.push('hm-r' + r);
-    else if (has)          cls.push('hm-has');
-    else                   cls.push('hm-empty');
-    if (d === today)       cls.push('hm-today');
-    const dayNum = parseInt(d.slice(8, 10), 10);
-    const titleBits = [fmtDate(d)];
-    if (r > 0) titleBits.push(r + '★');
-    else if (has) titleBits.push('entries');
-    else titleBits.push('no entries');
-    cells.push(`<button class="${cls.join(' ')}" onclick="pickDateAndOpenTrends('${d}')" title="${esc(titleBits.join(' · '))}">${dayNum}</button>`);
-  }
-  return `<div class="heatmap-strip" aria-label="Last ${HEATMAP_DAYS} days">${cells.join('')}</div>`;
 }
 
 // ── On This Day (experiment: 'onthisday') ─────────────────────
@@ -7456,7 +7405,6 @@ function renderJournal() {
 
   return `<div class="view">
     ${row1}
-    ${expEnabled('heatmap') ? renderJournalHeatmap() : ''}
     ${row2}
 
     ${projectSubTabs}
@@ -14542,7 +14490,6 @@ window.setTab = function(tab) {
   try { localStorage.setItem('dayos_active_tab', tab); } catch {}
   render();
 };
-window.toggleTodayBks  = function() { todayBksExpanded  = !todayBksExpanded;  renderMain(); };
 window.toggleTodayCaps = function() { todayCapsExpanded = !todayCapsExpanded; renderMain(); };
 window.setJFilter = function(f) {
   const next = f.toLowerCase().replace(/\s+/g,'');
@@ -15583,19 +15530,16 @@ const SETTINGS_SECTIONS = [
   { id: 'defaults',   icon: '🔁', label: 'Daily defaults',  sub: 'Auto-create blocks each day (e.g. sleep, night routine)' },
   { id: 'trash',      icon: '🗑',  label: 'Trash',           sub: 'Recover deleted entries · 7-day window' },
   { id: 'security',   icon: '🛡',  label: 'Security check',  sub: 'Scan your entries for passwords & keys · read-only' },
-  { id: 'experiments',icon: '🧪', label: 'Experiments',     sub: 'Try preview features · this device only' },
+  { id: 'features',   icon: '🎛', label: 'Optional features', sub: 'Switch extras on or off · this device only' },
   { id: 'about',      icon: 'ℹ️', label: 'About',           sub: 'DayOS · version · feedback'             },
 ];
 
-// Preview features surfaced in Settings → Experiments. Each flag is a
-// local-only boolean (see `experiments` state). Add a row here to expose
-// a new in-progress feature for opt-in testing.
-const EXPERIMENTS_CATALOG = [
-  { key: 'classicLog',   label: 'Classic Activity Log', desc: "Revert Today's Log from the new vertical timeline back to the original stacked block cards. The timeline is now the default — turn this on only if you want the old list back." },
-  { key: 'heatmap',      label: 'Journal Heatmap',  desc: 'A 30-day strip at the top of Journal showing which days have entries, color-coded by star rating. Tap a day to jump to it.' },
+// Optional features surfaced in Settings → Optional features. Each is a
+// local-only boolean (see the `featureToggles` state block). Add a row
+// here to make a finished, self-contained feature switchable.
+const FEATURE_TOGGLES = [
   { key: 'onthisday',    label: 'On This Day',      desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
-  { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Replaces the single + on the Today page with three direct buttons — Activity ⏱, Journal 📓, Note 📝 — so the two most-common structured entries open in one tap. Note opens a small sub-picker for Quick / Project / Session / Learning." },
-  { key: 'longPressAdd', label: 'Long-Press +',     desc: 'Single tap on + reveals the add picker. Long-press (~0.4s) jumps straight into the entry that page is about — Daily Journal on Today and Journal, Project Session or Learning on Projects (whichever sub-tab is open). Keeps the chrome minimal while keeping every option one gesture away.' },
+  { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Adds a row of three direct buttons on the Today page — Activity ⏱, Journal 📓, Note 📝 — so the most-common entries open in one tap. The + button stays either way." },
   { key: 'daybar',       label: 'Day Ratio Bar',    desc: "A single horizontal stacked bar on the Today page (between Day Score and Today's Log) showing how the elapsed waking day (8am → now, capped at 16h) has been split across categories. One glance, no scrolling." },
 ];
 
@@ -15631,7 +15575,7 @@ window.openSettingsSection = function(id) {
     case 'defaults':   return openSettingsDefaults();
     case 'trash':      return openSettingsTrash();
     case 'security':   return openSettingsSecurity();
-    case 'experiments':return openSettingsExperiments();
+    case 'features':  return openSettingsFeatures();
     case 'notify':     return openSettingsNotify();
     default: {
       const s = SETTINGS_SECTIONS.find(x => x.id === id);
@@ -16586,13 +16530,13 @@ window.deleteDefaultTplFromEditor = function() {
   toast('Default deleted');
 };
 
-function openSettingsExperiments() {
+function openSettingsFeatures() {
   const body = document.getElementById('settings-body');
-  const rows = EXPERIMENTS_CATALOG.map(e => {
-    const on = expEnabled(e.key);
+  const rows = FEATURE_TOGGLES.map(e => {
+    const on = featureEnabled(e.key);
     return `
       <div class="settings-row" style="cursor:default">
-        <button class="hdr-icon-btn" onclick="toggleExperiment('${e.key}')" aria-label="${on ? 'Turn off' : 'Turn on'}" style="padding:2px 6px;font-size:1.1rem">${on ? '☑' : '☐'}</button>
+        <button class="hdr-icon-btn" onclick="toggleFeature('${e.key}')" aria-label="${on ? 'Turn off' : 'Turn on'}" style="padding:2px 6px;font-size:1.1rem">${on ? '☑' : '☐'}</button>
         <div class="settings-row-text">
           <div class="settings-row-label">${esc(e.label)}${on ? ' · on' : ''}</div>
           <div class="settings-row-sub">${esc(e.desc)}</div>
@@ -16600,18 +16544,18 @@ function openSettingsExperiments() {
       </div>`;
   }).join('');
   body.innerHTML = `
-    ${settingsSubhdrHtml('Experiments')}
-    <p class="auth-desc">Early previews of features still being refined. These settings live only on this device and aren't synced — turning one on here won't affect your other devices.</p>
+    ${settingsSubhdrHtml('Optional features')}
+    <p class="auth-desc">Finished features you can switch on and off. These settings live only on this device and aren't synced — turning one on here won't affect your other devices.</p>
     <div class="settings-list">${rows}</div>
   `;
   openSheet('sheet-settings');
 }
 
-window.toggleExperiment = function(key) {
-  experiments = experiments || {};
-  experiments[key] = !experiments[key];
-  saveLocal(SK.EXPERIMENTS, experiments);
-  openSettingsExperiments();
+window.toggleFeature = function(key) {
+  featureToggles = featureToggles || {};
+  featureToggles[key] = !featureToggles[key];
+  saveLocal(SK.EXPERIMENTS, featureToggles);
+  openSettingsFeatures();
   if (activeTab === 'today') renderMain(true);
 };
 
