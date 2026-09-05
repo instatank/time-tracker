@@ -43,6 +43,8 @@ const versionSrc   = grab(/const BACKUP_FORMAT_VERSION = \d+;/, 'BACKUP_FORMAT_V
 const snapshotSrc  = grab(/function buildDeviceSnapshot\(\) \{[\s\S]*?\n\}/, 'buildDeviceSnapshot');
 const validateSrc  = grab(/function validateBackupFile\(raw\) \{[\s\S]*?\n\}/, 'validateBackupFile');
 const helperSrc    = grab(/function backupCollection\(name\) \{.*?\n\}/s, 'backupCollection');
+const ageSrc       = grab(/function backupAgeDays\(iso\) \{[\s\S]*?\n\}/, 'backupAgeDays');
+const statusHtmlSrc = grab(/function backupStatusHtml\(\) \{[\s\S]*?\n\}/, 'backupStatusHtml');
 
 // A stand-in for the module scope those functions close over.
 const harness = `
@@ -61,13 +63,18 @@ const harness = `
   let projects = [], tagHistory = [];
   let adherenceConfig = { rules: [] }, dayScoreConfig = { tiles: [] }, lifeCheckConfig = { metrics: [] };
   let defaultBlocksConfig = { templates: [] }, defaultBlocksSkips = {};
+  let _backupStatus = null;
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
   ${versionSrc}
   ${tableSrc}
   ${helperSrc}
+  ${ageSrc}
+  ${statusHtmlSrc}
   ${snapshotSrc}
   ${validateSrc}
   return {
     BACKUP_COLLECTIONS, BACKUP_FORMAT_VERSION, buildDeviceSnapshot, validateBackupFile, backupCollection, saved,
+    statusHtml(st) { _backupStatus = st; return backupStatusHtml(); },
     setState(s) {
       blocks = s.blocks; captures = s.captures; dailyJournals = s.dailyJournals; sessions = s.sessions;
       learning = s.learning; ratings = s.ratings; lifeRatings = s.lifeRatings; eodNotes = s.eodNotes;
@@ -226,6 +233,57 @@ throws(() => M.validateBackupFile({ ...good, formatVersion: 99 }), 'a newer form
   } });
   eq(r.fileUid, 'founder-uid', 'a multi-account file picks the signed-in account, not the first one listed');
   eq(r.total, 2, 'and previews that account\'s records');
+}
+
+// ── the status panel describes YOUR account ──────────────────────────────────
+//
+// A real regression, caught by the founder on the very first live backup: a
+// complete 2,074-record backup reported "Contents: blocks 16". The panel was
+// taking Object.values(users)[0] — whichever account Firestore happened to list
+// first — and the database holds two, because the app is publicly reachable and
+// Firebase Auth lets any Google account sign in and create its own data under
+// its own uid.
+//
+// Nothing was wrong with the backup. The panel was reading a stranger's row and
+// presenting it as the founder's journal, which is worse than showing nothing:
+// it would have had him believe 16 blocks was everything he had.
+//
+// The fixture below is the SHAPE of that real status file.
+
+{
+  const REAL = {
+    configured: true, ok: true,
+    lastBackupAt: new Date().toISOString(),
+    totalRecords: 2074,
+    env: { repo: 'instatank/dayos-backups' },
+    repoUrl: 'https://github.com/instatank/dayos-backups',
+    users: {
+      // Listed FIRST, and not the founder's — this ordering is the whole bug.
+      hSracG1u1kMYG3uIwmizp6elHvM2: { collections: ['blocks'], counts: { blocks: 16 } },
+      'founder-uid': { collections: ['blocks', 'captures', 'meta'], counts: { blocks: 1498, captures: 303, meta: 7 } },
+    },
+    media: { total: 8, live: 8, knownBytes: 1848907 },
+    issues: [],
+  };
+
+  M.setUser({ uid: 'founder-uid' });
+  const html = M.statusHtml(REAL);
+  ok(html.includes('1808'), 'the panel totals the signed-in account (1498+303+7), not the first one listed');
+  ok(!/>16</.test(html), "the other account's 16 blocks are not presented as yours");
+  ok(html.includes('captures 303'), "Contents lists the signed-in account's collections");
+  ok(/other account/i.test(html), 'the second account is named rather than silently hidden');
+  ok(html.includes('1.8 MB'), 'media size is shown so the not-backed-up gap is a number, not a vibe');
+
+  // The fallback must NOT quietly fall back to [0] — that is the original bug
+  // wearing a different hat. Saying "we cannot find yours" is the honest answer.
+  M.setUser({ uid: 'a-uid-not-in-the-backup' });
+  const orphan = M.statusHtml(REAL);
+  ok(/not found in the backup/i.test(orphan), 'an account missing from the backup is told so, not shown a stranger\'s numbers');
+  ok(!orphan.includes('captures 303'), 'and is not shown some other account\'s contents');
+
+  M.setUser({ uid: 'founder-uid' });
+  const solo = M.statusHtml({ ...REAL, users: { 'founder-uid': REAL.users['founder-uid'] }, totalRecords: 1808 });
+  ok(!/other account/i.test(solo), 'with only one account there is no other-account note');
 }
 
 console.log(failed ? `\n${failed} FAILED` : '\nAll backup round-trip sims passed');

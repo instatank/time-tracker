@@ -15835,18 +15835,38 @@ function backupStatusHtml() {
   // stale timestamp on a journal you have been writing in means the job has
   // stopped, which is exactly what this line exists to catch.
   const tone = age === null ? '' : age >= 10 ? 'error' : age >= 3 ? 'syncing' : 'ok';
-  const counts = Object.values(s.users || {})[0]?.counts || {};
+
+  // The backup covers EVERY account that has ever signed into this app, because
+  // it walks the whole database rather than one uid. So this panel has to pick
+  // one to describe, and it must be YOURS.
+  //
+  // It used to take Object.values(...)[0] — whichever account Firestore listed
+  // first. That is how a real backup of 2,074 records reported "blocks 16": it
+  // was faithfully describing a different account. The count was never wrong;
+  // the panel was reading the wrong row. Falling back to [0] when the
+  // signed-in uid is absent would reintroduce exactly that, so the fallback is
+  // "say we cannot find yours" instead.
+  const allUsers = s.users || {};
+  const mine = (user && allUsers[user.uid]) || null;
+  const counts = mine?.counts || {};
+  const myRecords = Object.values(counts).reduce((a, b) => a + b, 0);
+  const others = Object.entries(allUsers).filter(([uid]) => !user || uid !== user.uid);
+  const otherRecords = others.reduce((n, [, u]) => n + Object.values(u.counts || {}).reduce((a, b) => a + b, 0), 0);
+
   const known = new Set(BACKUP_COLLECTIONS.map(c => c.coll));
   const unknown = Object.keys(counts).filter(c => !known.has(c));
   return `
     <div class="sync-row"><span class="sync-key">Offsite backup</span>
       <span class="sync-val ${tone}">${age === null ? 'Never run' : age === 0 ? 'Today' : age === 1 ? 'Yesterday' : `${age} days ago`}</span></div>
-    <div class="sync-row"><span class="sync-key">Records saved</span><span class="sync-val">${s.totalRecords ?? '—'}</span></div>
+    <div class="sync-row"><span class="sync-key">Your records</span><span class="sync-val">${
+      mine ? myRecords : `<span class="error">not found in the backup</span>`}</span></div>
     <div class="sync-row"><span class="sync-key">Where</span>
       <span class="sync-val">${s.repoUrl ? `<a href="${esc(s.repoUrl)}" target="_blank" rel="noopener">${esc(s.env?.repo || 'backup repo')}</a>` : esc(s.env?.repo || '—')}</span></div>
     ${Object.keys(counts).length ? `<div class="sync-row"><span class="sync-key">Contents</span><span class="sync-val">${
       Object.entries(counts).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')}</span></div>` : ''}
-    ${s.media?.live ? `<div class="sec-note">${s.media.live} voice notes / attachments are referenced by name in the backup, but <strong>their audio and image files are not in it</strong> — those live in Firebase Storage.</div>` : ''}
+    ${!mine ? `<div class="sec-note"><strong>Your account is not in the latest backup.</strong> It holds ${s.totalRecords ?? 0} records for ${Object.keys(allUsers).length} other account(s). Press "Back up now" — if this persists, the app is signed into a different Google account than the one holding your journal.</div>` : ''}
+    ${s.media?.live ? `<div class="sec-note">${s.media.live} voice notes / attachments are referenced by name in the backup, but <strong>their audio and image files are not in it</strong> — those live in Firebase Storage${s.media.knownBytes ? ` (${(s.media.knownBytes / 1048576).toFixed(1)} MB)` : ''}.</div>` : ''}
+    ${others.length ? `<div class="sec-note"><strong>${others.length} other account${others.length > 1 ? 's have' : ' has'} signed into this app</strong> and ${others.length > 1 ? 'their' : 'its'} ${otherRecords} record${otherRecords === 1 ? '' : 's'} ${others.length > 1 ? 'are' : 'is'} in the backup too. That is not your journal and restoring never touches it — but if you did not expect anyone else to be here, this is where you would find out.</div>` : ''}
     ${unknown.length ? `<div class="sec-note">Heads-up: the backup contains ${unknown.map(esc).join(', ')}, which this version of the app does not know how to restore. The data is safe in the file; restoring it writes to the cloud but will not appear on screen until the app learns about it.</div>` : ''}
     ${(s.issues || []).length ? `<div class="sec-note">${s.issues.map(esc).join('<br>')}</div>` : ''}`;
 }

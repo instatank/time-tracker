@@ -82,6 +82,30 @@ the run and leaves the previous backup untouched:
    editing a note changes no count and must still be captured — and not of the
    file, whose `exportedAt` would make every single day look like a change.
 
+## The database holds more than one account
+
+The walk covers the whole database, so the backup contains **every account that
+has ever signed into this app** — not just the founder's. The first live run
+found two: the real journal (2,058 records across 13 collections) and a second
+uid holding 16 blocks. That is expected rather than alarming: the app is
+publicly reachable and Firebase Auth lets any Google account sign in and create
+its own data under its own uid, which the Firestore rules scope correctly.
+
+It did produce a real bug on day one. The Settings panel took
+`Object.values(users)[0]` — whichever account Firestore listed first — so a
+complete 2,074-record backup reported **"Contents: blocks 16"**. Nothing was
+wrong with the backup; the panel was reading a stranger's row and presenting it
+as the founder's journal, which is worse than showing nothing, because it would
+have him believe 16 blocks was everything he had.
+
+Fixed to key off the signed-in uid, and it does **not** fall back to `[0]` when
+that uid is absent — that would reintroduce the same bug wearing a different
+hat. It says "not found in the backup" instead. The other account is now named
+on screen with its record count rather than silently folded in, because "someone
+else has signed into my app" is something you want to be told. Pinned by four
+assertions in `tests/backup-restore.mjs`, confirmed able to fail by putting the
+`[0]` back.
+
 ## What is NOT backed up, and this is said on screen too
 
 **Voice-note audio and attached image/files.** Those bytes live in Firebase
@@ -90,11 +114,18 @@ the backup does carry is a **manifest**: every voice note and attachment by
 filename, title, size, date and the entry it belonged to. After a total loss
 you would know exactly what existed — you would not have the audio.
 
-This was a deliberate stopping point, not an oversight. Binaries in git is the
-known-bad pattern, a year of audio would outgrow the repo, and "one backup that
-works beats two that are half-configured." The manifest is built so that adding
-a byte mirror later is a small change. Also excluded: `dayos_experiments_v1`
-(Optional features), which is local-only by design and never reaches Firestore.
+This was a deliberate stopping point, not an oversight — but **one half of the
+reasoning turned out to be wrong, and the measurement says so.** The argument
+was "binaries in git is the known-bad pattern, and a year of audio would outgrow
+the repo." The first real backup measured the actual media: **8 items, 1.8 MB
+total.** At that size the repo argument does not hold at all; only the
+binaries-in-git preference does, and that alone is not enough to leave
+irreplaceable audio unprotected.
+
+So this should be revisited, and the number is now shown on the panel rather
+than left as an assumption. The manifest was built so that adding a byte mirror
+is a small change. Also excluded: `dayos_experiments_v1` (Optional features),
+which is local-only by design and never reaches Firestore.
 
 ## Auth — two callers, two credentials, no open path
 
@@ -181,5 +212,7 @@ instructions exist beside the data even if this codebase does not.
 - **Auto-restoring an empty database.** A blank journal is not always a
   disaster, and an app that refills itself unasked is a worse problem than one
   that waits.
-- **Backing up Storage bytes.** See above — the manifest is the honest
-  half-measure, and it is labelled as one everywhere it appears.
+- **Backing up Storage bytes.** The manifest is the honest half-measure and is
+  labelled as one everywhere it appears — but see above: the sizing argument
+  against it did not survive contact with the real data (1.8 MB), so this is a
+  live candidate rather than a settled no.

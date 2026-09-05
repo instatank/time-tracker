@@ -236,8 +236,16 @@ it ships. `devices` is the one exclusion (push tokens regenerate; they are crede
 collection in the backup it does not know rather than silently omitting it, and a restore
 writes unknown collections to Firestore anyway.
 
+The backup covers **every account that has signed into the app**, not just the founder's — the
+walk is database-wide, and the live database holds two uids. The Settings panel must therefore
+key off the **signed-in uid**; taking the first entry shipped a bug where a complete
+2,074-record backup reported "blocks 16" (a stranger's row). It deliberately does not fall back
+to the first account when the signed-in uid is missing. Pinned in `tests/backup-restore.mjs`.
+
 Voice-note audio and attachments are **not** backed up — only a manifest of them (filename,
-size, date, parent entry). Storage shares the failure domain this backup exists to escape;
+size, date, parent entry). Measured on real data this is **8 items / 1.8 MB**, which kills the
+"it would outgrow the repo" argument; treat mirroring the bytes as an open candidate, not a
+settled no. Storage shares the failure domain this backup exists to escape;
 that gap is stated on screen, in `HOW-TO-RESTORE.md` and in `docs/backup.md`.
 
 Auth: `CRON_SECRET` for the scheduler, a Firebase ID token for the browser — verified by
