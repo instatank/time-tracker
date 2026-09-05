@@ -74,7 +74,7 @@ No build step for the app. Edit `index.html`, open it directly in browser, or pu
 
 **Mandatory on every user-facing change:** bump the service-worker cache key `dayos-vN` in `sw.js`. Devices serve stale `index.html` otherwise. (Server-only `api/*.mjs` changes don't need a bump.)
 
-**Pre-push gate:** run `bash scripts/check.sh` (extracts + syntax-checks the inline module, checks `api/**/*.mjs`, runs `tests/*.mjs` sims if present). The old `/tmp/dayos-check/` location is dead — those sims were unversioned and got lost with a fresh environment; behavioural sims now belong in `tests/`. The `/ship` skill runs this gate + the cache bump automatically — use it for every push.
+**Pre-push gate:** run `bash scripts/check.sh` (extracts + syntax-checks the inline module, checks `api/**/*.mjs`, runs `tests/*.mjs` sims if present — including the backup round-trip guard, which fails if the export and restore halves of `BACKUP_COLLECTIONS` stop being inverses). The old `/tmp/dayos-check/` location is dead — those sims were unversioned and got lost with a fresh environment; behavioural sims now belong in `tests/`. The `/ship` skill runs this gate + the cache bump automatically — use it for every push.
 
 ## Shared playbook (cross-project — read at session start)
 
@@ -219,6 +219,31 @@ Firestore paths: `users/{uid}/{blocks|captures|sessions|learning|dailyJournal}/{
 - **New collection checklist:** per-write sync fn + `initialSync` + `forcePushToCloud` + `forcePullFromCloud` + tombstones + `_synced` flag. Miss any → silent cross-device data loss. See `docs/sync-lessons.md`.
 - **External consumer:** the founder's personal AI agent (`instatank/instatank42`) mirrors this Firestore read-only as a second-brain memory bank. Schema changes to synced collections must also update the contract doc `docs/second-brain-integration.md` (same commit — it's in the sync SOP checklist).
 
+### Backup (offsite, automated)
+
+A Vercel cron hits `/api/backup` daily (20:00 UTC = 01:30 IST) and commits the whole journal
+as one JSON file into a **separate, private GitHub repo**. Nothing commits on a day the
+journal did not change. Settings → Backup shows live status read **from the backup repo**
+(never self-reported), a "Back up now / check it works" button, a download of this device,
+and **restore from a file** — which never deletes and by default only fills gaps.
+
+The bit worth knowing before touching it: `/api/backup` **discovers** collections
+(`listCollectionIds` on `users/{uid}`) rather than listing them, so the new-collection
+checklist above does not grow a seventh item — a collection added later is backed up the day
+it ships. `devices` is the one exclusion (push tokens regenerate; they are credentials).
+`BACKUP_COLLECTIONS` in `index.html` is the one place a hand-maintained list survives, because
+`listCollectionIds` is admin-only and the client cannot ask; the panel therefore *names* any
+collection in the backup it does not know rather than silently omitting it, and a restore
+writes unknown collections to Firestore anyway.
+
+Voice-note audio and attachments are **not** backed up — only a manifest of them (filename,
+size, date, parent entry). Storage shares the failure domain this backup exists to escape;
+that gap is stated on screen, in `HOW-TO-RESTORE.md` and in `docs/backup.md`.
+
+Auth: `CRON_SECRET` for the scheduler, a Firebase ID token for the browser — verified by
+`verifyFirebaseToken` **imported from `api/ai/claude.mjs`**, one verifier in this codebase,
+not two. Full design record + the one-time browser setup steps: **`docs/backup.md`**.
+
 ### Trends / Dashboard
 
 - **Calendar sub-tab**: pick a date → see that day's blocks + Daily Journal entry + captures + EOD + life ratings. The numbered grid doubles as a consistency heatmap — each day-with-data gets a `cal-dot-l0`–`l4` marker (neutral = data but no logged hours; red→orange→yellow→green by waking hours logged, via `hoursLevel()`), with a Less→More legend.
@@ -248,6 +273,9 @@ Respects `env(safe-area-inset-*)` for status bar + home indicator. `apple-mobile
 - `docs/ai-features.md` — full AI architecture + prompt locations + tuning.
 - `playbook/SOP-firebase-sync.md` — Firestore sync gotchas (shared playbook; `docs/sync-lessons.md` is a superseded stub).
 - `docs/experiments.md` — per-toggle tracker for everything under Settings → 🎛 Optional features, plus a **Removed** ledger of what was tried and cut (so nobody rebuilds it). Lists exact functions, CSS blocks, sheets, and wiring sites — grep before trusting a delete-list.
+- `docs/backup.md` — the offsite backup + restore: why GitHub, why it reads Firestore, the
+  four guards, what is deliberately NOT backed up, and the one-time setup steps.
+  **Read before changing anything under `api/backup.mjs` or Settings → Backup.**
 - `docs/security-audit.md` — the sensitive-data audit: copy graph, open gaps, the
   per-surface **detector tuning doctrine**, and the as-built record of the Phase 1
   detector + Security Check screen. **Read before touching any detector rule.**

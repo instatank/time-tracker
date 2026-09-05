@@ -5178,6 +5178,7 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
      openSheet() closing the form underneath. Built to grow: Photo/Camera/Draw
      slot in as live buttons in later phases. -->
 <input type="file" id="attach-file-input" style="display:none" onchange="onAttachFileChosen(this)" />
+<input type="file" id="backup-restore-input" accept="application/json,.json" style="display:none" onchange="onBackupFileChosen(this)" />
 <input type="file" id="attach-image-input" accept="image/*" style="display:none" onchange="onAttachImageChosen(this)" />
 <input type="file" id="attach-camera-input" accept="image/*" capture="environment" style="display:none" onchange="onAttachImageChosen(this)" />
 <div id="attach-menu" class="attach-menu-overlay">
@@ -15526,6 +15527,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sleepEod',   icon: '🌙', label: 'Sleep & EOD',     sub: 'Auto-log sleep · end-of-day prompt'     },
   { id: 'appearance', icon: '🎨', label: 'Appearance',      sub: 'System · Light · Dark'                  },
   { id: 'sync',       icon: '☁️', label: 'Sync',            sub: 'Push · Pull · sign-out'                 },
+  { id: 'backup',     icon: '🧰', label: 'Backup',          sub: 'Offsite copy · download · restore'      },
   { id: 'notify',     icon: '🔔', label: 'Notifications',   sub: 'Daily reminders · per-device toggle'    },
   { id: 'defaults',   icon: '🔁', label: 'Daily defaults',  sub: 'Auto-create blocks each day (e.g. sleep, night routine)' },
   { id: 'trash',      icon: '🗑',  label: 'Trash',           sub: 'Recover deleted entries · 7-day window' },
@@ -15568,6 +15570,7 @@ window.openSettingsSection = function(id) {
   switch (id) {
     case 'appearance': return openSettingsAppearance();
     case 'sync':       return openSettingsSync();
+    case 'backup':     return openSettingsBackup();
     case 'projects':   return openSettingsProjects();
     case 'tags':       return openSettingsTags();
     case 'dayscore':   return openSettingsDayScore();
@@ -15661,6 +15664,414 @@ function openSettingsSync() {
   `;
   openSheet('sheet-settings');
 }
+
+// ── Settings → Backup ─────────────────────────────────────────
+//
+// Three things, in the order they matter:
+//   1. IS the offsite backup actually running? — read live from the backup
+//      repo itself, never from anything this app remembers about itself. A
+//      self-reported status keeps saying "backed up" long after backups have
+//      stopped, and a backup you wrongly believe you have is worse than none.
+//   2. A copy of THIS DEVICE, downloadable now, in the same file format.
+//   3. Restore from a file — the half that turns "we have backups" into
+//      "we can recover". It never deletes and, by default, never overwrites.
+//
+// The unattended half lives in api/backup.mjs (Firestore -> a private GitHub
+// repo, daily). Read that file's header for why GitHub and why Firestore.
+
+const BACKUP_FORMAT_VERSION = 1;
+
+// THE mapping between this device's state and Firestore's collections.
+// The server backup deliberately has no such list — it walks whatever is in
+// Firestore — so this one exists only because the client cannot ask Firestore
+// what collections exist (listCollectionIds is admin-only). That asymmetry is
+// the drift risk, and it is handled by showing it: the panel below compares
+// the collections in the live backup against the keys here and NAMES any it
+// does not know, rather than quietly leaving them out of a restore.
+//
+// `idField` is the field inside the document that duplicates the doc id, or
+// null when the document has none. Restore strips `id` from the latter — the
+// backup adds it from the document path, and writing it back would put a field
+// on `ratings/2026-09-01` that DayOS never stored there.
+const BACKUP_COLLECTIONS = [
+  { coll: 'blocks',         idField: 'id',
+    toDocs: () => blocks.slice(),
+    fromDocs: d => { blocks = d; saveLocal(SK.BLOCKS, blocks); } },
+  { coll: 'captures',       idField: 'id',
+    toDocs: () => captures.slice(),
+    fromDocs: d => { captures = d; saveLocal(SK.CAPTURES, captures); } },
+  { coll: 'dailyJournal',   idField: 'id',
+    toDocs: () => (dailyJournals || []).map(j => ({ ...j, id: j.id || j.date })),
+    fromDocs: d => { dailyJournals = d; saveLocal(SK.DAILY_JOURNAL, dailyJournals); } },
+  { coll: 'sessions',       idField: 'id',
+    toDocs: () => Object.values(sessions || {}).flat(),
+    fromDocs: d => {
+      const byProject = {};
+      d.forEach(s => { (byProject[s.projectName] = byProject[s.projectName] || []).push(s); });
+      sessions = byProject; saveLocal(SK.SESSIONS, sessions);
+    } },
+  { coll: 'learning',       idField: 'id',
+    toDocs: () => (learning || []).slice(),
+    fromDocs: d => { learning = d; saveLocal(SK.LEARNING, learning); } },
+  { coll: 'ratings',        idField: null,
+    toDocs: () => Object.entries(ratings || {}).map(([date, rating]) => ({ id: date, rating })),
+    fromDocs: d => { ratings = Object.fromEntries(d.map(r => [r.id, r.rating])); saveLocal(SK.RATINGS, ratings); } },
+  { coll: 'life_ratings',   idField: null,
+    toDocs: () => Object.entries(lifeRatings || {}).map(([date, v]) => ({ id: date, ...v })),
+    fromDocs: d => { lifeRatings = Object.fromEntries(d.map(({ id, ...v }) => [id, v])); saveLocal(SK.LIFE_RATINGS, lifeRatings); } },
+  { coll: 'eod',            idField: null,
+    toDocs: () => Object.entries(eodNotes || {}).map(([date, text]) => ({ id: date, text })),
+    fromDocs: d => { eodNotes = Object.fromEntries(d.map(r => [r.id, r.text])); saveLocal(SK.EOD, eodNotes); } },
+  { coll: 'dfts',           idField: null,
+    toDocs: () => Object.entries(dfts || {}).map(([date, v]) => ({ id: date, ...(typeof v === 'string' ? { text: v } : v) })),
+    fromDocs: d => { dfts = Object.fromEntries(d.map(({ id, ...v }) => [id, v])); saveLocal('dayos_dfts_v1', dfts); } },
+  { coll: 'weeklyReviews',  idField: null,
+    toDocs: () => Object.values(weeklyReviews || {}).map(r => ({ id: r.weekStart, ...r })),
+    fromDocs: d => { weeklyReviews = Object.fromEntries(d.map(({ id, ...r }) => [id, r])); saveLocal('dayos_weekly_reviews_v1', weeklyReviews); } },
+  { coll: 'monthlyReviews', idField: null,
+    toDocs: () => Object.values(monthlyReviews || {}).map(r => ({ id: r.month, ...r })),
+    fromDocs: d => { monthlyReviews = Object.fromEntries(d.map(({ id, ...r }) => [id, r])); saveLocal('dayos_monthly_reviews_v1', monthlyReviews); } },
+  { coll: 'dismissals',     idField: null,
+    toDocs: () => Object.entries(dismissals || {}).map(([date, v]) => ({ id: date, ...v })),
+    fromDocs: d => { dismissals = Object.fromEntries(d.map(({ id, ...v }) => [id, v])); saveLocal('dayos_dismissals_v1', dismissals); } },
+  // meta is one collection of fixed-id single documents rather than a list of
+  // entries, so it maps doc-by-doc. Everything the app keeps as configuration
+  // lives here; losing it means losing your project list and your check-in
+  // metrics, which is why it is in the backup at all.
+  { coll: 'meta',           idField: null,
+    toDocs: () => [
+      { id: 'projects',          list: projects },
+      { id: 'tag_history',       history: tagHistory },
+      { id: 'adherence',         ...adherenceConfig },
+      { id: 'dayscore',          ...dayScoreConfig },
+      { id: 'lifecheck',         ...lifeCheckConfig },
+      { id: 'defaultBlocks',     ...defaultBlocksConfig },
+      { id: 'defaultBlockSkips', ...defaultBlocksSkips },
+    ],
+    fromDocs: d => {
+      for (const { id, ...v } of d) {
+        if (id === 'projects'          && Array.isArray(v.list))    { projects = v.list; saveLocal(SK.PROJECTS, projects); }
+        if (id === 'tag_history'       && Array.isArray(v.history)) { tagHistory = v.history; saveLocal(SK.TAG_HISTORY, tagHistory); }
+        if (id === 'adherence'         && v.rules)                  { adherenceConfig = v; saveLocal('dayos_adherence_config_v1', adherenceConfig); }
+        if (id === 'dayscore'          && v.tiles)                  { dayScoreConfig = v; saveLocal('dayos_dayscore_config_v1', dayScoreConfig); }
+        if (id === 'lifecheck'         && v.metrics)                { lifeCheckConfig = v; saveLocal('dayos_lifecheck_config_v1', lifeCheckConfig); }
+        if (id === 'defaultBlocks'     && v.templates)              { defaultBlocksConfig = v; saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig); }
+        if (id === 'defaultBlockSkips')                             { defaultBlocksSkips = v; saveLocal(SK.DEFAULT_BLOCKS_SKIPS, defaultBlocksSkips); }
+      }
+    } },
+];
+
+function backupCollection(name) { return BACKUP_COLLECTIONS.find(c => c.coll === name) || null; }
+
+// A backup of what THIS DEVICE currently holds, in the same format the
+// scheduled job writes. Not a substitute for the offsite copy — it only
+// contains what this device knows — but it is the copy you can take right
+// now, with no GitHub and no server involved.
+function buildDeviceSnapshot() {
+  const data = {}, counts = {};
+  let total = 0;
+  for (const c of BACKUP_COLLECTIONS) {
+    const docs = c.toDocs().filter(Boolean);
+    data[c.coll] = docs;
+    counts[c.coll] = docs.length;
+    total += docs.length;
+  }
+  const uidKey = user ? user.uid : 'local-device';
+  return {
+    formatVersion: BACKUP_FORMAT_VERSION,
+    app: 'dayos',
+    source: 'device',
+    exportedAt: new Date().toISOString(),
+    totalRecords: total,
+    users: { [uidKey]: { collections: BACKUP_COLLECTIONS.map(c => c.coll), counts, data } },
+    media: { note: 'Pointers only. Voice-note audio and attached files live in Firebase Storage and are NOT in this backup.' },
+  };
+}
+
+window.downloadDeviceBackup = function () {
+  const snap = buildDeviceSnapshot();
+  const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `dayos-backup-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast(`Downloaded ${snap.totalRecords} records`, 2500);
+};
+
+// ── the status panel ─────────────────────────────────────────
+let _backupStatus = null;   // last response from /api/backup?status=1
+let _backupRestore = null;  // parsed file awaiting confirmation
+
+function backupAgeDays(iso) {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
+function backupStatusHtml() {
+  const s = _backupStatus;
+  if (s === null)      return `<div class="sync-row"><span class="sync-key">Offsite backup</span><span class="sync-val">Checking…</span></div>`;
+  if (s.signedOut)     return `
+      <div class="sync-row"><span class="sync-key">Offsite backup</span><span class="sync-val">Sign in to check</span></div>
+      <div class="sec-note">The offsite copy is read from your account, so this needs you signed in. Downloading a copy of this device works either way.</div>`;
+  if (s.error)         return `<div class="sync-row"><span class="sync-key">Offsite backup</span><span class="sync-val error">Could not check (${esc(s.error)})</span></div>`;
+  if (!s.configured)   return `
+      <div class="sync-row"><span class="sync-key">Offsite backup</span><span class="sync-val error">Not set up</span></div>
+      <div class="sec-note">${esc(s.detail || '')}<br><br>
+        Until this is on, the only copies of your journal are this device and Firebase.
+        To switch it on: make a <strong>private</strong> GitHub repo, then in Vercel →
+        the <code>dayos</code> project → Settings → Environment Variables add
+        <code>BACKUP_GITHUB_REPO</code> (as <code>owner/repo</code>) and
+        <code>BACKUP_GITHUB_TOKEN</code>, and redeploy. Full steps: <code>docs/backup.md</code>.</div>`;
+  if (!s.ok)           return `
+      <div class="sync-row"><span class="sync-key">Offsite backup</span><span class="sync-val error">Problem</span></div>
+      <div class="sec-note">${esc(s.detail || 'Unknown problem.')}</div>`;
+
+  const age = backupAgeDays(s.lastBackupAt);
+  // Amber at 3 days, red at 10. The job runs daily and skips the commit when
+  // nothing changed — but the sidecar is rewritten on every real backup, so a
+  // stale timestamp on a journal you have been writing in means the job has
+  // stopped, which is exactly what this line exists to catch.
+  const tone = age === null ? '' : age >= 10 ? 'error' : age >= 3 ? 'syncing' : 'ok';
+  const counts = Object.values(s.users || {})[0]?.counts || {};
+  const known = new Set(BACKUP_COLLECTIONS.map(c => c.coll));
+  const unknown = Object.keys(counts).filter(c => !known.has(c));
+  return `
+    <div class="sync-row"><span class="sync-key">Offsite backup</span>
+      <span class="sync-val ${tone}">${age === null ? 'Never run' : age === 0 ? 'Today' : age === 1 ? 'Yesterday' : `${age} days ago`}</span></div>
+    <div class="sync-row"><span class="sync-key">Records saved</span><span class="sync-val">${s.totalRecords ?? '—'}</span></div>
+    <div class="sync-row"><span class="sync-key">Where</span>
+      <span class="sync-val">${s.repoUrl ? `<a href="${esc(s.repoUrl)}" target="_blank" rel="noopener">${esc(s.env?.repo || 'backup repo')}</a>` : esc(s.env?.repo || '—')}</span></div>
+    ${Object.keys(counts).length ? `<div class="sync-row"><span class="sync-key">Contents</span><span class="sync-val">${
+      Object.entries(counts).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')}</span></div>` : ''}
+    ${s.media?.live ? `<div class="sec-note">${s.media.live} voice notes / attachments are referenced by name in the backup, but <strong>their audio and image files are not in it</strong> — those live in Firebase Storage.</div>` : ''}
+    ${unknown.length ? `<div class="sec-note">Heads-up: the backup contains ${unknown.map(esc).join(', ')}, which this version of the app does not know how to restore. The data is safe in the file; restoring it writes to the cloud but will not appear on screen until the app learns about it.</div>` : ''}
+    ${(s.issues || []).length ? `<div class="sec-note">${s.issues.map(esc).join('<br>')}</div>` : ''}`;
+}
+
+// Every call to /api/backup carries the same Firebase ID token the AI proxy
+// already uses — there is no unauthenticated path into this endpoint, and no
+// secret for the founder to paste anywhere.
+async function backupApi(query) {
+  if (!user) throw new Error('signed out');
+  const idToken = await user.getIdToken();
+  const r = await fetch(`/api/backup?${query}`, { cache: 'no-store', headers: { Authorization: 'Bearer ' + idToken } });
+  if (r.status === 401) throw new Error('this account is not allowed to run backups');
+  return r.json();
+}
+
+async function refreshBackupStatus() {
+  if (!user) {
+    _backupStatus = { signedOut: true };
+  } else {
+    try { _backupStatus = await backupApi('status=1'); }
+    catch (e) { _backupStatus = { error: e.message || 'network' }; }
+  }
+  // Only repaint if the user is still on this screen.
+  const host = document.getElementById('backup-status-host');
+  if (host) host.innerHTML = backupStatusHtml();
+}
+
+// "Back up now" is also "check that this is actually set up right". The last
+// mile — a real service account, a real token, a real private repo — cannot be
+// verified from a dev container, only from the deployment holding the
+// credentials. So the check ships as a button rather than as a claim in a doc.
+window.runBackupNow = async function () {
+  const host = document.getElementById('backup-status-host');
+  if (host) host.innerHTML = `<div class="sync-row"><span class="sync-key">Offsite backup</span><span class="sync-val syncing">Running…</span></div>`;
+  let out;
+  try { out = await backupApi('run=1'); }
+  catch (e) { out = { status: 'failed', detail: e.message || 'network' }; }
+  const nice = { ok: '✓ Backed up', unchanged: 'Nothing had changed since the last backup', off: 'Not set up yet', blocked: 'Refused', failed: 'Failed' };
+  toast(`${nice[out.status] || out.status}${out.detail ? ' — ' + out.detail : ''}`, 6000);
+  await refreshBackupStatus();
+};
+
+function openSettingsBackup() {
+  const body = document.getElementById('settings-body');
+  const local = buildDeviceSnapshot();
+  body.innerHTML = `
+    ${settingsSubhdrHtml('Backup')}
+    <div class="sync-panel" id="backup-status-host">${backupStatusHtml()}</div>
+
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="runBackupNow()">↻ Back up now / check it works</button>
+    </div>
+
+    <div class="sync-panel" style="margin-top:0.6rem">
+      <div class="sync-row"><span class="sync-key">This device holds</span><span class="sync-val">${local.totalRecords} records</span></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="downloadDeviceBackup()">⬇ Download a copy of this device</button>
+    </div>
+
+    <div class="sec-note" style="margin-top:0.8rem">
+      <strong>Restore from a file.</strong> Pick a <code>dayos-backup.json</code>
+      (from the backup repo, or one you downloaded). Restoring <strong>never deletes
+      anything</strong> — by default it only puts back entries that are missing.
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="document.getElementById('backup-restore-input').click()">📂 Choose a backup file…</button>
+    </div>
+    <div id="backup-restore-host"></div>
+  `;
+  _backupStatus = null;
+  _backupRestore = null;
+  refreshBackupStatus();
+  openSheet('sheet-settings');
+}
+
+// ── restore ──────────────────────────────────────────────────
+//
+// Two rules, both load-bearing:
+//   * It NEVER deletes. The moment you reach for a backup is the moment you
+//     can least afford a second mistake, so entries the file does not mention
+//     are left exactly where they are.
+//   * By default it only writes entries whose id is MISSING, so it cannot
+//     overwrite something written since the backup. Overwriting is a genuine
+//     rollback, it says that it discards later edits, and it is never the
+//     default.
+//
+// Unknown collections are written to Firestore anyway. A restore must not drop
+// your data because this build of the app is older than the backup.
+
+window.onBackupFileChosen = async function (input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const host = document.getElementById('backup-restore-host');
+  try {
+    const parsed = JSON.parse(await file.text());
+    _backupRestore = validateBackupFile(parsed);
+    host.innerHTML = backupPreviewHtml(file.name, _backupRestore);
+  } catch (e) {
+    _backupRestore = null;
+    host.innerHTML = `<div class="sec-note" style="margin-top:0.6rem"><strong>That file could not be used.</strong><br>${esc(e.message)}</div>`;
+  }
+};
+
+function validateBackupFile(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('That is not a DayOS backup — it is not a backup object.');
+  if (raw.app && raw.app !== 'dayos') throw new Error(`That backup is from "${raw.app}", not DayOS.`);
+  if (!raw.users || typeof raw.users !== 'object') throw new Error('That file has no "users" section, so there is nothing to restore.');
+  if (Number(raw.formatVersion) > BACKUP_FORMAT_VERSION) {
+    throw new Error(`That backup was written by a newer version of DayOS (format ${raw.formatVersion}, this app reads ${BACKUP_FORMAT_VERSION}). Update the app first.`);
+  }
+  const uids = Object.keys(raw.users);
+  if (!uids.length) throw new Error('That backup contains no user data.');
+  // Prefer the signed-in account's own data when a file somehow holds more
+  // than one — restoring someone else's entries into your journal, silently,
+  // would be the worst possible outcome of pressing a Restore button.
+  const chosen = (user && uids.includes(user.uid)) ? user.uid : uids[0];
+  const bucket = raw.users[chosen] || {};
+  const data = bucket.data || {};
+  const counts = {};
+  let total = 0;
+  for (const [coll, docs] of Object.entries(data)) {
+    if (!Array.isArray(docs)) continue;
+    counts[coll] = docs.length;
+    total += docs.length;
+  }
+  return {
+    exportedAt: raw.exportedAt || null,
+    source: raw.source || 'unknown',
+    fileUid: chosen,
+    foreignUid: !!(user && chosen !== user.uid),
+    multiUser: uids.length > 1,
+    media: raw.media || null,
+    data, counts, total,
+  };
+}
+
+function backupPreviewHtml(fileName, r) {
+  const known = new Set(BACKUP_COLLECTIONS.map(c => c.coll));
+  const unknown = Object.keys(r.counts).filter(c => !known.has(c));
+  return `
+    <div class="sync-panel" style="margin-top:0.6rem">
+      <div class="sync-row"><span class="sync-key">File</span><span class="sync-val">${esc(fileName)}</span></div>
+      <div class="sync-row"><span class="sync-key">Taken</span><span class="sync-val">${esc(r.exportedAt ? r.exportedAt.slice(0, 16).replace('T', ' ') + ' UTC' : 'unknown')} · from ${esc(r.source)}</span></div>
+      <div class="sync-row"><span class="sync-key">Holds</span><span class="sync-val">${r.total} records</span></div>
+      <div class="sync-row"><span class="sync-key">Contents</span><span class="sync-val">${Object.entries(r.counts).map(([k, v]) => `${esc(k)} ${v}`).join(' · ') || '—'}</span></div>
+    </div>
+    ${r.foreignUid ? `<div class="sec-note"><strong>Careful:</strong> this backup belongs to a different account (${esc(r.fileUid)}) than the one you are signed in as. Restoring will copy those entries into your journal.</div>` : ''}
+    ${unknown.length ? `<div class="sec-note">${unknown.map(esc).join(', ')} will be written to the cloud but this version of the app cannot show them yet.</div>` : ''}
+    ${r.media?.live ? `<div class="sec-note">${r.media.live} voice notes / attachments are named in this file, but their audio and image files are not in it and cannot be restored from here.</div>` : ''}
+    ${r.counts.meta ? `<div class="sec-note"><strong>Your settings need the tick below.</strong> Project list, tags, Day Score tiles, check-in metrics and daily defaults are single documents that always exist — even on a fresh install they are there, holding defaults. So "only put back what is missing" finds nothing missing and leaves them alone. To bring your own settings back, tick overwrite.</div>` : ''}
+    <label class="sec-note" style="display:flex;gap:0.5rem;align-items:flex-start;margin-top:0.6rem;cursor:pointer">
+      <input type="checkbox" id="backup-overwrite" style="margin-top:0.2rem">
+      <span><strong>Overwrite entries that already exist.</strong> Leave this off to only put back what is missing. Turning it on rolls those entries back to the backup's version and <strong>discards edits made since</strong>.</span>
+    </label>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="runBackupRestore()">Restore ${r.total} records</button>
+    </div>
+    <div id="backup-restore-result"></div>`;
+}
+
+window.runBackupRestore = async function () {
+  const r = _backupRestore;
+  if (!r) return;
+  if (!user) { toast('Sign in first — a restore writes to your cloud account', 3500); return; }
+  const overwrite = !!document.getElementById('backup-overwrite')?.checked;
+  const out = document.getElementById('backup-restore-result');
+  out.innerHTML = `<div class="sec-note">Restoring…</div>`;
+
+  const written = {}, skipped = {};
+  const ops = [];
+  try {
+    for (const [coll, docs] of Object.entries(r.data)) {
+      if (!Array.isArray(docs)) continue;
+      const spec = backupCollection(coll);
+      // "Already here" is judged against what this device holds, which mirrors
+      // Firestore after a sync. Said plainly on screen rather than implied.
+      const existing = spec ? new Set(spec.toDocs().map(d => String(d.id))) : new Set();
+      const merged = spec ? spec.toDocs() : null;
+      written[coll] = 0; skipped[coll] = 0;
+
+      for (const rec of docs) {
+        const id = rec && rec.id != null ? String(rec.id) : null;
+        if (!id) { skipped[coll]++; continue; }
+        if (existing.has(id) && !overwrite) { skipped[coll]++; continue; }
+
+        const payload = { ...rec };
+        if (spec && spec.idField === null) delete payload.id;
+        ops.push({ ref: doc(db, 'users', user.uid, coll, id), data: payload });
+
+        if (merged) {
+          const at = merged.findIndex(d => String(d.id) === id);
+          if (at >= 0) merged[at] = rec; else merged.push(rec);
+        }
+        written[coll]++;
+      }
+      if (spec && written[coll]) spec.fromDocs(merged);
+    }
+
+    // Batched at 400 — Firestore's own ceiling is 500, and a restore is the
+    // one operation that reliably has thousands of documents in it. One
+    // setDoc per record would be a round trip each and would not finish.
+    const CHUNK = 400;
+    for (let i = 0; i < ops.length; i += CHUNK) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + CHUNK).forEach(op => batch.set(op.ref, op.data));
+      await batch.commit();
+    }
+
+    saveAll();
+    const totalWritten = Object.values(written).reduce((a, b) => a + b, 0);
+    const totalSkipped = Object.values(skipped).reduce((a, b) => a + b, 0);
+    out.innerHTML = `<div class="sec-note"><strong>Restored ${totalWritten} entries.</strong>
+      ${totalSkipped} were already here and left alone${overwrite ? '' : ' (nothing was overwritten)'}.
+      Nothing was deleted.</div>`;
+    toast(`✓ Restored ${totalWritten} entries`, 4000);
+    render();
+  } catch (e) {
+    out.innerHTML = `<div class="sec-note"><strong>The restore stopped partway.</strong><br>${esc(e.message || 'Unknown error')}<br>
+      Nothing was deleted. You can safely run it again — entries already put back will simply be skipped.</div>`;
+  }
+};
+
+window.openSettingsBackup = openSettingsBackup;
 
 // ── Settings → Projects ───────────────────────────────────────
 // Single source-of-truth list; every entry is editable. Tap a row to open
@@ -16778,6 +17189,7 @@ window.openSettingsDayScore   = openSettingsDayScore;
 window.openSettingsLifeCheck  = openSettingsLifeCheck;
 window.openSettingsTrash      = openSettingsTrash;
 window.openSettingsNotify     = openSettingsNotify;
+window.openSettingsBackup     = openSettingsBackup;
 
 // ── Settings → Notifications ─────────────────────────────────
 // Per-device opt-in for the two scheduled daily reminders (5pm + 11:30pm
