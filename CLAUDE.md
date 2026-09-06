@@ -48,6 +48,12 @@ merged into something that already exists?" is **yes, try**.
   went into a comment at the deletion site. Both 2026-08-30 removals (AI Log Activities,
   Add attachments) were verified reachable first — `ai-switch-btn` inside the Log Activity
   sheet, and `openAttachMenu('capture')` inside the capture sheet.
+- **Say which argument you cut on.** Two are legitimate and they are not interchangeable.
+  **Cost** — it's in the way, it duplicates a choice its destination already presents — needs
+  no usage data and is what every 2026-08-30 cut ran on. **Non-use** — you don't use it —
+  needs a counter and a fair trial (`playbook/LIFECYCLE.md` §R4), and DayOS has no counters
+  until Phase 0 lands, so it is not available yet. Record which one you used in the
+  `docs/experiments.md` Removed ledger, on the same line that says where the feature went.
 - **Deleting UI is not deleting data.** A removed feature may still own a `localStorage` key,
   a Firestore collection, and an entry in `docs/second-brain-integration.md`. Cutting the
   screen while leaving the data orphaned is the characteristic failure of this phase, the way

@@ -250,10 +250,12 @@ thing that turns a five-minute delete into an outage.
 
 ## R10 — Surface budgets make contraction falsifiable
 
-**EXECUTE:** Contraction toward "minimal" is unfalsifiable without a number. Proposed budgets
-— **these need the founder's signoff before they bind anything**:
+**EXECUTE:** Contraction toward "minimal" is unfalsifiable without a number. **Adopted
+2026-09-06** — the founder took the recommended numbers rather than setting his own, which
+makes them a starting hypothesis, not a verdict. Any census may revise a budget; say why in
+the report, so a budget that keeps moving to accommodate the surface is visible as such.
 
-| Surface | Now (measured 2026-09-06) | Proposed budget |
+| Surface | Now (measured 2026-09-06) | Budget |
 |---|---|---|
 | DayOS — nav tabs | 4 | 4 (hold) |
 | DayOS — Settings rows | 15 | 10 |
@@ -311,9 +313,25 @@ Already has: the toggle system (`FEATURE_TOGGLES`, `featureEnabled`,
 contraction phase declared in CLAUDE.md. It is the reference implementation of the mechanism.
 
 Missing: usage counters (§R3), kill criteria on the three live toggles (§R1, retro-fitted),
-and stage labels (§1.1). **Nothing further should be eliminated until the counters have run
-for one cycle** — the next cut would otherwise be another recall-based one, and the loud cases
-are already done.
+and stage labels (§1.1).
+
+**Trimming continues in parallel with Phase 0** — the founder's call, 2026-09-06, and the
+right one: an app in contraction that stops cutting for a month to build a measuring device
+has swapped one kind of inaction for another. What the counters change is not *whether* you
+cut, but *which argument* you are allowed to use:
+
+- **Cost** — it is in the way, it duplicates a choice its destination already presents, it
+  costs a tap that buys nothing. Needs no data, has never needed data, and is what every
+  2026-08-30 cut actually ran on. Available today.
+- **Non-use** — you don't use it. Needs a fair trial and a counter (§R4). Not available until
+  the counters have run a cycle.
+
+**Every removal records which of the two it used**, in the `docs/experiments.md` Removed
+ledger, in the same line that says where the feature went. That is the whole enforcement
+mechanism and it costs three words. It exists because the two arguments are easy to blur in
+the moment — "I never use it" and "it's in the way" feel like the same sentence — and the
+ledger is where a census can see whether every cut this quarter was filed as cost, which
+would mean the distinction has quietly become a formality.
 
 ## TradeGenie — expansion, and a straight port would be wrong
 
