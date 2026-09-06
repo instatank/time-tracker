@@ -51,9 +51,12 @@ merged into something that already exists?" is **yes, try**.
 - **Say which argument you cut on.** Two are legitimate and they are not interchangeable.
   **Cost** — it's in the way, it duplicates a choice its destination already presents — needs
   no usage data and is what every 2026-08-30 cut ran on. **Non-use** — you don't use it —
-  needs a counter and a fair trial (`playbook/LIFECYCLE.md` §R4), and DayOS has no counters
-  until Phase 0 lands, so it is not available yet. Record which one you used in the
-  `docs/experiments.md` Removed ledger, on the same line that says where the feature went.
+  needs a counter and a fair trial (`playbook/LIFECYCLE.md` §R4). **Counters shipped
+  2026-09-06** (Phase 0 — see Feature usage counters below), so the non-use argument becomes
+  available once a surface has 30 days of counting behind it *and* passes §R4's fair-trial
+  test — which the three toggles do NOT yet, because they default off. Record which one you
+  used in the `docs/experiments.md` Removed ledger, on the same line that says where the
+  feature went.
 - **Deleting UI is not deleting data.** A removed feature may still own a `localStorage` key,
   a Firestore collection, and an entry in `docs/second-brain-integration.md`. Cutting the
   screen while leaving the data orphaned is the characteristic failure of this phase, the way
@@ -200,6 +203,38 @@ Finished, self-contained features the founder switches on and off per device. St
 **Reframed 2026-08-30** — this list used to be "Experiments" (previews of unfinished work on a graduate-or-kill clock). The clock worked: one pass took six flags to three. What survived isn't unfinished, so the framing changed with it. An unfinished preview can still be parked here; the list just isn't *for* that any more.
 
 **House rules:** a toggle must be read-only by default (no new fields/collections), have one injection site where possible, and own **no helper another feature uses** — breaking that last rule is what made deleting the Journal Heatmap riskier than it looked (`_dayHasContent` was sitting inside it while On This Day depended on it). Every toggle is tracked in `docs/experiments.md` with its exact functions, CSS block, sheet, and wiring sites — and that doc's delete-lists are a starting point, not an authority: **grep each symbol before deleting it.** A feature that *needs* a new field or collection is NOT a toggle — it's a real architecture change (see Daily Defaults below for the canonical pattern).
+
+### Feature usage counters (Phase 0 of `playbook/LIFECYCLE.md`)
+
+DayOS counts its own use, so the monthly census (LIFECYCLE.md Part 3) decides what graduates
+and what gets cut from numbers rather than from recall. Shipped 2026-09-06.
+
+`noteUse(id, coalesceMs?)` → `dayos_feature_usage_v1` = `{ [id]: { n, first, last } }`
+(`SK.FEATURE_USAGE`). Three rules, and they are the whole design:
+
+1. **Local-only.** Never synced, never in Firestore, never in the backup, never sent
+   anywhere. Same reasoning as the toggles — no new collection, no sync-checklist entry, and
+   no third-party analytics ever (settled by `docs/security-audit.md`).
+2. **A counter must never break a render.** One swallowing `try/catch` around everything. If
+   localStorage is full or blocked, the count is lost and the app behaves exactly as before.
+3. **Count acts, not renders.** Call it where the user deliberately does the thing. A
+   `noteUse()` inside a render function would count every re-render as a use and make the
+   census read noise — `tests/feature-usage.mjs` fails the gate if one appears there.
+
+Coalesced (default 700 ms) so one interaction is one count and one write; search passes 8 s
+so a typed query counts once, not once per keystroke. Exposed as `window.noteUse` because
+most call sites are inline `onclick`s. Source is fenced
+(`// ── BEGIN feature-usage ──`) so the test runs the real thing, not a copy.
+
+Read it in **Settings → 🎛 Optional features → Usage** — read-only, zero writes, and pinned
+as such by a test that traps every write path while rendering it. The full id list, the
+retro-fitted birth certificates for the three toggles, and what was deliberately left
+uninstrumented are in `docs/experiments.md`.
+
+**Adding a counter to a new feature is one line.** Put it at the act, keep the id the same as
+the toggle key if it has one, and add a row to `USAGE_GROUPS` so it shows on the Usage screen
+(an id missing from that catalog is still counted — it lists under "Other" rather than
+disappearing).
 
 ### Daily defaults (auto-blocks) — duplicate-proof pattern
 

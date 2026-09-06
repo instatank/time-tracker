@@ -349,6 +349,21 @@ body.ios-pwa #hdr {
 .settings-row-chev  { color: var(--text3); font-size: 1.1rem; flex-shrink: 0; }
 .settings-row.placeholder .settings-row-label { color: var(--text2); }
 
+/* Usage counters (read-only, Settings → Optional features → Usage) */
+.usage-group-title {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text3); font-weight: 600; margin: 1rem 0 0.35rem;
+}
+.usage-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 2px; }
+.usage-row-text { flex: 1; min-width: 0; }
+.usage-row-label { font-size: 0.86rem; color: var(--text); }
+.usage-row-sub   { font-size: 0.7rem; color: var(--text3); margin-top: 1px; }
+.usage-n {
+  font-variant-numeric: tabular-nums; font-size: 0.9rem; font-weight: 600;
+  color: var(--text); flex-shrink: 0; min-width: 2.2em; text-align: right;
+}
+.usage-n.zero { color: var(--text3); font-weight: 400; }
+
 /* ── Settings → Trash ──────────────────────────────────────── */
 .trash-body { display: flex; flex-direction: column; gap: 0.4rem; }
 .trash-section-hdr {
@@ -5081,7 +5096,7 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
   <div class="sheet-handle"></div>
   <div class="sheet-title">Add new entry</div>
   <div class="sheet-body">
-    <button class="add-pick-row" onclick="dispatchAdd('activity')">
+    <button class="add-pick-row" onclick="noteUse('addpick-activity');dispatchAdd('activity')">
       <span class="add-pick-icon">⏱</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Log Activity</div>
@@ -5089,7 +5104,7 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('note')">
+    <button class="add-pick-row" onclick="noteUse('addpick-note');dispatchAdd('note')">
       <span class="add-pick-icon">📝</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Add Note/Journal</div>
@@ -5097,7 +5112,7 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
       </div>
       <span class="add-pick-chev">›</span>
     </button>
-    <button class="add-pick-row" onclick="dispatchAdd('sessionEntry')">
+    <button class="add-pick-row" onclick="noteUse('addpick-session');dispatchAdd('sessionEntry')">
       <span class="add-pick-icon">▶️</span>
       <div class="add-pick-text">
         <div class="add-pick-label">Add Session</div>
@@ -5361,7 +5376,7 @@ const LEGACY_CTYPES = {
   journal: { id: 'journal', label: 'Journal', icon: '📓' },
 };
 const TZ = 'Asia/Kolkata'; // must be declared before any state init that calls todayStr()
-const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', EXPERIMENTS: 'dayos_experiments_v1', DEFAULT_BLOCKS_CONFIG: 'dayos_default_blocks_config_v1', DEFAULT_BLOCKS_SKIPS: 'dayos_default_blocks_skips_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1', TOMBSTONES_PROJECTS: 'dayos_tombstones_projects_v1' };
+const SK = { BLOCKS: 'dayos_blocks_v1', CAPTURES: 'dayos_captures_v1', RATINGS: 'dayos_ratings_v1', LIFE_RATINGS: 'dayos_life_ratings_v1', EOD: 'dayos_eod_v1', PROJECTS: 'dayos_projects_v1', SESSIONS: 'dayos_sessions_v1', TAG_HISTORY: 'dayos_tag_history_v1', LEARNING: 'dayos_learning_v1', DAILY_JOURNAL: 'dayos_daily_journal_v1', EXPERIMENTS: 'dayos_experiments_v1', FEATURE_USAGE: 'dayos_feature_usage_v1', DEFAULT_BLOCKS_CONFIG: 'dayos_default_blocks_config_v1', DEFAULT_BLOCKS_SKIPS: 'dayos_default_blocks_skips_v1', TOMBSTONES_SESSIONS: 'dayos_tombstones_sessions_v1', TOMBSTONES_LEARNING: 'dayos_tombstones_learning_v1', TOMBSTONES_BLOCKS: 'dayos_tombstones_blocks_v1', TOMBSTONES_CAPTURES: 'dayos_tombstones_captures_v1', TOMBSTONES_PROJECTS: 'dayos_tombstones_projects_v1' };
 
 // Default projects seeded for first-time users (overridden once Firestore loads)
 const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilot'];
@@ -5386,6 +5401,64 @@ const DEFAULT_PROJECTS = ['DayOS', 'PartySpark', 'UoT', 'Trading', 'Meal Co-Pilo
 // means a new synced meta doc, so it's raised rather than assumed.
 let featureToggles = loadLocal(SK.EXPERIMENTS, {});
 function featureEnabled(key) { return !!(featureToggles && featureToggles[key]); }
+
+// ── Feature usage counters (Phase 0 of playbook/LIFECYCLE.md) ─
+// The census (LIFECYCLE.md Part 3) decides what graduates and what gets
+// cut. Until this existed it decided on founder recall, which is a biased
+// instrument: it over-weights yesterday and has no record at all of the
+// feature you forgot exists. So DayOS counts its own use.
+//
+// Shape: dayos_feature_usage_v1 = { [id]: { n, first, last } }, ISO IST
+// timestamps. Keyed by the same ids as FEATURE_TOGGLES for the three
+// toggles; other surfaces use the ids in USAGE_SURFACES below.
+//
+// Three hard rules, in order of importance:
+//   1. LOCAL-ONLY. Never synced, never in Firestore, never in the backup,
+//      never sent anywhere. Same reasoning as the toggles themselves — no
+//      new collection, no sync-checklist entry, no third-party analytics
+//      (settled by docs/security-audit.md and not reopened).
+//   2. A COUNTER MUST NEVER BREAK A RENDER. Everything is inside one
+//      try/catch that swallows. If localStorage is full or blocked, the
+//      count is lost and the app carries on exactly as before.
+//   3. COUNT ACTS, NOT RENDERS. Call it where the user deliberately does
+//      the thing, never inside a render function — a render is a
+//      side-effect of navigation and would count the same "use" over and
+//      over on every re-render.
+//
+// Coalescing: repeated calls with the same id inside `coalesceMs` are one
+// use and one localStorage write. The default swallows double-fires (a
+// double-tap dispatcher, a nested handler); search passes a longer window
+// so typing a query counts once, not once per keystroke.
+let featureUsage = loadLocal(SK.FEATURE_USAGE, {});
+// ── BEGIN feature-usage ──
+// (fenced so tests/feature-usage.mjs runs the REAL source, not a copy —
+//  same pattern as the secret detector. `featureUsage`, `SK`, `nowISTIso`
+//  and `saveLocal` are supplied by the caller / the test's prelude.)
+const _usageLastAt = Object.create(null); // id -> Date.now() of last counted use
+const USAGE_COALESCE_MS = 700;
+
+function noteUse(id, coalesceMs) {
+  try {
+    if (!id) return;
+    const now = Date.now();
+    const win = (typeof coalesceMs === 'number') ? coalesceMs : USAGE_COALESCE_MS;
+    const prev = _usageLastAt[id];
+    if (prev != null && (now - prev) < win) return; // same interaction — already counted
+    _usageLastAt[id] = now;
+    featureUsage = featureUsage || {};
+    const iso = nowISTIso();
+    const rec = featureUsage[id] || { n: 0, first: iso, last: iso };
+    rec.n = (rec.n || 0) + 1;
+    rec.last = iso;
+    if (!rec.first) rec.first = iso;
+    featureUsage[id] = rec;
+    saveLocal(SK.FEATURE_USAGE, featureUsage);
+  } catch { /* a counter must never break a render */ }
+}
+// ── END feature-usage ──
+// Exposed because most instrumentation sites are inline onclick handlers,
+// which can't see module scope.
+window.noteUse = noteUse;
 
 // ── Daily default blocks ────────────────────────────────────
 // Templates the user defines once; the auto-creator inserts a matching
@@ -6487,6 +6560,7 @@ function elapsedWakingMin() {
 let _daybarExpanded = false;
 
 window.toggleDaybarExpanded = function() {
+  noteUse('daybar'); // see the counter caveat in docs/experiments.md — a glance isn't counted
   _daybarExpanded = !_daybarExpanded;
   if (activeTab === 'today') renderMain(true);
 };
@@ -6779,9 +6853,9 @@ window.tlBlockCancel = function(_e) {
 function renderThreeAddBar() {
   return `
     <div class="three-add-row">
-      <button class="three-add-tab" onclick="dispatchAdd('activity')" aria-label="Add Activity">+ Activity</button>
-      <button class="three-add-tab" onclick="dispatchAdd('daily')"    aria-label="Add Journal">+ Journal</button>
-      <button class="three-add-tab" onclick="openNotePicker()"        aria-label="Add Note">+ Note</button>
+      <button class="three-add-tab" onclick="noteUse('threeAdd');dispatchAdd('activity')" aria-label="Add Activity">+ Activity</button>
+      <button class="three-add-tab" onclick="noteUse('threeAdd');dispatchAdd('daily')"    aria-label="Add Journal">+ Journal</button>
+      <button class="three-add-tab" onclick="noteUse('threeAdd');openNotePicker()"        aria-label="Add Note">+ Note</button>
     </div>
   `;
 }
@@ -7092,7 +7166,7 @@ function renderOnThisDay(today) {
     if (!snippet) continue;
     const r = (ratings && ratings[past]) || 0;
     cards.push(`
-      <button class="otd-card" onclick="pickDateAndOpenTrends('${past}')" title="${esc(fmtDate(past))}">
+      <button class="otd-card" onclick="noteUse('onthisday');pickDateAndOpenTrends('${past}')" title="${esc(fmtDate(past))}">
         <div class="otd-hdr">
           <span class="otd-when">${esc(iv.label)}</span>
           ${r > 0 ? `<span class="otd-stars">${'★'.repeat(r)}</span>` : ''}
@@ -14179,6 +14253,7 @@ window.saveDft = function(val) {
 let _dftTapTimer = null;
 window.handleDftTap = function(e) {
   if (e && e.target && e.target.closest('button')) return;
+  noteUse('dft-strip');
   if (_dftTapTimer) {
     clearTimeout(_dftTapTimer);
     _dftTapTimer = null;
@@ -14208,6 +14283,7 @@ window.editDft = function() {
 };
 
 window.doneDft = function() {
+  noteUse('dft-resolve');
   const d = todayStr();
   const dft = getDft(d);
   if (!dft) return;
@@ -14230,6 +14306,7 @@ window.doneDft = function() {
 };
 
 window.skipDft = function() {
+  noteUse('dft-resolve');
   const d = todayStr();
   const dft = getDft(d);
   if (!dft) return;
@@ -14486,6 +14563,7 @@ function appendEodToDailyJournal(date, eodText) {
 
 // ── Navigation ────────────────────────────────────────────────
 window.setTab = function(tab) {
+  noteUse('nav-' + tab); // the only caller is the nav bar itself — a tap, not a render
   activeTab = tab;
   showWeeklyReview = false; weeklyReviewOffset = 0;
   try { localStorage.setItem('dayos_active_tab', tab); } catch {}
@@ -14516,6 +14594,7 @@ function _findActiveSearchInput() {
   return document.querySelector('.proj-search input[type="text"]');
 }
 window.setGlobalSearch = function(q) {
+  if ((q || '').trim()) noteUse('search', 8000); // one typed query = one use
   globalSearch = q;
   renderMain(true);
   // Re-focus the visible search input so typing stays continuous after re-render.
@@ -14535,6 +14614,7 @@ window.openGlobalSearch = function() {
 // so we can stop the tap bubbling up to the card's own expand/edit handler.
 window.tagPillTap = function(ev, tag) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  noteUse('search-tagpill');
   globalSearch = tag;
   globalSearchOpen = true;
   renderMain(true);
@@ -14678,7 +14758,7 @@ window.shiftDashPeriod = function(dir) {
   renderMain();
 };
 window.dashDayNav = function(dir) { dashDay = addDays(dashDay, dir); renderMain(); };
-window.openWeeklyReview = function() { showWeeklyReview = true; weeklyReviewOffset = 0; renderMain(); };
+window.openWeeklyReview = function() { noteUse('weekly-review'); showWeeklyReview = true; weeklyReviewOffset = 0; renderMain(); };
 window.closeWeeklyReview = function() { showWeeklyReview = false; renderMain(); };
 window.shiftWeeklyReview = function(dir) {
   const next = weeklyReviewOffset + dir;
@@ -14690,6 +14770,7 @@ window.shiftWeeklyReview = function(dir) {
 // Used by the Today-tab banners — auto-suggest opens the current week,
 // the saved-intention banner opens last week's review.
 window.openWeeklyReviewAt = function(offset) {
+  noteUse('weekly-review');
   weeklyReviewOffset = (typeof offset === 'number') ? offset : 0;
   showWeeklyReview = true;
   activeTab = 'dashboard';
@@ -14874,6 +14955,7 @@ function paintChartZoom() {
 }
 
 window.openMonthlyReview = function() {
+  noteUse('monthly-review');
   // Default to the PREVIOUS calendar month — reviews are written looking back.
   monthlyReviewYM = previousMonthYM(currentYM());
   showMonthlyReview = true;
@@ -14883,6 +14965,7 @@ window.openMonthlyReview = function() {
   renderMain();
 };
 window.openMonthlyReviewAt = function(ym) {
+  noteUse('monthly-review');
   monthlyReviewYM = ym || previousMonthYM(currentYM());
   showMonthlyReview = true;
   showWeeklyReview = false;
@@ -15545,6 +15628,51 @@ const FEATURE_TOGGLES = [
   { key: 'daybar',       label: 'Day Ratio Bar',    desc: "A single horizontal stacked bar on the Today page (between Day Score and Today's Log) showing how the elapsed waking day (8am → now, capped at 16h) has been split across categories. One glance, no scrolling." },
 ];
 
+// ── Usage catalog (read-only display for the counters) ───────
+// Every id noteUse() writes, grouped for the Settings → Optional features
+// → Usage panel. The three toggle ids come from FEATURE_TOGGLES and the
+// settings rows from SETTINGS_SECTIONS, so neither list can drift out of
+// sync with what's actually on screen.
+//
+// This is a DISPLAY catalog only. An id missing from here is still counted
+// — the panel lists unknown ids under "Other" rather than hiding them,
+// same principle as the Backup panel naming collections it doesn't know.
+// ── BEGIN usage-catalog ──
+const USAGE_GROUPS = [
+  { title: 'Optional features', ids: () => FEATURE_TOGGLES.map(f => ({ id: f.key, label: f.label })) },
+  { title: 'Navigation', ids: () => [
+    { id: 'nav-today',     label: 'Today tab' },
+    { id: 'nav-journal',   label: 'Journal tab' },
+    { id: 'nav-projects',  label: 'Projects tab' },
+    { id: 'nav-dashboard', label: 'Trends tab' },
+  ] },
+  { title: 'Add picker (the + button)', ids: () => [
+    { id: 'addpick-activity', label: 'Log Activity' },
+    { id: 'addpick-note',     label: 'Add Note/Journal' },
+    { id: 'addpick-session',  label: 'Add Session' },
+  ] },
+  { title: 'Search', ids: () => [
+    { id: 'search',         label: 'Typed a search query' },
+    { id: 'search-tagpill', label: 'Tapped a #tag pill' },
+  ] },
+  { title: 'Daily Focus Task', ids: () => [
+    { id: 'dft-strip',   label: 'Tapped the DFT strip' },
+    { id: 'dft-resolve', label: 'Marked done or skipped' },
+  ] },
+  { title: 'Reviews', ids: () => [
+    { id: 'weekly-review',  label: 'Weekly Review' },
+    { id: 'monthly-review', label: 'Monthly Review' },
+  ] },
+  { title: 'AI features', ids: () => [
+    { id: 'ai-extract-blocks',   label: 'AI Log Activities' },
+    { id: 'ai-organize',         label: 'Organize (tighten a section)' },
+    { id: 'ai-extract-tasks',    label: 'Extract tasks' },
+    { id: 'ai-summarize-review', label: 'Review summary' },
+  ] },
+  { title: 'Settings rows', ids: () => SETTINGS_SECTIONS.map(sec => ({ id: 'settings-' + sec.id, label: sec.label })) },
+];
+// ── END usage-catalog ──
+
 window.openSettings = function() {
   const body = document.getElementById('settings-body');
   body.innerHTML = `
@@ -15567,6 +15695,7 @@ window.openSettings = function() {
 // Dispatch to a section's sub-screen. Sections without real content yet
 // fall through to a "coming next" toast so it's clear the shell is plumbed.
 window.openSettingsSection = function(id) {
+  noteUse('settings-' + id);
   switch (id) {
     case 'appearance': return openSettingsAppearance();
     case 'sync':       return openSettingsSync();
@@ -16978,9 +17107,71 @@ function openSettingsFeatures() {
     ${settingsSubhdrHtml('Optional features')}
     <p class="auth-desc">Finished features you can switch on and off. These settings live only on this device and aren't synced — turning one on here won't affect your other devices.</p>
     <div class="settings-list">${rows}</div>
+    ${renderUsagePanel()}
   `;
   openSheet('sheet-settings');
 }
+
+// ── Usage panel (READ-ONLY) ──────────────────────────────────
+// Shows the founder exactly what the monthly census (playbook/LIFECYCLE.md
+// Part 3) will read. HARD CONSTRAINT: this screen performs ZERO writes —
+// no saveLocal, no noteUse, no Firestore, no network. It only reads the
+// `featureUsage` object that is already in memory. Same discipline as the
+// Security check screen, and for the same reason: a measuring device that
+// changes what it measures is worthless.
+// ── BEGIN usage-panel ──
+function _usageAgo(iso) {
+  if (!iso) return '';
+  const d = String(iso).slice(0, 10);
+  const today = todayStr();
+  if (d === today) return 'today';
+  const days = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(d + 'T00:00:00Z')) / 86400000);
+  if (days === 1) return 'yesterday';
+  if (days > 1 && days < 30) return days + ' days ago';
+  return fmtDate(d);
+}
+
+function _usageRowHtml(id, label) {
+  const rec = (featureUsage && featureUsage[id]) || null;
+  const n = rec ? (rec.n || 0) : 0;
+  const sub = n
+    ? `last used ${_usageAgo(rec.last)} · first ${_usageAgo(rec.first)}`
+    : 'not used on this device yet';
+  return `
+    <div class="usage-row">
+      <div class="usage-row-text">
+        <div class="usage-row-label">${esc(label)}</div>
+        <div class="usage-row-sub">${esc(sub)}</div>
+      </div>
+      <span class="usage-n${n ? '' : ' zero'}">${n}</span>
+    </div>`;
+}
+
+function renderUsagePanel() {
+  const known = new Set();
+  let html = '';
+  for (const g of USAGE_GROUPS) {
+    const items = g.ids();
+    items.forEach(it => known.add(it.id));
+    html += `<div class="usage-group-title">${esc(g.title)}</div>` +
+            items.map(it => _usageRowHtml(it.id, it.label)).join('');
+  }
+  // Ids counted but not in the display catalog — a renamed or retired id
+  // must show up rather than silently vanish.
+  const other = Object.keys(featureUsage || {}).filter(k => !known.has(k)).sort();
+  if (other.length) {
+    html += `<div class="usage-group-title">Other (not in the catalog)</div>` +
+            other.map(k => _usageRowHtml(k, k)).join('');
+  }
+  return `
+    <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border)">
+      <div class="settings-row-label" style="font-weight:600">Usage</div>
+      <p class="auth-desc" style="margin-top:0.35rem">How often each thing has actually been used <strong>on this device</strong>. Counted when you deliberately do the thing, never when a screen simply renders. Nothing here is synced, backed up, or sent anywhere — it never leaves this device. This screen only reads; it writes nothing.</p>
+      ${html}
+      <p class="auth-desc" style="margin-top:1rem">A zero can mean two different things — you don't want it, or you never found it. The monthly review treats those differently. Note also that a feature you only <em>look</em> at (like the Day Ratio Bar) can't be counted by tapping.</p>
+    </div>`;
+}
+// ── END usage-panel ──
 
 window.toggleFeature = function(key) {
   featureToggles = featureToggles || {};
@@ -18247,6 +18438,10 @@ window.openCaptureEdit = openCaptureEdit;
 // Anthropic. Returns { ok, text, usage } or throws on auth / network /
 // API errors. Used by both extraction and (eventually) organize.
 async function aiCall(task, input, ctx = {}) {
+  // Every caller is behind an explicit button (Extract / ✨ Organize /
+  // Extract tasks / Draft summary), so the call is the act. Counted before
+  // the request: reaching for a feature that then errors is still use.
+  noteUse('ai-' + task);
   if (!user) throw new Error('Not signed in');
   const idToken = await user.getIdToken();
   const r = await fetch('/api/ai/claude', {

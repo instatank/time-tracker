@@ -64,11 +64,17 @@ sync checklist, so it's a real change, not a tweak. Not done.
 
 ## Active toggles
 
-| Key | Label | Touches data? | Render fn(s) | CSS block | HTML | Wired in |
-|---|---|---|---|---|---|---|
-| `onthisday` | On This Day | **No** (read-only) | `renderOnThisDay`, helpers `_shiftByMonths` / `_otdSnippet`, const `OTD_INTERVALS`. **Also uses the shared `_dayHasContent`** — do not delete that with this feature | `/* On This Day (optional feature: 'onthisday') */` | — | `renderToday` (below action row) |
-| `threeAdd` | 3-Button Add Bar | **No** (routes to existing `dispatchAdd`) | `renderThreeAddBar`, `openNotePicker` | `/* 3-Button Add Bar (optional feature: 'threeAdd') */` | `<div id="sheet-note-picker">` | `renderToday` — own row below the action row (the `+` stays either way) |
-| `daybar` | Day Ratio Bar | **No** (read-only) | `renderDayRatioBar`, handler `toggleDaybarExpanded`, state `_daybarExpanded` | `/* Day Ratio Bar (optional feature: 'daybar') */` | — | `renderToday` (between Day Score and Wins) |
+`Stage` is from `playbook/LIFECYCLE.md` §1.1. All three are **S1** — built, behind a
+toggle, **off by default**. That matters more than it looks: §R4 says a feature at S1
+**cannot be cut for non-use**, because off-by-default plus "you never used it" measures
+discoverability and calls it value. To get a real verdict on any of these, the census has to
+promote it to S2 (default on) first, or you switch it on and leave it on for the window.
+
+| Key | Stage | Label | Touches data? | Render fn(s) | CSS block | HTML | Wired in |
+|---|---|---|---|---|---|---|---|
+| `onthisday` | S1 | On This Day | **No** (read-only) | `renderOnThisDay`, helpers `_shiftByMonths` / `_otdSnippet`, const `OTD_INTERVALS`. **Also uses the shared `_dayHasContent`** — do not delete that with this feature | `/* On This Day (optional feature: 'onthisday') */` | — | `renderToday` (below action row) |
+| `threeAdd` | S1 | 3-Button Add Bar | **No** (routes to existing `dispatchAdd`) | `renderThreeAddBar`, `openNotePicker` | `/* 3-Button Add Bar (optional feature: 'threeAdd') */` | `<div id="sheet-note-picker">` | `renderToday` — own row below the action row (the `+` stays either way) |
+| `daybar` | S1 | Day Ratio Bar | **No** (read-only) | `renderDayRatioBar`, handler `toggleDaybarExpanded`, state `_daybarExpanded` | `/* Day Ratio Bar (optional feature: 'daybar') */` | — | `renderToday` (between Day Score and Wins) |
 
 > **Known inconsistency, not yet fixed:** `threeAdd`'s `sheet-note-picker` still lists Quick
 > Note / Project Note / Project Session / Learning as four separate rows — the arrangement the
@@ -81,6 +87,136 @@ sync checklist, so it's a real change, not a tweak. Not done.
 > `minToHHMM`, `fmtMins`, `_nowMinutesIST`, `isSleepWindowBlock`, `elapsedWakingMin`, and
 > consts `SLEEP_WINDOW_START_MIN` / `SLEEP_WINDOW_END_MIN` / `WAKING_TOTAL_MIN`. The timeline
 > is permanent, so this block stays regardless of `daybar`.
+
+---
+
+## Birth certificates (retro-fitted 2026-09-06)
+
+`playbook/LIFECYCLE.md` §R1 says: no birth certificate, no build. These three were built
+before that rule existed, so their certificates are **retro-fitted** — which is exactly the
+weak case the rule exists to prevent. A criterion written after you have the feature is one
+you can bend to fit it. Read these as *proposals*, not as pre-registration, and treat the
+first census that uses them as their real registration date.
+
+> ⚠️ **Ankit — these `earns-its-place-if` lines are mine, not yours. Correct them.**
+> They are deliberately specific numbers so they can be *wrong*, which is the point: a
+> criterion you can't fail is not a criterion. If a number feels off, change it now, while
+> nothing depends on it. Changing it after the first census reading is the move §R1 exists
+> to stop.
+
+### `onthisday` — On This Day
+
+```
+id:            onthisday
+stage:         S1
+built:         ≤ 2026-07-01 (earliest commit carrying it; history before that is squashed)
+instrumented:  2026-09-06
+one-liner:     Shows what you wrote 1 month / 6 months / 1 year ago on the Today page, tap to revisit.
+earns-its-place-if:  ≥6 card taps in any 30-day window while the toggle is ON.
+                     (≈ once every 5 days. Below that it is a strip of text you scroll past.)
+exit-cost:     REVERSIBLE — render-only, reads existing entries, one injection site in renderToday.
+touches-data:  no
+review-on:     2026-10-06 (first census with a full 30 days of counting)
+counter:       `onthisday`, incremented on the card tap (NOT on render — the strip
+               renders on every Today visit, which would read as constant use).
+```
+
+### `threeAdd` — 3-Button Add Bar
+
+```
+id:            threeAdd
+stage:         S1
+built:         ≤ 2026-07-01
+instrumented:  2026-09-06
+one-liner:     A row of three direct buttons (Activity / Journal / Note) so the commonest entries open in one tap.
+earns-its-place-if:  in a 30-day window with the toggle ON for the whole window,
+                     `threeAdd` ≥ 2 × (`addpick-activity` + `addpick-note` + `addpick-session`).
+                     i.e. it must carry the clear majority of adds. Its entire claim is
+                     "saves you a tap versus the + picker", so the honest test is comparative,
+                     not absolute — if the + still carries most adds, this is a second row of
+                     buttons on the busiest screen buying nothing.
+exit-cost:     REVERSIBLE — routes to the existing dispatchAdd; deleting it is a diff.
+touches-data:  no
+review-on:     2026-10-06
+counter:       `threeAdd`, on any of the three buttons. Compare against the `addpick-*`
+               baseline, which is why those were instrumented in the same pass.
+```
+
+### `daybar` — Day Ratio Bar
+
+```
+id:            daybar
+stage:         S1
+built:         ≤ 2026-07-01
+instrumented:  2026-09-06
+one-liner:     One stacked bar showing how the waking day so far split across categories. One glance, no scrolling.
+earns-its-place-if:  ≥8 expands in a 30-day window with the toggle ON,
+                     OR — switched OFF for the 7 days before a census — you notice it missing.
+exit-cost:     REVERSIBLE — render-only. NOTE it shares the "time-math + sleep-window
+               helpers" block with the (permanent) Day Timeline; that block stays either way.
+touches-data:  no
+review-on:     2026-10-06
+counter:       `daybar`, on the expand/collapse tap.
+```
+
+> **⚠️ The `daybar` counter under-counts, on purpose, and the census must know it.**
+> This feature's stated value is *a glance*. A glance leaves no trace in a browser, and the
+> only trace-leaving act the bar offers is tapping it to expand — which is arguably the
+> feature *failing* (the collapsed pill wasn't enough). So `daybar: 0` means "never
+> expanded", **not** "never read", and it is not grounds for a non-use cut under §R4. That
+> is why the criterion carries a second limb: switching it off for a week and seeing whether
+> you miss it is a real experiment, costs nothing, and measures the thing the counter can't.
+> A comment at `toggleDaybarExpanded` in `index.html` points back here.
+
+---
+
+## Usage counters (Phase 0, shipped 2026-09-06)
+
+`playbook/LIFECYCLE.md` §R3. DayOS now counts its own use, so the monthly census reads
+numbers instead of recall.
+
+- **Storage:** `dayos_feature_usage_v1` = `{ [id]: { n, first, last } }`, IST ISO timestamps.
+  `SK.FEATURE_USAGE`. **Local-only** — never synced, never in Firestore, never in the backup,
+  never sent anywhere. Same reasoning as the toggles: no new collection, no sync-checklist
+  entry, no third-party analytics (settled by `docs/security-audit.md`).
+- **Call:** `noteUse(id, coalesceMs?)`. Wrapped in one swallowing try/catch — **a counter must
+  never break a render.** Coalesced (default 700 ms) so one deliberate interaction is one
+  count and one localStorage write; search passes 8 s so a typed query counts once, not once
+  per keystroke. Exposed as `window.noteUse` because most call sites are inline `onclick`s.
+- **Where:** at the act, never in a render function. Fenced as
+  `// ── BEGIN feature-usage ──` / `// ── END feature-usage ──` in `index.html`.
+- **Screen:** Settings → 🎛 Optional features → **Usage**. Read-only; it performs zero writes.
+- **Test:** `tests/feature-usage.mjs` runs the real fenced source (not a copy) and pins the
+  three things that would otherwise fail silently — it never throws, coalescing holds, and no
+  render function calls it. It also traps every write path while rendering the Usage panel.
+
+### What is instrumented
+
+| Group | ids |
+|---|---|
+| Optional features | `onthisday` · `threeAdd` · `daybar` |
+| Navigation | `nav-today` · `nav-journal` · `nav-projects` · `nav-dashboard` |
+| Add picker (+) | `addpick-activity` · `addpick-note` · `addpick-session` |
+| Search | `search` (a typed query) · `search-tagpill` |
+| Daily Focus Task | `dft-strip` · `dft-resolve` |
+| Reviews | `weekly-review` · `monthly-review` |
+| AI | `ai-extract-blocks` · `ai-organize` · `ai-extract-tasks` · `ai-summarize-review` |
+| Settings rows | `settings-<id>` for all 15 rows in `SETTINGS_SECTIONS` |
+
+Everything outside the three toggles is **baseline**: it exists so a toggle's number has
+something to be compared against. "`threeAdd` was used 12 times" says nothing on its own;
+"12 against 60 through the + picker" is a verdict.
+
+### What is deliberately NOT instrumented
+
+- **Saving an entry** (block / capture / session / learning / journal). The records already
+  are the count — `blocks.length` per day answers it exactly, and a counter would be a second,
+  drift-prone copy of a number already on disk.
+- **Long-press +**, the attach menu, voice notes, tag pills on cards, Trash restore, the
+  Day Score tiles, Daily Check-in. All real surfaces; adding them would have made this pass a
+  sweep instead of a baseline. They are cheap to add later, one line each.
+- **Anything passive** — the Day Ratio Bar glance, reading the timeline, seeing a banner.
+  Not measurable client-side without tracking attention, which is not a thing this app does.
 
 ---
 
@@ -127,6 +263,20 @@ rejected, or hunt for a symbol that moved.
 
 ~30 lines total. Only delete if you drop switchable features entirely.
 
+**Usage-counter infrastructure (keep — it's the measuring device):**
+
+- `SK.FEATURE_USAGE` (`dayos_feature_usage_v1`), `featureUsage` state, `_usageLastAt`,
+  `USAGE_COALESCE_MS`, `noteUse()` + `window.noteUse` — between the
+  `// ── BEGIN feature-usage ──` / `// ── END feature-usage ──` sentinels
+- `USAGE_GROUPS` (display catalog, between the `usage-catalog` sentinels)
+- `renderUsagePanel` / `_usageRowHtml` / `_usageAgo` (between the `usage-panel` sentinels)
+  + the `.usage-*` CSS block
+- `tests/feature-usage.mjs`
+- Every `noteUse('…')` call site — `grep -n "noteUse(" index.html`
+
+Deleting the counters is a separate decision from deleting any feature, and it undoes
+`playbook/LIFECYCLE.md` §R3. Don't take it out as collateral in a feature cut.
+
 ---
 
 ## Rules to keep this tidy
@@ -142,3 +292,8 @@ rejected, or hunt for a symbol that moved.
    while On This Day quietly depended on it.
 4. **Every toggle is a permanent second code path.** That's the standing cost. Three is a
    reasonable number; six was not.
+5. **Instrumented at the act, or it isn't shipped** (`LIFECYCLE.md` §R3). A new toggle gets a
+   `noteUse('<its key>')` at its point of deliberate use in the same commit — never inside a
+   render — plus a birth certificate above with a falsifiable `earns-its-place-if`. A toggle
+   with no counter can only ever be cut on the *cost* argument, which means the census can
+   never say anything about it.
