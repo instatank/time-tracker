@@ -12,6 +12,7 @@
 | `SOP-deploy.md` | Every deploy surface per repo + platform gotchas | Both |
 | `SOP-verify-on-phone.md` | The verification ladder; "done" requires a phone checklist | Both |
 | `LEARNING_METHOD.md` | v2 learning ritual — decision cards, 📍 flags, the one-question wrap | Both — sessions run §2–§4 at wrap |
+| `LIFECYCLE.md` | The expand → prove → cut framework: feature stages, kill criteria, the monthly census | Both — read before adding OR removing any feature |
 | `NORTH_STAR.md` | The builder's path: skill tracks + levels, portfolio tiers, cadence, graduation test | Both — read for strategy talks + weekly/monthly reviews |
 | `CURRICULUM.md` | The technique ladder (Track D) — one technique per week | Both — read when a technique-of-the-week is active |
 | `templates/BUILD_BRIEF.md` | The 10-minute brief required before any new project / major Tier-1 feature | Both |
