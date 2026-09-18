@@ -5931,7 +5931,7 @@ function timeToISO(dateStr, timeStr) {
 function dayScore(date) {
   const bks = blocks.filter(b => b.date === date);
   const caps = captures.filter(c => capDateIST(c) === date);
-  const totalMin = bks.filter(b => b.category !== 'sleep').reduce((s, b) => s + (b.duration_min || 0), 0);
+  const totalMin = bks.filter(b => !isSleepBlock(b)).reduce((s, b) => s + (b.duration_min || 0), 0);
   const deepWorkMin = bks.filter(b => b.category === 'deep_work').reduce((s, b) => s + (b.duration_min || 0), 0);
   const leakMin = bks.filter(b => b.category === 'leaks').reduce((s, b) => s + (b.duration_min || 0), 0);
   const practiceDone = bks.some(b => b.category === 'practice');
@@ -6369,7 +6369,10 @@ function renderToday() {
         journalDone:  sc.journalDone,
         entCap,
         learningHrs: bks.filter(b => b.category === 'learning').reduce((s, b) => s + (b.duration_min || 0), 0) / 60,
-        sleepHrs:    bks.filter(b => b.category === 'sleep').reduce((s, b) => s + (b.duration_min || 0), 0) / 60,
+        // isSleepBlock, not category === 'sleep': the sleep block is logged
+        // under whatever category its Daily-defaults template says (Routine,
+        // usually), so the old category test read 0h on every modern day.
+        sleepHrs:    bks.filter(isSleepBlock).reduce((s, b) => s + (b.duration_min || 0), 0) / 60,
         dftStatus:   (getDft(d) || {}).status || null,
         winCount:    (typeof getTodayWins === 'function' ? getTodayWins(d) : []).length,
       };
@@ -6500,18 +6503,92 @@ function renderBlock(b) {
 // ── Shared time-math + sleep-window helpers ───────────────────
 // Used by the Day Ratio Bar AND the Day Timeline (promoted out
 // of either feature so killing one doesn't strip a helper the other
-// needs). The sleep window models the user's fixed 02:00→10:00 sleep:
-// blocks starting inside it are treated as "sleep" and excluded from
-// the waking-day views; the night-routine tail (00:00→02:00) is OUTSIDE
-// the window and therefore counts as waking time.
-const SLEEP_WINDOW_START_MIN = 2 * 60;    // 02:00 IST
-const SLEEP_WINDOW_END_MIN   = 10 * 60;   // 10:00 IST
-const WAKING_TOTAL_MIN       = 16 * 60;   // 24h − 8h sleep
+// needs).
+//
+// TWO SEPARATE IDEAS — they used to be one, and that was the bug:
+//
+//   1. "Is THIS BLOCK sleep?"  → isSleepBlock(b). Only the sleep block
+//      itself is hidden from Today's Log and dropped from waking-hour
+//      totals. A morning routine at 09:00 or a night routine at 00:30 is
+//      a normal block and shows like any other, however it overlaps the
+//      window. Before 2026-09-18 this was "does it START inside
+//      02:00–10:00", which silently swallowed every early-morning block.
+//
+//   2. "How much of the clock is sleep?" → the sleep WINDOW, used only
+//      for time math (elapsed waking minutes, unlogged-gap bands), never
+//      to classify a block.
+//
+// Both now read Settings → Daily defaults instead of hardcoded numbers:
+// the template the user ticked as "This is my sleep block" supplies the
+// start time and duration. Change 02:00/8h there and every waking-time
+// figure in the app moves with it. The 02:00–10:00 fallback below only
+// applies when no template is ticked.
+// ── BEGIN sleep-window ──
+const SLEEP_FALLBACK_START_MIN = 2 * 60;   // 02:00 IST — only if nothing is ticked
+const SLEEP_FALLBACK_DUR_MIN   = 8 * 60;   // 8h
+// Legacy catcher: sleep logged by hand under "Routine" before the sleep
+// template existed. Long + inside the window + not from any template =
+// sleep. Short blocks (routines) and other categories are never caught,
+// so a 5h deep-work dawn session still counts as waking time.
+const SLEEP_LEGACY_MIN_DUR     = 240;      // 4h
 
 function hhmmToMin(t) {
   const [h, m] = (t || '0:0').split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 }
+// The daily-default template the user ticked as their sleep block, if any.
+function sleepTemplate() {
+  return ((defaultBlocksConfig && defaultBlocksConfig.templates) || [])
+    .find(t => t && t.isSleep) || null;
+}
+// { startMin, durMin } for the sleep window. durMin can push endMin past
+// midnight (a 23:30 + 8h sleep is normal) — sleepOverlapMin handles the wrap.
+function sleepWindow() {
+  const t = sleepTemplate();
+  if (t && t.start_time && t.duration_min > 0) {
+    return { startMin: hhmmToMin(t.start_time), durMin: Math.min(t.duration_min, 1440) };
+  }
+  return { startMin: SLEEP_FALLBACK_START_MIN, durMin: SLEEP_FALLBACK_DUR_MIN };
+}
+// Minutes of [a, b) that fall inside the sleep window, counting the window
+// as a daily repeating interval so a window that crosses midnight is handled
+// without any special-casing at the call sites.
+function sleepOverlapMin(a, b) {
+  if (!(b > a)) return 0;
+  const { startMin, durMin } = sleepWindow();
+  let total = 0;
+  for (const off of [-1440, 0, 1440]) {
+    const ws = startMin + off, we = ws + durMin;
+    total += Math.max(0, Math.min(b, we) - Math.max(a, ws));
+  }
+  return total;
+}
+// Where waking time resumes inside a gap [a, b) — i.e. the end of the last
+// sleep stretch the gap runs through. Returns a when the gap misses sleep.
+function wakingResumeMin(a, b) {
+  const { startMin, durMin } = sleepWindow();
+  let resume = a;
+  for (const off of [-1440, 0, 1440]) {
+    const ws = startMin + off, we = ws + durMin;
+    if (we > a && ws < b) resume = Math.max(resume, Math.min(we, b));
+  }
+  return resume;
+}
+// A full waking day = 24h minus however long the user actually sleeps.
+function wakingTotalMin() { return 1440 - sleepWindow().durMin; }
+// Is this block the sleep block? Only three ways to be one — see the note
+// above. Everything else displays.
+function isSleepBlock(b) {
+  if (!b) return false;
+  if (b.category === 'sleep') return true;              // legacy auto-sleep blocks
+  const t = sleepTemplate();
+  if (t && b._templateId) return b._templateId === t.id; // from a template: only the sleep one
+  if (b._templateId) return false;                       // another template's block is never sleep
+  if (b.category !== 'routine' || !b.start_time) return false;
+  if ((b.duration_min || 0) < SLEEP_LEGACY_MIN_DUR) return false;
+  return sleepOverlapMin(hhmmToMin(b.start_time), hhmmToMin(b.start_time) + b.duration_min) > 0;
+}
+// ── END sleep-window ──
 function minToHHMM(mins) {
   const m = ((mins % 1440) + 1440) % 1440; // wrap within a day
   return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
@@ -6524,35 +6601,24 @@ function _nowMinutesIST() {
   const now = nowIST();
   return now.getHours() * 60 + now.getMinutes();
 }
-// A block "belongs to sleep" if its start time falls in [02:00, 10:00).
-function isSleepWindowBlock(b) {
-  if (!b) return false;
-  if (b.category === 'sleep') return true; // legacy sleep-category blocks
-  if (!b.start_time) return false;
-  const sm = hhmmToMin(b.start_time);
-  return sm >= SLEEP_WINDOW_START_MIN && sm < SLEEP_WINDOW_END_MIN;
-}
-// Elapsed WAKING minutes today = minutes between 00:00 and now that are
-// NOT inside the sleep window. So at 18:00: (00:00–02:00 = 120) +
-// (10:00–18:00 = 480) = 600. Caps at 16h.
+// Elapsed WAKING minutes today = minutes between 00:00 and now that are NOT
+// inside the sleep window. With a 02:00–10:00 window, at 18:00 that's
+// (00:00–02:00 = 120) + (10:00–18:00 = 480) = 600. Caps at a full waking day.
 function elapsedWakingMin() {
   const now = _nowMinutesIST();
-  const beforeSleep = Math.min(now, SLEEP_WINDOW_START_MIN);
-  const afterSleep  = Math.max(0, now - SLEEP_WINDOW_END_MIN);
-  return Math.min(WAKING_TOTAL_MIN, beforeSleep + afterSleep);
+  return Math.min(wakingTotalMin(), Math.max(0, now - sleepOverlapMin(0, now)));
 }
 
 // ── Day Ratio Bar (experiment: 'daybar') ──────────────────────
 // A single horizontal stacked bar showing how the elapsed *waking*
 // day has been split across categories. "Waking" = the day minus the
-// fixed 02:00→10:00 sleep window, so:
+// sleep window configured in Settings → Daily defaults, so:
 //
-//   waking total   = 16h (24h − 8h sleep)
-//   elapsed waking  = minutes since 00:00 that aren't in 02:00–10:00
-//   numerator       = today's block minutes by category, EXCLUDING any
-//                     block that starts inside the sleep window (the
-//                     00:00→02:00 night-routine tail IS counted —
-//                     it's outside the sleep window)
+//   waking total   = 24h − however long the sleep template runs
+//   elapsed waking  = minutes since 00:00 that aren't inside that window
+//   numerator       = today's block minutes by category, EXCLUDING the
+//                     sleep block itself (morning and night routines ARE
+//                     counted, whatever time they sit at)
 //   remainder       = elapsed − total → muted "unlogged" segment
 //
 // Self-hides before any qualifying block is logged. Collapsed-by-
@@ -6584,13 +6650,13 @@ function renderDayRatioBar(bks) {
   const elapsedWaking = elapsedWakingMin();
   if (elapsedWaking < 5) return ''; // before any waking time has elapsed
 
-  // Bucket today's block minutes by category, EXCLUDING any block that
-  // belongs to the sleep window (02:00–10:00) or the legacy sleep
-  // category. The 00:00–02:00 night-routine tail is kept — it's waking.
+  // Bucket today's block minutes by category, EXCLUDING the sleep block
+  // itself (isSleepBlock). Every other block counts, including routines
+  // that sit inside the sleep window.
   const byCat = {};
   let loggedTotal = 0;
   for (const b of bks) {
-    if (!b || isSleepWindowBlock(b)) continue;
+    if (!b || isSleepBlock(b)) continue;
     const m = b.duration_min || 0;
     if (m <= 0) continue;
     byCat[b.category] = (byCat[b.category] || 0) + m;
@@ -6651,9 +6717,10 @@ function renderDayRatioBar(bks) {
 // default; the 'classicLog' escape hatch back to stacked cards was
 // deleted 2026-08-30 (tested, not wanted). This is the only Today's Log
 // view now. Pure read of the same block data the cards use.
-// Sleep-window blocks (02:00–10:00) are excluded — this view is about
-// waking activity. (Shared time helpers + isSleepWindowBlock live in
-// the "Shared time-math" block above renderDayRatioBar.)
+// The sleep block is excluded — this view is about waking activity. Only
+// the sleep block: a morning or night routine shows here like any other
+// block, whatever time it starts. (Shared time helpers + isSleepBlock live
+// in the "Shared time-math" block above renderDayRatioBar.)
 //
 // Sizing is intentionally NON-LINEAR ("phased"): short blocks get a
 // comfortable floor (so the label never clips) and long blocks grow
@@ -6693,9 +6760,9 @@ window.toggleTimeline = function() {
 };
 
 function renderTodayTimeline(bks) {
-  // Placed blocks with a real start time, excluding sleep-window blocks.
+  // Placed blocks with a real start time, excluding the sleep block.
   const placed = bks
-    .filter(b => b.start_time && b.duration_min && !isSleepWindowBlock(b))
+    .filter(b => b.start_time && b.duration_min && !isSleepBlock(b))
     .sort((a, b) => hhmmToMin(a.start_time) - hhmmToMin(b.start_time));
   if (placed.length < 1) return '';
 
@@ -6731,18 +6798,16 @@ function renderTodayTimeline(bks) {
 
     // Gap band between the previous block's end and this block's start —
     // but only for the WAKING portion of the gap. Any overlap with the
-    // 02:00–10:00 sleep window is subtracted, so the nightly sleep stretch
-    // isn't drawn as "unlogged" time. If only sleep separates two blocks,
-    // no band is drawn at all.
+    // configured sleep window (Settings → Daily defaults) is subtracted, so
+    // the nightly sleep stretch isn't drawn as "unlogged" time. If only sleep
+    // separates two blocks, no band is drawn at all.
     if (prevEnd != null) {
       const rawGap = start - prevEnd;
-      const sleepOverlap = Math.max(0, Math.min(start, SLEEP_WINDOW_END_MIN) - Math.max(prevEnd, SLEEP_WINDOW_START_MIN));
-      const wakingGap = rawGap - sleepOverlap;
+      const wakingGap = rawGap - sleepOverlapMin(prevEnd, start);
       if (wakingGap > TL_GAP_THRESHOLD) {
-        // Where waking resumes: if the gap straddles the sleep window,
-        // the visible unlogged stretch starts at 10:00, else at prevEnd.
-        const gapStart = (prevEnd < SLEEP_WINDOW_END_MIN && start > SLEEP_WINDOW_END_MIN)
-          ? SLEEP_WINDOW_END_MIN : prevEnd;
+        // Where waking resumes: if the gap runs through the sleep window,
+        // the visible unlogged stretch starts when sleep ends, else at prevEnd.
+        const gapStart = wakingResumeMin(prevEnd, start);
         const gh = Math.max(TL_GAP_MIN_H, Math.min(TL_GAP_MAX_H, wakingGap * 0.4));
         rows.push(`
           <div class="tl-row tl-gap" style="height:${gh}px">
@@ -9861,8 +9926,22 @@ async function loadDefaultBlocksConfigFromCloud(uid) {
     if (snap.exists()) {
       const remote = snap.data();
       if (remote && Array.isArray(remote.templates)) {
-        defaultBlocksConfig = { templates: remote.templates };
+        // Carry the whole remote doc, not just `templates` — it also holds
+        // `sleepFlagMigrated`, and dropping that would re-run the one-time
+        // sleep-tick adoption on every sign-in.
+        //
+        // Deliberately do NOT preserve a local `sleepFlagMigrated` over a
+        // remote doc that lacks it. The local migration runs at init, before
+        // sign-in, so it can only write localStorage; carrying its marker
+        // across this assignment would mark the job done while the remote
+        // templates it just replaced them with still have no tick — and the
+        // tick would never reach Firestore. Letting it re-run here is the
+        // repair: `user` exists by now, so the adoption syncs. Once any
+        // config write has reached the cloud the remote carries the marker
+        // itself, so this runs at most once for real.
+        defaultBlocksConfig = { ...remote, templates: remote.templates };
         saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig);
+        migrateSleepTemplateFlag();
         return;
       }
     }
@@ -10045,7 +10124,7 @@ function renderCalendarView() {
     ${renderDayBlocks(histDate)}`;
 }
 
-// Buckets waking (non-sleep-window) hours-logged into an intensity level for
+// Buckets waking (non-sleep) hours-logged into an intensity level for
 // the calendar's heat-coloured day marker. Same red→orange→yellow→green
 // scale used to read at a glance which days were light vs. heavy.
 function hoursLevel(h) { return h <= 0 ? 0 : h < 2 ? 1 : h < 5 ? 2 : h < 9 ? 3 : 4; }
@@ -10121,12 +10200,12 @@ function renderCalendar(opts) {
   Object.keys(eodNotes).forEach(d => { if (eodNotes[d]) datesWithData.add(d); });
   (dailyJournals || []).forEach(j => { if (j && j.date) datesWithData.add(j.date); });
 
-  // Waking (non-sleep-window) hours per date, in one pass over blocks — feeds
+  // Waking (non-sleep) hours per date, in one pass over blocks — feeds
   // the day marker's intensity colour. A single pass here is cheap and avoids
   // re-filtering the whole blocks array once per calendar day.
   const hoursByDate = {};
   blocks.forEach(b => {
-    if (!b.date || isSleepWindowBlock(b)) return;
+    if (!b.date || isSleepBlock(b)) return;
     hoursByDate[b.date] = (hoursByDate[b.date] || 0) + (b.duration_min || 0) / 60;
   });
 
@@ -10240,14 +10319,14 @@ function getDashPeriod() {
 }
 
 // Elapsed WAKING hours across a date range: each fully-past day contributes a
-// full waking day (16h), today contributes only the waking minutes elapsed so
-// far, future days contribute nothing. Used so "Skipped" never over-inflates
+// full waking day (24h minus the configured sleep duration), today contributes
+// only the waking minutes elapsed so far, future days contribute nothing. Used so "Skipped" never over-inflates
 // on a partial current period.
 function elapsedWakingHrsInRange(startDate, endDate) {
   const td = todayStr();
   let mins = 0;
   _enumerateDates(startDate, endDate).forEach(d => {
-    if (d < td) mins += WAKING_TOTAL_MIN;
+    if (d < td) mins += wakingTotalMin();
     else if (d === td) mins += elapsedWakingMin();
   });
   return mins / 60;
@@ -10279,7 +10358,7 @@ function prevDashPeriodRange(period) {
 // The six headline metrics for an arbitrary [start,end] range. Used to compute
 // deltas on the Metrics grid without duplicating the formulas in renderDashboard.
 function periodMetrics(startDate, endDate) {
-  const rb = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepWindowBlock(b));
+  const rb = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepBlock(b));
   const bd = catBreakdown(rb);
   const waking = Object.entries(bd).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
   const deepWorkHrs = bd['deep_work'] || 0;
@@ -10377,14 +10456,15 @@ function renderDashboard() {
   }
 
   // ── Week / Month view ────────────────────────────────────────
-  // Exclude sleep-window blocks (02:00–10:00) so sleep logged under "Routine"
-  // doesn't inflate the category totals — mirrors the Today ratio bar, which
-  // already drops these. This is waking-time analysis.
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepWindowBlock(b));
+  // Exclude the sleep block so sleep logged under "Routine" doesn't inflate
+  // the category totals — mirrors the Today ratio bar, which already drops it.
+  // This is waking-time analysis. Routines are NOT excluded.
+  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
   // Skipped = available waking hours so far MINUS what was logged. Only count
-  // ELAPSED waking time: each full past day contributes 16h (24h − 8h sleep);
+  // ELAPSED waking time: each full past day contributes a waking day (24h
+  // minus the configured sleep duration);
   // today contributes only the waking minutes elapsed so far (reuses the Today
   // page's elapsedWakingMin so a partial day never over-inflates Skipped).
   const elapsedWakingHrs = elapsedWakingHrsInRange(startDate, endDate);
@@ -14351,6 +14431,31 @@ window.clearDft = function() {
 //      delete handler records `skips[date][tplId] = true`, and we
 //      respect that on every subsequent run.
 function defaultBlockId(tplId, dateStr) { return `default-${tplId}-${dateStr}`; }
+
+// One-time adoption of the `isSleep` tick, which arrived after the sleep
+// template did. Rather than make the user go and find the checkbox, take the
+// obvious candidate: the longest enabled template of 5h+. Routines are
+// minutes, sleep is hours, so there is no real ambiguity. Runs once
+// (`sleepFlagMigrated`), never overrides an explicit tick, and marks nothing
+// at all if no template is long enough — in which case no block is hidden
+// from the log, which is the safe direction to fail in.
+const SLEEP_ADOPT_MIN_DUR = 300; // 5h
+function migrateSleepTemplateFlag() {
+  try {
+    if (!defaultBlocksConfig || !Array.isArray(defaultBlocksConfig.templates)) return;
+    if (defaultBlocksConfig.sleepFlagMigrated) return;
+    const tpls = defaultBlocksConfig.templates;
+    defaultBlocksConfig.sleepFlagMigrated = true;
+    if (!tpls.some(t => t && t.isSleep)) {
+      const candidates = tpls
+        .filter(t => t && t.enabled !== false && (t.duration_min || 0) >= SLEEP_ADOPT_MIN_DUR)
+        .sort((a, b) => (b.duration_min || 0) - (a.duration_min || 0));
+      if (candidates.length) candidates[0].isSleep = true;
+    }
+    saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig);
+    if (typeof user !== 'undefined' && user) syncDefaultBlocksConfig();
+  } catch (e) { console.error('[DayOS] sleep template migration error:', e); }
+}
 function getEnabledDefaultTemplates() {
   return ((defaultBlocksConfig && defaultBlocksConfig.templates) || [])
     .filter(t => t && t.id && t.enabled !== false);
@@ -14409,6 +14514,42 @@ function maybeCreateDefaultBlocksForToday() {
   }
   if (createdAny) saveLocal(SK.BLOCKS, blocks);
   _defaultBlocksLastRunDate = d;
+}
+
+// An edited template only governs blocks it hasn't created yet, so today's
+// auto-block would otherwise keep showing this morning's values until
+// tomorrow — which reads as "Settings does nothing".
+//
+// So: bring today's block forward to the new values, but ONLY if it still
+// looks exactly like the template that made it. The moment the user has
+// touched it (moved it, retimed it, renamed it, added a note or energy
+// level), it's their block and the template stops speaking for it.
+function applyTemplateEditToToday(prev, next) {
+  try {
+    if (!prev || !next || !next.id) return;
+    const d = todayStr();
+    const b = blocks.find(x => x && x.id === defaultBlockId(next.id, d));
+    if (!b) return;
+    const untouched =
+      b.start_time === prev.start_time &&
+      b.duration_min === prev.duration_min &&
+      b.category === prev.category &&
+      (b.label || '') === (prev.label || '') &&
+      !(b.note || '').trim() &&
+      !(b.energy_level || '') &&
+      !(b.tags || []).length;
+    if (!untouched) return;
+    b.start_time   = next.start_time;
+    b.duration_min = next.duration_min;
+    b.category     = next.category;
+    b.label        = next.label || '';
+    b.projectTag   = next.projectTag || '';
+    b._synced      = false;
+    saveLocal(SK.BLOCKS, blocks);
+    if (typeof user !== 'undefined' && user) {
+      try { syncBlockDoc(b); } catch (e) { console.error('[DayOS] default block re-sync error:', e); }
+    }
+  } catch (e) { console.error('[DayOS] applyTemplateEditToToday error:', e); }
 }
 
 function sweepOldDfts() {
@@ -14825,7 +14966,7 @@ function paintChartZoom() {
   const period = getDashPeriod();
   const startDate = period.startDate;
   const endDate   = period.endDate;
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepWindowBlock(b));
+  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepBlock(b));
   const breakdown = catBreakdown(rangeBlocks);
   const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
   const elapsedWakingHrs = elapsedWakingHrsInRange(startDate, endDate);
@@ -15625,7 +15766,7 @@ const SETTINGS_SECTIONS = [
 const FEATURE_TOGGLES = [
   { key: 'onthisday',    label: 'On This Day',      desc: 'Surfaces entries from 1 month / 6 months / 1 year ago (and beyond) on the Today page. Tap to revisit.' },
   { key: 'threeAdd',     label: '3-Button Add Bar', desc: "Adds a row of three direct buttons on the Today page — Activity ⏱, Journal 📓, Note 📝 — so the most-common entries open in one tap. The + button stays either way." },
-  { key: 'daybar',       label: 'Day Ratio Bar',    desc: "A single horizontal stacked bar on the Today page (between Day Score and Today's Log) showing how the elapsed waking day (8am → now, capped at 16h) has been split across categories. One glance, no scrolling." },
+  { key: 'daybar',       label: 'Day Ratio Bar',    desc: "A single horizontal stacked bar on the Today page (between Day Score and Today's Log) showing how the elapsed waking day (your sleep window, set in Daily defaults, is excluded) has been split across categories. One glance, no scrolling." },
 ];
 
 // ── Usage catalog (read-only display for the counters) ───────
@@ -16942,7 +17083,11 @@ let _defaultsAction = null; // { mode: 'menu' | 'edit' | 'add' | 'delete-confirm
 
 function _defaultsRowSub(t) {
   const cat = catById(t.category);
-  return `${esc(t.start_time)} · ${t.duration_min}m · ${esc(cat.label)}`;
+  const hrs = (t.duration_min / 60);
+  const dur = t.duration_min >= 60
+    ? (Number.isInteger(hrs) ? `${hrs}h` : `${Math.floor(hrs)}h ${t.duration_min % 60}m`)
+    : `${t.duration_min}m`;
+  return `${esc(t.start_time)} · ${dur} · ${esc(cat.label)}${t.isSleep ? ' · 😴 sleep (hidden from the log)' : ''}`;
 }
 
 function openSettingsDefaults() {
@@ -16965,6 +17110,7 @@ function openSettingsDefaults() {
   body.innerHTML = `
     ${settingsSubhdrHtml('Daily defaults')}
     <p class="auth-desc">Templates that auto-create a block every day. Duplicate-proof: the same template never creates two blocks on the same day, even across devices. Deleting an auto-created block on the Today page makes that deletion stick — the template won't recreate it for that day.</p>
+    <p class="auth-desc">Tick <b>This is my sleep block</b> on one template and that block alone is hidden from Today's Log, and its start time + length become the sleep window every waking-hours figure is measured against. Every other default — morning routine, night routine — shows in the log like any block you log by hand.</p>
     ${rows ? `<div class="settings-list">${rows}</div>` : `<div class="proj-empty" style="padding:1rem 0.5rem;text-align:center;color:var(--text3);font-size:0.85rem">No defaults yet. Tap "+ Add default" to create your first one (e.g. a sleep block from 02:00 for 8h).</div>`}
     <div class="btn-row" style="margin-top:0.85rem">
       <button class="btn-primary" onclick="addDefaultTpl()">+ Add default</button>
@@ -16989,7 +17135,7 @@ window.toggleDefaultTpl = function(idx) {
 window.addDefaultTpl = function() {
   _defaultsAction = {
     mode: 'add',
-    draft: { id: '', enabled: true, start_time: '02:00', duration_min: 480, category: 'routine', label: '', projectTag: '' },
+    draft: { id: '', enabled: true, start_time: '02:00', duration_min: 480, category: 'routine', label: '', projectTag: '', isSleep: false },
   };
   renderDefaultTplEditor();
 };
@@ -17018,7 +17164,7 @@ function renderDefaultTplEditor() {
 
   body.innerHTML = `
     ${back}
-    <p class="auth-desc">${mode === 'add' ? 'A block matching this template will auto-create every day at the chosen start time.' : 'Changes only affect future days. Already-created blocks for past dates stay editable as normal blocks.'}</p>
+    <p class="auth-desc">${mode === 'add' ? 'A block matching this template will auto-create every day at the chosen start time.' : 'Changes apply from today onward — today\'s block moves with them unless you have already edited it by hand. Past days stay as they are, editable as normal blocks.'}</p>
     <div class="field">
       <label class="field-label">Label</label>
       <input type="text" id="def-tpl-label" class="mr-input" value="${esc(draft.label || '')}" placeholder="e.g. Sleep / Night Routine" autocomplete="off" />
@@ -17034,6 +17180,13 @@ function renderDefaultTplEditor() {
     <div class="field">
       <label class="field-label">Category</label>
       <select id="def-tpl-cat" class="mr-input">${catOpts}</select>
+    </div>
+    <div class="field">
+      <label class="field-label" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+        <input type="checkbox" id="def-tpl-sleep" ${draft.isSleep ? 'checked' : ''} style="width:auto;margin:0" />
+        <span>😴 This is my sleep block</span>
+      </label>
+      <div class="settings-row-sub" style="margin-top:0.25rem">Hides this block from Today's Log and uses its start time + length as your sleep window. Only one template can be the sleep block.</div>
     </div>
     <div class="btn-row" style="margin-top:0.6rem">
       <button class="btn-primary" onclick="saveDefaultTplFromEditor()">Save</button>
@@ -17054,13 +17207,23 @@ window.saveDefaultTplFromEditor = function() {
   const start = (document.getElementById('def-tpl-start').value || '').trim();
   const dur   = parseInt(document.getElementById('def-tpl-dur').value || '0', 10);
   const cat   = (document.getElementById('def-tpl-cat').value || 'routine').trim();
+  const isSleep = !!(document.getElementById('def-tpl-sleep') || {}).checked;
   if (!label) { toast('Label is required'); return; }
   if (!/^\d{2}:\d{2}$/.test(start)) { toast('Start time must be HH:MM'); return; }
   if (!Number.isFinite(dur) || dur <= 0 || dur > 1440) { toast('Duration must be 1–1440 minutes'); return; }
   if (!CATS.find(c => c.id === cat)) { toast('Pick a category'); return; }
 
   defaultBlocksConfig.templates = defaultBlocksConfig.templates || [];
-  const next = { ..._defaultsAction.draft, label, start_time: start, duration_min: dur, category: cat };
+  // Snapshot the pre-edit values: today's block may already have been
+  // auto-created from them, and we only want to move it if the user hasn't
+  // since edited it by hand (see applyTemplateEditToToday below).
+  const prev = _defaultsAction.mode === 'edit'
+    ? { ...(defaultBlocksConfig.templates[_defaultsAction.idx] || {}) }
+    : null;
+  const next = { ..._defaultsAction.draft, label, start_time: start, duration_min: dur, category: cat, isSleep };
+  // Exactly one sleep block: the waking-day math needs a single window, so
+  // ticking this one unticks whichever template held it before.
+  if (isSleep) defaultBlocksConfig.templates.forEach(t => { if (t) t.isSleep = false; });
   if (_defaultsAction.mode === 'add') {
     // Deterministic-ish template id: random short id. Stable for the
     // lifetime of the template; auto-block IDs derive from it.
@@ -17071,6 +17234,10 @@ window.saveDefaultTplFromEditor = function() {
   }
   saveLocal(SK.DEFAULT_BLOCKS_CONFIG, defaultBlocksConfig);
   if (user) syncDefaultBlocksConfig();
+  // Today's block was very likely created from the OLD values this morning.
+  // Move it too, so "I changed it in Settings and nothing changed" stops
+  // being true. Past days are left alone — they're history.
+  if (prev) applyTemplateEditToToday(prev, next);
   // Allow the auto-creator to run once more today now that the
   // template list has changed.
   _defaultBlocksLastRunDate = null;
@@ -19979,6 +20146,7 @@ function sweepTrash() {
 
 // ── Init ──────────────────────────────────────────────────────
 migrateLegacyProjects();
+migrateSleepTemplateFlag();
 sweepOldDfts();
 sweepTrash();
 render();

@@ -117,12 +117,12 @@ State lives in three places, in this order of truth: module-level `let` vars →
 - `dayos_weekly_reviews_v1` / `dayos_monthly_reviews_v1` — structured review objects keyed by period; can carry an `aiSummary` string (see AI features)
 - `dayos_tag_history_v1` — user's custom tag history
 - `dayos_experiments_v1` — `{ [toggleKey]: true }` optional-feature toggles. **Local-only / NOT synced** by design. Surfaced in Settings → 🎛 Optional features. Key name is historical and kept on purpose — renaming it would silently reset every toggle on every device. See `docs/experiments.md`.
-- `dayos_default_blocks_config_v1` — `{ templates: [{ id, enabled, start_time, duration_min, category, label, projectTag? }] }` user-defined daily auto-blocks (Settings → Daily defaults). Synced to `users/{uid}/meta/defaultBlocks`. The auto-creator runs at the top of every `renderToday` and uses deterministic block IDs (`default-{tplId}-{date}`) so two devices racing produce one Firestore document, not two.
+- `dayos_default_blocks_config_v1` — `{ templates: [{ id, enabled, start_time, duration_min, category, label, projectTag?, isSleep? }], sleepFlagMigrated? }` user-defined daily auto-blocks (Settings → Daily defaults). **At most one template carries `isSleep: true`** — that one block is hidden from Today's Log and its start time + duration define the sleep window (see Sleep below). Synced to `users/{uid}/meta/defaultBlocks`. The auto-creator runs at the top of every `renderToday` and uses deterministic block IDs (`default-{tplId}-{date}`) so two devices racing produce one Firestore document, not two.
 - `dayos_default_blocks_skips_v1` — `{ 'YYYY-MM-DD': { templateId: 'deleted'|'manual' } }` per-day skip record. `'deleted'` = user deleted today's auto-block (deletion sticks). `'manual'` = user manually logged an equivalent block before auto-creator ran. Synced to `users/{uid}/meta/defaultBlockSkips`.
 - `dayos_tombstones_*_v1` — hard-delete tombstones per collection (blocks/captures/sessions/learning/projects)
 
 **Block categories** (`CATS`): `deep_work`, `learning`, `practice`, `routine`, `leisure`, `leaks`
-**Special categories** (not in `CATS`): `SKIPPED_CAT` (computed, never stored). `SLEEP_CAT` still exists as a constant for rendering legacy sleep blocks, but **auto-sleep-logging was removed** — no new sleep blocks are created.
+**Special categories** (not in `CATS`): `SKIPPED_CAT` (computed, never stored). `SLEEP_CAT` still exists as a constant for rendering legacy sleep blocks, but **auto-sleep-logging was removed** — no new blocks carry `category: 'sleep'`. Today's sleep block is an ordinary Daily-defaults block under whatever category its template says (Routine, in practice) — identified by `isSleepBlock()`, never by category. See Sleep below.
 **Capture types** (`CTYPES`): `note` (Quick Note), `daily` (Daily Journal), `project` (Project Note). Legacy types `insight` + `journal` render gracefully via `LEGACY_CTYPES` but aren't offered in the picker.
 
 ### Render Pattern
@@ -236,6 +236,36 @@ the toggle key if it has one, and add a row to `USAGE_GROUPS` so it shows on the
 (an id missing from that catalog is still counted — it lists under "Other" rather than
 disappearing).
 
+### Sleep — one block, one window, both set in Settings
+
+Two ideas that used to be one, and the conflation was a real bug (fixed
+2026-09-18):
+
+- **`isSleepBlock(b)`** — is *this block* sleep? Only the sleep block is hidden
+  from Today's Log and dropped from waking-hour totals. Three ways to qualify:
+  it came from the Daily-defaults template ticked `isSleep`; legacy
+  `category === 'sleep'`; or (legacy catcher) a ≥4h `routine` block with no
+  `_templateId` sitting inside the window. **A morning or night routine is a
+  normal block and displays, whatever time it starts.**
+- **`sleepWindow()` / `sleepOverlapMin()` / `wakingResumeMin()` /
+  `wakingTotalMin()`** — how much of the *clock* is sleep. Used only for time
+  math (elapsed waking minutes, the timeline's unlogged-gap bands, the
+  "Skipped" figure), never to classify a block. Reads `start_time` +
+  `duration_min` off the ticked template, so editing it in Settings moves every
+  waking-hours figure in the app. Handles a window that crosses midnight.
+
+Before 2026-09-18 both were `isSleepWindowBlock` = "does it start inside
+02:00–10:00", with `02:00` / `10:00` / `16h` hardcoded. That hid every
+early-morning block the user had deliberately configured, and made the Settings
+screen decorative. `02:00 + 8h` survives as a **fallback only** — used when no
+template is ticked, and then nothing is hidden beyond legacy sleep-shaped
+blocks. Failing toward "shown" is the safe direction.
+
+The block is fenced `// ── BEGIN sleep-window ──` and pinned by
+`tests/sleep-window.mjs`, which runs the real source. `migrateSleepTemplateFlag()`
+adopted the tick once on existing configs (longest enabled template ≥5h),
+latched by `sleepFlagMigrated` on the config doc.
+
 ### Daily defaults (auto-blocks) — duplicate-proof pattern
 
 User-defined templates that auto-create a matching block every day. Configured in Settings → Daily defaults. The interesting engineering bit is **how it avoids duplicates across devices** — this is the canonical pattern to reuse for any future "auto-create something every day/period" feature, because the previous auto-sleep feature got this wrong and the user is allergic to duplicates.
@@ -247,6 +277,12 @@ Five overlapping defenses (any one alone would prevent duplicates; together they
 3. **Skip-if-manual-fulfilled**: if the user already logged a block today with the same `start_time` + `label`, mark the template as fulfilled for that date in `defaultBlocksSkips[date][tplId] = 'manual'` so we never reconsider.
 4. **Per-session latch**: `_defaultBlocksLastRunDate` module var gates the creator (`maybeCreateDefaultBlocksForToday`) to one pass per date per page session. Reset to `null` at the end of `initialSync` so a fresh sign-in gets one shot.
 5. **Deletion sticks**: when `deleteBlock` removes a block with `_templateId` set, it records `defaultBlocksSkips[block.date][tplId] = 'deleted'` and syncs the skip. No device will re-create that block for that date, ever.
+
+Editing a template also moves **today's** already-created block
+(`applyTemplateEditToToday`), but only while that block still matches the
+template exactly — the moment it's been retimed, renamed or annotated by hand,
+it's the user's block and the template stops speaking for it. Past days are
+never touched.
 
 Auto-created blocks carry `_default: true` and `_templateId: <id>` flags. They're otherwise indistinguishable from manual blocks (editable, syncable, counted everywhere). Removing the feature later = delete `maybeCreateDefaultBlocksForToday` + its hook in `renderToday` + the `_templateId`-detection branch in `deleteBlock`. Existing auto-blocks stay as inert normal blocks — no migration needed.
 

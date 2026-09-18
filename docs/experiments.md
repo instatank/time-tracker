@@ -84,9 +84,11 @@ promote it to S2 (default on) first, or you switch it on and leave it on for the
 
 > **Shared time helpers:** the Day Timeline (default) and `daybar` both depend on the "Shared
 > time-math + sleep-window helpers" block above `renderDayRatioBar` — `hhmmToMin`,
-> `minToHHMM`, `fmtMins`, `_nowMinutesIST`, `isSleepWindowBlock`, `elapsedWakingMin`, and
-> consts `SLEEP_WINDOW_START_MIN` / `SLEEP_WINDOW_END_MIN` / `WAKING_TOTAL_MIN`. The timeline
-> is permanent, so this block stays regardless of `daybar`.
+> `minToHHMM`, `fmtMins`, `_nowMinutesIST`, `isSleepBlock`, `sleepWindow`, `sleepOverlapMin`,
+> `wakingResumeMin`, `wakingTotalMin`, `elapsedWakingMin`, and the fallback consts
+> `SLEEP_FALLBACK_START_MIN` / `SLEEP_FALLBACK_DUR_MIN` / `SLEEP_LEGACY_MIN_DUR`. The timeline
+> is permanent, so this block stays regardless of `daybar`. Most of it is fenced between
+> `// ── BEGIN sleep-window ──` / `── END ──` and pinned by `tests/sleep-window.mjs`.
 
 ---
 

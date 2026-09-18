@@ -77,6 +77,16 @@ adherence data ever starts syncing, add its collection to this table.
    `routine`, `leisure`, `leaks`) + legacy `sleep`. Sleep is excluded from
    waking-hour totals. New categories degrade gracefully (rendered by id) but
    deserve a heads-up in this doc anyway.
+7. **"Sleep" is a block, not a category** (changed 2026-09-18). The sleep block
+   is created by the Daily-defaults template the user ticked as their sleep
+   block, and carries that template's own category — `routine`, in practice.
+   DayOS identifies it by `_templateId` matching the ticked template in
+   `meta/defaultBlocks` (`templates[].isSleep === true`), falling back to
+   legacy `category === 'sleep'` and to a ≥4h `routine` block with no
+   `_templateId` sitting inside the configured window. A consumer computing
+   waking hours must do the same, or it will count 7–8h of sleep as Routine.
+   `meta/defaultBlocks` is listed below as not read; if waking-hour totals ever
+   matter to the consumer, that has to change.
 
 Renames of any field above are **address changes, not label changes**
 (playbook L5) — they break the consumer silently. Additive fields are always
