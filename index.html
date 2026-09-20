@@ -6735,7 +6735,46 @@ const TL_GAP_MIN_H  = 20;
 const TL_GAP_MAX_H  = 40;
 const TL_GAP_THRESHOLD = 10;  // only show a gap band if > 10 min unlogged
 const TL_COMPACT_MAX_MIN = 59; // < 60m → single-row compact layout
-const TL_DEFAULT_WINDOW_MIN = 240; // collapsed view shows the most recent 4h
+// ── BEGIN timeline-window ──
+// Which blocks Today's Log shows before you tap "↓ N more".
+//
+// The window is anchored to WALL-CLOCK NOW, not to the latest block in the
+// day. Until 2026-09-20 it was "the 4h ending at the latest block's end",
+// which read fine on a day you only log as you go, but broke the moment a
+// block existed in the future: a night routine sitting at 22:00 dragged the
+// window to 18:00–22:00, so at 11:00 the log showed tonight and hid the
+// whole morning. Anchoring to now is what "recent" meant all along.
+//
+// Now: the last 3h of real time, plus the next 2h so the thing you're about
+// to do is on screen. Anything further ahead (tonight's routine at 22:00)
+// collapses behind the toggle along with the rest of the day.
+const TL_LOOKBACK_MIN  = 180; // 3h behind now
+const TL_LOOKAHEAD_MIN = 120; // 2h ahead of now
+
+const tlBlockEndMin = b => hhmmToMin(b.start_time) + b.duration_min;
+
+// `placed` is ascending by start time; `nowMin` is minutes since IST midnight.
+// Returns the collapsed-view slice + how many blocks it leaves hidden — and
+// it is computed independently of the expand state on purpose, so the count
+// stays the same either way and "↑ show less" never disappears.
+function timelineWindow(placed, nowMin) {
+  const from = nowMin - TL_LOOKBACK_MIN;
+  const to   = nowMin + TL_LOOKAHEAD_MIN;
+  // End-based on the left edge so a block longer than the lookback (a 5h
+  // deep-work stretch you're still inside) still counts as visible;
+  // start-based on the right edge so a long future block doesn't leak in.
+  let visible = placed.filter(b => tlBlockEndMin(b) > from && hhmmToMin(b.start_time) < to);
+  if (!visible.length) {
+    // Quiet stretch — nothing logged in the last 3h and nothing due in the
+    // next 2. Show the most recent past block rather than an empty log
+    // sitting above a "↓ N more" button; if the whole day is still ahead,
+    // show the first thing coming up.
+    const past = placed.filter(b => tlBlockEndMin(b) <= from);
+    visible = past.length ? [past[past.length - 1]] : placed.slice(0, 1);
+  }
+  return { visible, hiddenCount: placed.length - visible.length };
+}
+// ── END timeline-window ──
 
 // Phased height curve. Compact tier sits ~32–40px (one row, ~20% taller
 // than the old flat floor so labels fit); regular tier grows gently and
@@ -6759,6 +6798,21 @@ window.toggleTimeline = function() {
   if (activeTab === 'today') renderMain(true);
 };
 
+// The window above is read at render time, so a PWA left open in the
+// background goes stale — resume it at 22:00 and it still shows the 11:00
+// window, which is exactly the case this change exists to fix. Re-render
+// Today on resume, but only once the clock has actually moved enough to
+// change what's on screen (15 min), so an ordinary tab switch doesn't reset
+// scroll position or collapse an expanded card for nothing.
+let _tlLastRenderNowMin = null;
+const TL_STALE_MIN = 15;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (activeTab !== 'today' || _tlLastRenderNowMin == null) return;
+  const n = nowIST();
+  if (Math.abs((n.getHours() * 60 + n.getMinutes()) - _tlLastRenderNowMin) >= TL_STALE_MIN) renderMain(true);
+});
+
 function renderTodayTimeline(bks) {
   // Placed blocks with a real start time, excluding the sleep block.
   const placed = bks
@@ -6766,26 +6820,13 @@ function renderTodayTimeline(bks) {
     .sort((a, b) => hhmmToMin(a.start_time) - hhmmToMin(b.start_time));
   if (placed.length < 1) return '';
 
-  // Default (collapsed) view = the most recent 4 HOURS of activity, not a
-  // fixed block count — so a busy stretch shows everything in it and a
-  // quiet one shows just a little. The window is anchored to the latest
-  // block's END (not wall-clock "now") so the newest activity is always
-  // visible even if you haven't logged anything in a while: any block
-  // ending after (latestEnd − 4h) shows, the rest collapses behind a
-  // "↓ N more" toggle. End-based (not start-based) so a single long block
-  // longer than the window still counts as visible. `placed` is ascending
-  // (needed for correct gap math); rows are reversed below so newest sits
-  // on top.
-  const blockEnd = b => hhmmToMin(b.start_time) + b.duration_min;
-  const latestEnd = Math.max(...placed.map(blockEnd));
-  const windowStart = latestEnd - TL_DEFAULT_WINDOW_MIN;
-  // The collapsed window is what defines how many blocks are hidden. Compute
-  // it independently of the current expand state so `hiddenCount` stays the
-  // SAME whether expanded or not — otherwise expanding drops hiddenCount to
-  // 0 and the toggle (which becomes "↑ show less" when expanded) disappears,
-  // leaving no way to collapse back.
-  const windowVisible = placed.filter(b => blockEnd(b) > windowStart);
-  const hiddenCount = placed.length - windowVisible.length;
+  // Default (collapsed) view = a window around REAL TIME (see
+  // timeline-window above), not a fixed block count and not the tail of the
+  // day. `placed` is ascending (needed for correct gap math); rows are
+  // reversed below so newest sits on top.
+  const n = nowIST();
+  _tlLastRenderNowMin = n.getHours() * 60 + n.getMinutes();
+  const { visible: windowVisible, hiddenCount } = timelineWindow(placed, _tlLastRenderNowMin);
   const visible = _timelineExpanded ? placed : windowVisible;
 
   const date = visible[0].date;
