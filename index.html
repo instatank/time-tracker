@@ -10267,7 +10267,9 @@ function teRange(ctx, start, end) {
     const st = teDft((ctx.dfts || {})[d]);
     if (st) { r.dftSet++; if (st === 'done') r.dftDone++; }
     (jByDate[d] || []).forEach(j => (j.tasks || []).forEach(t => { r.taskT++; if (t && t.completed) r.taskD++; }));
-    const a = ctx.adherence ? ctx.adherence(d) : null;
+    // Adherence rules are measured from logged blocks, so a day with nothing
+    // logged can't pass or fail them — it's skipped, not scored 0%.
+    const a = e && ctx.adherence ? ctx.adherence(d) : null;
     if (a && a.total) { r.adhT += a.total; r.adhP += a.passed; }
     const rt = (ctx.ratings || {})[d];
     if (rt > 0) { r.rSum += rt; r.rN++; }
@@ -10382,7 +10384,7 @@ function teDrivers(ctx, target = 'rating', days = 90) {
     const v = target === 'rating' ? (ctx.ratings || {})[d] : ((ctx.life || {})[d] || {})[target];
     if (!(typeof v === 'number' && v > 0)) return;
     const e = ix.byDate.get(d);
-    const a = ctx.adherence ? ctx.adherence(d) : null;
+    const a = e && ctx.adherence ? ctx.adherence(d) : null;   // unlogged → unknown
     const avail = teAvail(ctx, d);
     rows.push({ d, v, e, a, avail, dft: teDft((ctx.dfts || {})[d]) });
   });
@@ -11015,7 +11017,8 @@ function renderReviewGlance(ctx, p) {
       <span class="tr-gl-lbl">${esc(k.label)}</span>
       <span class="tr-gl-val">${trKpiFmt(k.kind, k.value)}</span>
       <span class="tr-gl-sub">${k.sub ? esc(k.sub) : ''}${trDeltaChip(k, p.mode)}</span>
-    </div>`).join('') + `<div class="tr-gl"><span class="tr-gl-lbl">Wins</span><span class="tr-gl-val">${r.wins}</span><span class="tr-gl-sub">#win entries</span></div>`;
+    </div>`).join('') + (r.hasAny ? `<div class="tr-gl"><span class="tr-gl-lbl">Wins</span><span class="tr-gl-val">${r.wins}</span><span class="tr-gl-sub">#win entries</span></div>` : '');
+  if (!cells) return `<div class="tr-muted" style="margin-bottom:1rem">Nothing logged in this ${p.mode} yet.</div>`;
   return `<div class="tr-glance">${cells}</div>`;
 }
 

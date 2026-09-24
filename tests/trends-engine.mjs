@@ -145,6 +145,10 @@ const noBadNumbers = arr => arr.every(t => !/NaN|undefined|Infinity|null/.test(t
   const res = E.teInsights(ctx, E.tePeriod('week', 0, TODAY));
   ok(res.items.length === 1 && /Nothing logged/.test(res.items[0].text), 'empty week → one plain sentence');
   ok(E.teKpis(ctx, E.tePeriod('week', 0, TODAY)).length === 0, 'empty data → no KPI tiles (nothing shown as a fake 0)');
+  // Default adherence rules exist even on a fresh install; an unlogged day
+  // must not score them as failed (that showed "Adherence 0%" on no data).
+  const ctxA = { ...ctx, _ix: undefined, adherence: () => ({ total: 2, passed: 0 }) };
+  ok(!E.teKpis(ctxA, E.tePeriod('week', 0, TODAY)).some(k => k.id === 'adh'), 'adherence rules on unlogged days → no tile, not 0%');
   const drv = E.teDrivers(ctx);
   ok(drv.rows.length === 0 && drv.n === 0 && drv.need === 8, 'drivers report how many rated days are still needed');
   const m = E.teInsights(ctx, E.tePeriod('month', -3, TODAY));
