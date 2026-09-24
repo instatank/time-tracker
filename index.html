@@ -3474,30 +3474,6 @@ mark.hl {
   line-height: 1.2;
 }
 
-/* ── Dashboard view ─────────────────────────────────────────── */
-.range-toggle {
-  display: flex;
-  background: var(--surface2);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
-  margin-bottom: 1.25rem;
-  align-self: flex-start;
-  width: fit-content;
-}
-.range-btn {
-  padding: 0.3rem 1rem;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--text2);
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.range-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-btn); }
-
 .day-nav {
   display: flex;
   align-items: center;
@@ -3513,12 +3489,6 @@ mark.hl {
   text-align: center;
 }
 
-.bar-chart { margin-bottom: 1.25rem; }
-/* Trends category drill-down: a tappable bar row + an expandable panel
-   listing the blocks that make up that category's total. */
-.cat-drill-row { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
-.cat-drill-row:hover { background: var(--surface2); }
-.cat-drill-wrap.open .cat-drill-row { background: var(--surface2); }
 .cat-drill-panel {
   margin: -0.1rem 0 0.55rem 72px;
   padding: 0.3rem 0.5rem;
@@ -3539,45 +3509,6 @@ mark.hl {
 .cdi-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cdi-dur { color: var(--text); font-variant-numeric: tabular-nums; }
 .cat-drill-empty { font-size: 0.72rem; color: var(--text3); }
-.bar-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.55rem;
-}
-.bar-lbl { font-size: 0.75rem; color: var(--text2); min-width: 72px; max-width: 72px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar-track {
-  flex: 1;
-  height: 8px;
-  background: var(--surface2);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
-.bar-val { font-size: 0.72rem; color: var(--text3); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
-
-.metrics-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-}
-/* 6-card variant — 3 across on tablet/desktop, gracefully drops to 2
-   on phone widths so the cards don't get squashed. */
-.metrics-grid-3 { grid-template-columns: repeat(3, 1fr); }
-@media (max-width: 480px) {
-  .metrics-grid-3 { grid-template-columns: 1fr 1fr; }
-}
-.metric-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0.85rem;
-}
-.metric-val { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
-.metric-val.warn { color: var(--warn); }
-.metric-val.bad  { color: var(--danger); }
-.metric-val.good { color: var(--success); }
-.metric-lbl { font-size: 0.72rem; color: var(--text2); margin-top: 3px; }
 .trends-nudge {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -3588,6 +3519,177 @@ mark.hl {
   color: var(--text2);
   margin-bottom: 0.85rem;
 }
+
+/* ── Trends (tr-) ───────────────────────────────────────────
+   One screen per period: the read → review → scorecard → time →
+   rhythm → good-day drivers. Every chart is plain HTML/SVG on theme
+   tokens, so light/dark just work and nothing loads from a CDN. */
+.tr-mode {
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 0.75rem;
+}
+.tr-mode button {
+  flex: 1; border: none; background: transparent; color: var(--text2);
+  font-size: 0.86rem; font-weight: 600; padding: 0.45rem 0; border-radius: 8px; cursor: pointer;
+}
+.tr-mode button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-btn); }
+.tr-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 1rem; }
+.tr-nav-lbl { font-weight: 600; font-size: 0.95rem; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.tr-nav-now { font-size: 0.68rem; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }
+.tr-muted { color: var(--text3); font-size: 0.78rem; line-height: 1.45; }
+.tr-link, .tr-more {
+  background: none; border: none; color: var(--accent); font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; padding: 0.35rem 0; text-align: left;
+}
+.tr-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.tr-foot { font-size: 0.7rem; color: var(--text3); margin-top: 0.45rem; }
+
+/* The read */
+.tr-read { display: flex; flex-direction: column; gap: 0.45rem; }
+.tr-read .sec-hdr { margin-bottom: 0.1rem; }
+.tr-ins {
+  display: flex; gap: 0.6rem; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 0.6rem 0.7rem; font-size: 0.88rem; line-height: 1.45; color: var(--text);
+}
+.tr-ins-good  { border-left-color: var(--success); }
+.tr-ins-watch { border-left-color: var(--warn); }
+.tr-ins-tap { cursor: pointer; }
+.tr-ins-tap:hover { background: var(--surface2); }
+.tr-ins-mark {
+  flex: none; width: 18px; height: 18px; border-radius: 50%; margin-top: 1px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 700; color: var(--on-accent); background: var(--accent);
+}
+.tr-ins-good  .tr-ins-mark { background: var(--success); }
+.tr-ins-watch .tr-ins-mark { background: var(--warn); }
+.tr-young { font-size: 0.8rem; color: var(--text2); line-height: 1.45; }
+.tr-young .tr-link { display: inline; padding: 0 0 0 0.25rem; }
+
+/* Review CTA */
+.tr-review {
+  width: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.1rem 0.5rem;
+  text-align: left; cursor: pointer; margin: -0.35rem 0 1.25rem;
+  background: var(--accent-soft-faint); border: 1px solid var(--accent-soft-strong); border-radius: 10px;
+  padding: 0.6rem 0.8rem; color: var(--text);
+}
+.tr-review:hover { background: var(--accent-soft); }
+.tr-review-main { font-weight: 600; font-size: 0.88rem; display: flex; gap: 0.45rem; align-items: center; }
+.tr-review-sub { grid-column: 1; font-size: 0.76rem; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-review-go { grid-column: 2; grid-row: 1 / span 2; color: var(--accent); font-weight: 700; }
+
+/* Scorecard */
+.tr-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+@media (max-width: 480px) { .tr-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tr-kpi {
+  display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0.6rem 0.65rem 0.45rem; color: var(--text);
+}
+.tr-kpi:hover { border-color: var(--border2); }
+.tr-kpi.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.tr-kpi-lbl { font-size: 0.7rem; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.tr-kpi-row { display: flex; align-items: baseline; gap: 0.4rem; flex-wrap: wrap; }
+.tr-kpi-val { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.tr-kpi-sub { font-size: 0.7rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-chip { font-size: 0.68rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tr-chip-good { color: var(--success); }
+.tr-chip-bad  { color: var(--danger); }
+.tr-chip-flat, .tr-chip-info { color: var(--text3); }
+.tr-spark { width: 100%; height: 22px; margin-top: 0.2rem; display: block; overflow: visible; }
+.tr-spark-line { fill: none; stroke: var(--text2); opacity: 0.7; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.tr-spark-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.tr-focus { margin-top: 0.6rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.65rem 0.7rem 0.4rem; }
+.tr-focus-hdr { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.3rem; }
+.tr-focus-hdr .tr-muted { font-weight: 400; font-size: 0.72rem; }
+.tr-focus-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.tr-fc-bar { cursor: pointer; }
+.tr-fc-hit { fill: transparent; }
+.tr-fc-fill { fill: var(--text3); opacity: 0.55; }
+.tr-fc-bar:hover .tr-fc-fill { opacity: 0.8; }
+.tr-fc-bar.cur .tr-fc-fill { fill: var(--accent); opacity: 1; }
+.tr-fc-none { fill: var(--border2); }
+.tr-fc-x { font-size: 9px; fill: var(--text3); }
+.tr-fc-bar.cur .tr-fc-x { fill: var(--text); font-weight: 600; }
+.tr-fc-val { font-size: 10px; font-weight: 700; fill: var(--text); }
+.tr-fc-base { stroke: var(--text2); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.tr-fc-base-lbl { font-size: 9px; fill: var(--text2); }
+.tr-ci { margin-top: 0.75rem; }
+.tr-ci-hdr { font-size: 0.72rem; font-weight: 600; color: var(--text2); margin-bottom: 0.3rem; display: flex; gap: 0.4rem; align-items: baseline; }
+.tr-ci-hdr .tr-muted { font-size: 0.68rem; font-weight: 400; }
+.tr-ci-row { display: grid; grid-template-columns: minmax(0, 1fr) 2.2rem 4.4rem 64px; align-items: center; gap: 0.4rem; padding: 0.22rem 0; border-top: 1px solid var(--border); font-size: 0.8rem; }
+.tr-ci-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-ci-val { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.tr-ci-row .tr-spark { margin: 0; height: 16px; }
+
+/* Where the time went */
+.tr-seg-bar { display: flex; gap: 2px; height: 14px; border-radius: 5px; overflow: hidden; margin-bottom: 0.5rem; }
+.tr-seg-fill { min-width: 3px; }
+.tr-seg-unlogged, .tr-dot-unlogged {
+  background: repeating-linear-gradient(135deg, var(--surface3) 0 4px, var(--border2) 4px 6px);
+}
+.tr-cats { display: flex; flex-direction: column; }
+.tr-cat-row {
+  width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 2.6rem 3rem; gap: 0.5rem; align-items: center;
+  background: none; border: none; border-top: 1px solid var(--border); color: var(--text);
+  padding: 0.42rem 0.1rem; font-size: 0.85rem; cursor: pointer; text-align: left;
+}
+.tr-cat-row:disabled { cursor: default; color: var(--text3); }
+.tr-cat-row:not(:disabled):hover { background: var(--surface2); }
+.tr-cat.open .tr-cat-row { background: var(--surface2); }
+.tr-cat-usual { font-size: 0.7rem; color: var(--text3); }
+.tr-cat-pct { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tr-cat-h { text-align: right; color: var(--text2); font-variant-numeric: tabular-nums; font-size: 0.8rem; }
+.tr-cat .cat-drill-panel { margin: 0.2rem 0 0.5rem 1.2rem; }
+.tr-unlogged-note { display: flex; gap: 0.5rem; align-items: center; font-size: 0.76rem; color: var(--text3); padding: 0.45rem 0.1rem 0; border-top: 1px solid var(--border); }
+.tr-projs { margin-top: 0.9rem; }
+.tr-proj { display: grid; grid-template-columns: minmax(0, 7rem) minmax(0, 1fr) 2.8rem 3rem; gap: 0.5rem; align-items: center; font-size: 0.82rem; padding: 0.22rem 0; }
+.tr-proj-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-proj-track { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+.tr-proj-fill { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.tr-proj-h { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tr-proj-usual { text-align: right; font-size: 0.7rem; color: var(--text3); }
+
+/* Rhythm */
+.tr-rh { display: flex; flex-direction: column; gap: 3px; }
+.tr-rh-axis, .tr-rh-row { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) 2.6rem; gap: 0.45rem; align-items: center; }
+.tr-rh-ticks { display: flex; justify-content: space-between; font-size: 0.62rem; color: var(--text3); }
+.tr-rh-row { background: none; border: none; padding: 0; cursor: pointer; color: var(--text2); font-size: 0.74rem; text-align: left; }
+.tr-rh-row:disabled { cursor: default; opacity: 0.45; }
+.tr-rh-row.today .tr-rh-lbl { color: var(--accent); font-weight: 700; }
+.tr-rh-row:not(:disabled):hover .tr-rh-track { outline: 1px solid var(--border2); }
+.tr-rh-lbl { white-space: nowrap; }
+.tr-rh-track { position: relative; height: 18px; background: var(--surface2); box-shadow: inset 0 0 0 1px var(--border); border-radius: 4px; overflow: hidden; }
+.tr-rh.dense .tr-rh-track { height: 9px; border-radius: 2px; }
+.tr-rh.dense { gap: 2px; }
+.tr-rh.dense .tr-rh-row { font-size: 0.64rem; }
+.tr-rh-blk { position: absolute; top: 0; bottom: 0; border-radius: 2px; box-shadow: 1px 0 0 var(--surface2); }
+.tr-rh-sleep { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, transparent 0 3px, var(--border) 3px 4px); }
+.tr-rh-win { position: absolute; top: 0; bottom: 0; background: var(--accent-soft-faint); border-left: 1px dashed var(--accent-soft-strong); border-right: 1px dashed var(--accent-soft-strong); }
+.tr-rh-tot { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+.tr-legend { display: flex; flex-wrap: wrap; gap: 0.3rem 0.75rem; margin-top: 0.6rem; font-size: 0.7rem; color: var(--text2); }
+.tr-lg { display: inline-flex; align-items: center; gap: 0.3rem; }
+.tr-dot-sleep { background: repeating-linear-gradient(135deg, var(--surface2) 0 2px, var(--border2) 2px 3px); border: 1px solid var(--border2); }
+.tr-dot-win { background: var(--accent-soft); border: 1px dashed var(--accent); }
+
+/* What makes a good day */
+.tr-pills { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.55rem; }
+.tr-pill {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text2);
+  border-radius: 999px; padding: 0.22rem 0.65rem; font-size: 0.74rem; cursor: pointer;
+}
+.tr-pill.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.tr-drvs { display: flex; flex-direction: column; gap: 0.1rem; }
+.tr-drv { display: grid; grid-template-columns: minmax(0, 1fr) 5.5rem 3rem; grid-template-rows: auto auto; gap: 0 0.5rem; align-items: center; padding: 0.35rem 0; border-top: 1px solid var(--border); }
+.tr-drv-lbl { font-size: 0.84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-drv-track { position: relative; height: 10px; }
+.tr-drv-mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border2); }
+.tr-drv-fill { position: absolute; top: 1px; bottom: 1px; border-radius: 3px; }
+.tr-drv-fill.pos { background: var(--success); }
+.tr-drv-fill.neg { background: var(--warn); }
+.tr-drv-val { text-align: right; font-weight: 700; font-size: 0.84rem; font-variant-numeric: tabular-nums; }
+.tr-drv-sub { grid-column: 1 / -1; font-size: 0.7rem; color: var(--text3); }
 
 /* ── Weekly Review ─────────────────────────────────────────── */
 .wr-nav-row {
@@ -4165,49 +4267,6 @@ mark.hl {
   box-shadow: none;
 }
 
-.wr-open-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1rem;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-soft-strong);
-  border-radius: 8px;
-  color: var(--accent);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: 1rem;
-  transition: background 0.15s, border-color 0.15s;
-}
-.wr-open-btn:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.wr-open-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 1rem;
-}
-.wr-open-row .wr-open-btn { margin-bottom: 0; flex: 1 1 auto; min-width: 0; }
-/* Trends-tab Row 3 — two toggles side-by-side
-   ([Totals | Over Time]   [Charts | Calendar]). Each toggle keeps its
-   intrinsic width; the row wraps on narrow viewports. */
-.dash-row3 {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-bottom: 0.85rem;
-  align-items: center;
-}
-.dash-row3 .view-toggle,
-.dash-row3 .range-toggle { margin-bottom: 0; }
-/* Charts period navigation (‹ Jun 1 – Jun 7 ›) — sits next to the Week/Month
-   toggle and walks calendar periods backward. */
-.dash-period-nav {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-left: auto;
-}
 .dash-period-btn {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -4220,151 +4279,7 @@ mark.hl {
 }
 .dash-period-btn:disabled { color: var(--text3); cursor: default; }
 .dash-period-btn:not(:disabled):hover { background: var(--surface3); }
-.dash-period-label {
-  font-size: 0.8rem;
-  color: var(--text2);
-  min-width: 6.5rem;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-/* Compact delta chip under a metric card value. */
-.metric-delta {
-  font-size: 0.68rem;
-  font-weight: 600;
-  margin-top: 3px;
-  line-height: 1;
-}
-.metric-delta-up   { color: var(--success); }
-.metric-delta-down { color: var(--danger); }
-.metric-delta-flat { color: var(--text3); }
 
-/* Zoom modal — full-screen on small viewports, centered on larger ones.
-   Reused by Time by Category, Time by Project, and Over-Time charts. */
-.zoom-modal {
-  position: fixed; inset: 0;
-  display: none;
-  align-items: center; justify-content: center;
-  z-index: 200;
-}
-.zoom-modal.open { display: flex; }
-.zoom-modal-backdrop {
-  position: absolute; inset: 0;
-  background: var(--overlay);
-}
-.zoom-modal-content {
-  position: relative;
-  width: 92vw; max-width: 760px;
-  max-height: 88vh;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: var(--r);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--shadow-lg);
-}
-@media (max-width: 480px) {
-  .zoom-modal-content { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
-}
-.zoom-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border);
-}
-.zoom-modal-title { font-weight: 600; font-size: 0.95rem; }
-.zoom-modal-close {
-  background: none; border: none;
-  color: var(--text2);
-  font-size: 1.4rem;
-  cursor: pointer; padding: 0 0.3rem;
-  line-height: 1;
-}
-.zoom-modal-close:hover { color: var(--text); }
-.zoom-modal-body {
-  padding: 1rem;
-  overflow-y: auto;
-  flex: 1;
-}
-
-/* Section-header zoom affordance */
-.sec-zoom-btn {
-  background: none; border: none;
-  color: var(--text3);
-  font-size: 0.95rem;
-  cursor: pointer;
-  padding: 0 0.2rem;
-  margin-left: 0.25rem;
-  line-height: 1;
-}
-.sec-zoom-btn:hover { color: var(--accent); }
-
-/* Capped-bar overflow indicator — subtle inset shadow at the right edge so
-   the user can tell the bar is at max even before reading the label. */
-.bar-fill-over { box-shadow: inset -3px 0 0 0 rgba(255,255,255,0.45); }
-
-.view-toggle {
-  display: flex;
-  background: var(--surface);
-  border-radius: 6px;
-  padding: 2px;
-  width: fit-content;
-  margin-bottom: 1rem;
-}
-.view-btn {
-  padding: 0.3rem 1rem;
-  border-radius: 5px;
-  border: none;
-  background: transparent;
-  color: var(--text2);
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.view-btn.active { background: var(--surface2); color: var(--text); box-shadow: var(--shadow-btn); }
-
-/* Prominent full-width variant — surfaces the Totals vs Over-Time (graphs)
-   choice as a primary control instead of a small tucked-away toggle. */
-.view-toggle-prominent {
-  width: 100%;
-  margin-bottom: 0.7rem;
-  border: 1px solid var(--border);
-}
-.view-toggle-prominent .view-btn {
-  flex: 1;
-  text-align: center;
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-.view-toggle-prominent .view-btn.active {
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: var(--shadow-btn);
-}
-
-.trend-chart-wrap {
-  position: relative;
-  width: 100%;
-  margin-bottom: 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0.75rem 0.5rem;
-}
-.trend-callout {
-  font-size: 0.85rem;
-  font-weight: 500;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  margin-bottom: 1rem;
-}
-.trend-up { color: var(--success); }
-.trend-down { color: var(--danger); }
 
 /* ── Empty state ────────────────────────────────────────────── */
 .empty {
@@ -4471,7 +4386,6 @@ mark.hl {
 .energy-row .field-label { margin-bottom: 0; white-space: nowrap; }
 .field select { appearance: none; }
 select option { background: var(--surface2); }
-
 
 .pill-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .pill {
@@ -5207,18 +5121,6 @@ Tap a chip or start a line with ✓, &gt;, or * — app parses silently on save.
     <button type="button" class="opt-btn" onclick="closeAttachMenu()">✕ &nbsp;Cancel</button>
   </div>
 </div>
-<!-- Trends-tab zoom modal (D3) — reused by Time by Category, Time by Project,
-     and the Over-Time line charts. Stays in the DOM, toggled via .open. -->
-<div id="zoom-modal" class="zoom-modal">
-  <div class="zoom-modal-backdrop" onclick="closeChartZoom()"></div>
-  <div class="zoom-modal-content">
-    <div class="zoom-modal-header">
-      <span class="zoom-modal-title" id="zoom-modal-title"></span>
-      <button class="zoom-modal-close" onclick="closeChartZoom()" aria-label="Close">×</button>
-    </div>
-    <div class="zoom-modal-body" id="zoom-modal-body"></div>
-  </div>
-</div>
 
 <script type="module">
 // ── iOS standalone PWA safe-area shim ────────────────────────
@@ -5611,10 +5513,8 @@ let journalExpanded = false;
 let globalSearch     = '';
 let globalSearchOpen = false;
 let dashRange = 'week';
-let dashDay = todayStr(); // selected date for Day view
 let showWeeklyReview = false;
 let weeklyReviewOffset = 0; // 0 = current week, -1 = last week, etc.
-let dashView = 'totals'; // 'totals' or 'overtime'
 let dashSubTab = 'charts'; // 'charts' or 'calendar'
 let dashPeriodOffset = 0; // 0 = current calendar week/month, -1 = previous, etc.
 let weeklyReviews = loadLocal('dayos_weekly_reviews_v1', {});
@@ -6633,16 +6533,16 @@ window.toggleDaybarExpanded = function() {
 
 // Trends "Time by Category" mirrors the Today ratio bar: a slim horizontal
 // snapshot by default, tap to expand into the full per-category bar chart.
-let _trendsCatExpanded = false;
-window.toggleTrendsCatExpanded = function() {
-  _trendsCatExpanded = !_trendsCatExpanded;
-  if (activeTab === 'dashboard') renderMain(true);
-};
-// Which category's contributing blocks are drilled open in the expanded
-// Trends view (null = none). Tapping a category bar toggles it.
+// Trends UI state — view-only, never persisted.
+let _trendsReadAll = false;       // "N more observations" expanded
+let _trendsKpiFocus = null;       // scorecard tile whose trend is open
+let _trendsProjAll = false;       // all projects vs top 5
+let _trendsDriverTarget = 'rating';
+// Which category's contributing blocks are drilled open on Trends (null = none).
 let _trendsCatDrill = null;
 window.drillTrendsCat = function(catId) {
   _trendsCatDrill = _trendsCatDrill === catId ? null : catId;
+  if (_trendsCatDrill) noteUse('trends-cat-drill');
   if (activeTab === 'dashboard') renderMain(true);
 };
 
@@ -10497,8 +10397,9 @@ const TE_KPIS = [
   { id: 'tasks',  label: 'Tasks done', kind: 'pct',   better: 'up',   rate: r => r.taskPct, value: r => r.taskPct,
     sub: r => r.taskT ? `${r.taskD} of ${r.taskT}` : '' },
   { id: 'adh',    label: 'Adherence',  kind: 'pct',   better: 'up',   rate: r => r.adhPct,  value: r => r.adhPct },
-  { id: 'wins',   label: 'Wins',       kind: 'count', better: 'up',
-    rate: r => r.hasAny && r.dayEq > 0 ? r.wins / r.dayEq : null, value: r => r.hasAny ? r.wins : null },
+  // Wins deliberately NOT a tile: at 0–5 a week, "0 · −100%" on a Thursday is
+  // noise dressed as a verdict. The read still reports a genuinely high or
+  // missing count against your usual pace (detector 11).
 ];
 
 // n periods ending at p (oldest first). Past periods are whole; the last one
@@ -10849,584 +10750,396 @@ function teInsights(ctx, p) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
-// Single source of truth for the Trends "Charts" period. Returns a CALENDAR
-// week (Sun–Sat) or CALENDAR month so the numbers line up exactly with the
-// Weekly/Monthly Review screens (which are calendar-based). `dashPeriodOffset`
-// walks backwards: 0 = current period, -1 = previous, etc.
-// `endDate` is clamped to today for the current period so partial periods
-// never count future days; `fullEnd` is the untrimmed period end (used for
-// labels + the visual day-count cap).
-function getDashPeriod() {
-  const td = todayStr();
-  if (dashRange === 'month') {
-    let ym = currentYM();
-    for (let i = 0; i < -dashPeriodOffset; i++) ym = previousMonthYM(ym);
-    const r = monthRange(ym);
-    const isCurrent = ym === currentYM();
-    return {
-      mode: 'month', ym,
-      startDate: r.first,
-      endDate: isCurrent ? td : r.last,
-      fullEnd: r.last,
-      dayCount: r.daysInMonth,
-      isCurrent,
-      label: monthLabel(ym),
-    };
-  }
-  const curWeekStart = getWeekStart(td);
-  const weekStart = addDays(curWeekStart, dashPeriodOffset * 7);
-  const weekEnd   = addDays(weekStart, 6);
-  const isCurrent = weekStart === curWeekStart;
-  const sd = new Date(weekStart + 'T00:00:00Z');
-  const ed = new Date(weekEnd + 'T00:00:00Z');
-  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+// ── Trends: adapter from app state to the engine ──
+// Builds the engine's `ctx` from module state. Cheap to build (no scanning):
+// the engine indexes lazily and caches on the object, so one render builds
+// one ctx and every section shares it.
+function trendsLifeLabel(key) {
+  const m = ((lifeCheckConfig && lifeCheckConfig.metrics) || []).find(x => x && x.id === key);
+  return (m && m.label) || _prettifyMetricKey(key);
+}
+function trendsCtx() {
+  const winDates = [];
+  const hasWin = e => e && notTrashed(e) && (e.tags || []).includes('#win');
+  captures.forEach(c => { if (hasWin(c)) winDates.push(capDateIST(c)); });
+  Object.values(sessions || {}).forEach(list => (list || []).forEach(s => { if (hasWin(s) && s.date) winDates.push(s.date); }));
+  (learning || []).forEach(e => { if (hasWin(e) && e.date) winDates.push(e.date); });
+  const journals = (dailyJournals || []).filter(j => j && notTrashed(j));
+  journals.forEach(j => { if (hasWin(j) && j.date) winDates.push(j.date); });
+  const rules = ((adherenceConfig && adherenceConfig.rules) || []).filter(r => r && r.enabled !== false);
+  const adhCache = {};
   return {
-    mode: 'week',
-    startDate: weekStart,
-    endDate: isCurrent ? td : weekEnd,
-    fullEnd: weekEnd,
-    dayCount: 7,
-    isCurrent,
-    label: `${fmt(sd)} – ${fmt(ed)}`,
+    today: todayStr(),
+    blocks, isSleep: isSleepBlock, projectOf: getProjectForBlock,
+    ratings, life: lifeRatings, lifeLabel: trendsLifeLabel,
+    dfts, journals,
+    journalDates: new Set(journals.filter(j => !isDailyEntryEmpty(j)).map(j => j.date)),
+    winDates,
+    adherence: rules.length
+      ? (d => adhCache[d] || (adhCache[d] = { total: rules.length, passed: rules.filter(r => evaluateAdherenceRuleForDay(r, d)).length }))
+      : null,
+    wakingDayMin: wakingTotalMin(),
+    wakingMinToday: elapsedWakingMin(),
   };
 }
 
-// Elapsed WAKING hours across a date range: each fully-past day contributes a
-// full waking day (24h minus the configured sleep duration), today contributes
-// only the waking minutes elapsed so far, future days contribute nothing. Used so "Skipped" never over-inflates
-// on a partial current period.
-function elapsedWakingHrsInRange(startDate, endDate) {
-  const td = todayStr();
-  let mins = 0;
-  _enumerateDates(startDate, endDate).forEach(d => {
-    if (d < td) mins += wakingTotalMin();
-    else if (d === td) mins += elapsedWakingMin();
-  });
-  return mins / 60;
+// ── Trends: small render helpers ──
+function trKpiFmt(kind, v) {
+  if (v == null || isNaN(v)) return '—';
+  if (kind === 'hours') return teFmtH(v);
+  if (kind === 'pct')   return Math.round(v) + '%';
+  if (kind === 'stars') return v.toFixed(1) + '★';
+  return String(Math.round(v));
 }
-
-// Previous comparison range for a period. For a COMPLETED period it's the whole
-// previous period; for the CURRENT (in-progress) period it's the same ELAPSED
-// slice of the previous period (week-to-date vs same-days-last-week), so a
-// mid-period comparison is apples-to-apples instead of "3h so far vs 20h full".
-function prevDashPeriodRange(period) {
-  const td = todayStr();
-  if (period.mode === 'month') {
-    const pr = monthRange(previousMonthYM(period.ym));
-    if (period.isCurrent) {
-      const dayOfMonth = parseInt(td.slice(8, 10), 10);
-      const endDay = Math.min(dayOfMonth, pr.daysInMonth);
-      return { start: pr.first, end: `${pr.first.slice(0, 7)}-${String(endDay).padStart(2, '0')}` };
-    }
-    return { start: pr.first, end: pr.last };
+// "vs your usual" chip. Compares RATES (per waking day for hours/counts), so a
+// partial current period reads fairly. Text carries the sign; colour is a
+// second channel, never the only one.
+function trDeltaChip(k, word) {
+  if (k.rate == null || k.base == null) return '';
+  const d = k.rate - k.base;
+  let txt, flat;
+  if (k.kind === 'pct')        { flat = Math.abs(d) < 3;    txt = (d > 0 ? '+' : '−') + Math.abs(Math.round(d)) + ' pts'; }
+  else if (k.kind === 'stars') { flat = Math.abs(d) < 0.15; txt = (d > 0 ? '+' : '−') + Math.abs(d).toFixed(1); }
+  else {
+    if (!(k.base > 0)) return '';
+    const rel = d / k.base;
+    flat = Math.abs(rel) < 0.08;
+    txt = (d > 0 ? '+' : '−') + Math.abs(Math.round(rel * 100)) + '%';
   }
-  const prevStart = addDays(period.startDate, -7);
-  if (period.isCurrent) {
-    const elapsedOffset = _enumerateDates(period.startDate, period.endDate).length - 1;
-    return { start: prevStart, end: addDays(prevStart, elapsedOffset) };
-  }
-  return { start: prevStart, end: addDays(period.startDate, -1) };
+  const title = `vs your usual (average of the previous 4 ${word}s)`;
+  if (flat) return `<span class="tr-chip tr-chip-flat" title="${title}">≈ usual</span>`;
+  const good = (d > 0) === (k.better === 'up');
+  return `<span class="tr-chip ${good ? 'tr-chip-good' : 'tr-chip-bad'}" title="${title}">${d > 0 ? '↑' : '↓'} ${txt}</span>`;
+}
+// Inline SVG sparkline. Gaps (null) break the line rather than dropping to 0 —
+// an unlogged week is unknown, not zero. The last point is the viewed period.
+function trSparkSvg(vals) {
+  const pts = vals.map((v, i) => ({ v, i })).filter(p => p.v != null);
+  if (pts.length < 2) return '<svg class="tr-spark" viewBox="0 0 80 22" aria-hidden="true"></svg>';
+  const max = Math.max(...pts.map(p => p.v)), min = Math.min(0, ...pts.map(p => p.v));
+  const X = i => 2 + i * (76 / Math.max(1, vals.length - 1));
+  const Y = v => 19 - ((v - min) / ((max - min) || 1)) * 16;
+  let d = '', prev = -2;
+  pts.forEach(p => { d += (p.i === prev + 1 ? 'L' : 'M') + X(p.i).toFixed(1) + ' ' + Y(p.v).toFixed(1) + ' '; prev = p.i; });
+  const last = vals[vals.length - 1];
+  const dot = last != null ? `<circle cx="${X(vals.length - 1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="2.6" class="tr-spark-dot"/>` : '';
+  return `<svg class="tr-spark" viewBox="0 0 80 22" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" class="tr-spark-line"/>${dot}</svg>`;
 }
 
-// The six headline metrics for an arbitrary [start,end] range. Used to compute
-// deltas on the Metrics grid without duplicating the formulas in renderDashboard.
-function periodMetrics(startDate, endDate) {
-  const rb = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepBlock(b));
-  const bd = catBreakdown(rb);
-  const waking = Object.entries(bd).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
-  const deepWorkHrs = bd['deep_work'] || 0;
-  const leakPct = waking > 0 ? (bd['leaks'] || 0) / waking * 100 : 0;
-  let dftSet = 0, dftDone = 0;
-  _enumerateDates(startDate, endDate).forEach(d => {
-    const v = dfts[d];
-    if (!v) return;
-    const status = (typeof v === 'string') ? 'pending' : (v.status || 'pending');
-    const text   = (typeof v === 'string') ? v : (v.text || '');
-    if (text) { dftSet++; if (status === 'done') dftDone++; }
-  });
-  const dftPct = dftSet ? Math.round(dftDone / dftSet * 100) : null;
-  let taskTotal = 0, taskDone = 0;
-  (dailyJournals || []).filter(dj => dj.date >= startDate && dj.date <= endDate)
-    .forEach(j => (j.tasks || []).forEach(t => { taskTotal++; if (t.completed) taskDone++; }));
-  const taskPct = taskTotal ? Math.round(taskDone / taskTotal * 100) : null;
-  const adh = calculateAdherence(startDate, endDate);
-  const adhPct = adh.totalChecks ? adh.percentage : null;
-  const avgR = avgRating(startDate, endDate);
-  return { deepWorkHrs, leakPct, dftPct, taskPct, adhPct, avgR };
-}
-
-// Compact delta chip for a metric card. `pct` renders "pp" (percentage points);
-// otherwise a numeric magnitude + optional suffix. Returns '' when there's no
-// prior value to compare against (keeps the card clean on first use).
-function metricDelta(curr, prev, opts = {}) {
-  const title = `vs previous ${opts.periodWord || 'period'}`;
-  if (curr == null || prev == null || isNaN(prev)) return '';
-  const diff = curr - prev;
-  const minMove = opts.pct ? 1 : 0.05;
-  if (Math.abs(diff) < minMove) return `<div class="metric-delta metric-delta-flat" title="${title}">—</div>`;
-  const up = diff > 0;
-  const good = opts.inverse ? !up : up; // inverse: lower is better (e.g. Leak Rate)
-  const cls = good ? 'metric-delta-up' : 'metric-delta-down';
-  const mag = opts.pct
-    ? Math.abs(Math.round(diff)) + 'pp'
-    : (opts.format ? opts.format(Math.abs(diff)) : Math.abs(diff).toFixed(1)) + (opts.suffix || '');
-  return `<div class="metric-delta ${cls}" title="${title}">${up ? '↑' : '↓'} ${mag}</div>`;
-}
-
-function renderDashboard() {
-  const td = todayStr();
-  // Per Trends-redesign D1: only Week and Month are reachable from the UI.
-  // Migrate any stale 'day' state to 'week'.
-  if (dashRange !== 'week' && dashRange !== 'month') dashRange = 'week';
-
-  // ── Period (calendar week or month; navigable via ‹ ›) ──
-  const period = getDashPeriod();
-  const startDate = period.startDate;
-  const endDate   = period.endDate;   // clamped to today for the current period
-  const n = period.dayCount;          // full period length, for the visual cap
-
-  // ── Top controls ──
-  // Row 1: Weekly | Monthly Review buttons
-  // Row 2: Charts | Calendar (primary view switch)
-  // Charts only → Row 3: Totals | Over Time (prominent, full-width — the
-  //   graphs live under "Over Time"); Row 4: Week | Month + period navigation
-  const periodNav = `
-    <div class="dash-period-nav">
-      <button class="dash-period-btn" onclick="shiftDashPeriod(-1)" aria-label="Previous">‹</button>
-      <span class="dash-period-label">${esc(period.label)}${period.isCurrent ? '' : ''}</span>
-      <button class="dash-period-btn" onclick="shiftDashPeriod(1)" ${dashPeriodOffset >= 0 ? 'disabled' : ''} aria-label="Next">›</button>
+// ── Section: the read ──
+const TR_TONE_MARK = { good: '✓', watch: '!', info: '•' };
+function renderTrendsRead(ctx, p, opts = {}) {
+  const word = p.mode;
+  const res = opts.res || teInsights(ctx, p);
+  const limit = opts.all ? 99 : 3;
+  const showAll = opts.all || _trendsReadAll;
+  const items = showAll ? res.items : res.items.slice(0, limit);
+  const card = it => {
+    const drill = it.drill && it.drill.cat ? ` onclick="trendsInsightDrill('${it.drill.cat}')" role="button"` : '';
+    return `<div class="tr-ins tr-ins-${it.tone}${drill ? ' tr-ins-tap' : ''}"${drill}>
+      <span class="tr-ins-mark" aria-label="${it.tone === 'watch' ? 'Watch' : it.tone === 'good' ? 'Good' : 'Note'}">${TR_TONE_MARK[it.tone] || '•'}</span>
+      <span class="tr-ins-text">${esc(it.text)}</span>
     </div>`;
-  const chartsControls = dashSubTab === 'charts' ? `
-    <div class="view-toggle view-toggle-prominent">
-      <button class="view-btn ${dashView==='totals'?'active':''}" onclick="setDashView('totals')">Totals</button>
-      <button class="view-btn ${dashView==='overtime'?'active':''}" onclick="setDashView('overtime')">📈 Over Time</button>
-    </div>
-    <div class="dash-row3">
-      <div class="range-toggle">
-        <button class="range-btn ${dashRange==='week'?'active':''}" onclick="setDashRange('week')">Week</button>
-        <button class="range-btn ${dashRange==='month'?'active':''}" onclick="setDashRange('month')">Month</button>
-      </div>
-      ${periodNav}
-    </div>` : '';
-  const topControls = `
-    <div class="wr-open-row">
-      <button class="wr-open-btn" onclick="openWeeklyReview()">📋 Weekly Review</button>
-      <button class="wr-open-btn" onclick="openMonthlyReview()">📅 Monthly Review</button>
-    </div>
-    <div class="range-toggle">
-      <button class="range-btn ${dashSubTab==='charts'?'active':''}" onclick="setDashSubTab('charts')">Charts</button>
-      <button class="range-btn ${dashSubTab==='calendar'?'active':''}" onclick="setDashSubTab('calendar')">Calendar</button>
-    </div>
-    ${chartsControls}`;
-
-  // Calendar view — uses the existing History layout. Top controls still
-  // render so the user can flip back to Charts without leaving the tab.
-  if (dashSubTab === 'calendar') {
-    return `<div class="view">
-      ${topControls}
-      ${renderCalendarView()}
-    </div>`;
-  }
-
-  // ── Week / Month view ────────────────────────────────────────
-  // Exclude the sleep block so sleep logged under "Routine" doesn't inflate
-  // the category totals — mirrors the Today ratio bar, which already drops it.
-  // This is waking-time analysis. Routines are NOT excluded.
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepBlock(b));
-  const breakdown = catBreakdown(rangeBlocks);
-  const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a,[,v]) => a+v, 0);
-  // Skipped = available waking hours so far MINUS what was logged. Only count
-  // ELAPSED waking time: each full past day contributes a waking day (24h
-  // minus the configured sleep duration);
-  // today contributes only the waking minutes elapsed so far (reuses the Today
-  // page's elapsedWakingMin so a partial day never over-inflates Skipped).
-  const elapsedWakingHrs = elapsedWakingHrsInRange(startDate, endDate);
-  const skippedHrs = Math.max(0, elapsedWakingHrs - wakingHrs);
-  const maxHrs = Math.max(...Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).map(([,v]) => v), skippedHrs, 0.1);
-  const totalHrs = wakingHrs; // exclude sleep from totals used for percentages
-  const deepWorkHrs = breakdown['deep_work'] || 0;
-  const leakHrs = breakdown['leaks'] || 0;
-  const leakPct = totalHrs > 0 ? (leakHrs / totalHrs) * 100 : 0;
-  const jStreak = journalStreak();
-  const avgR = avgRating(startDate, endDate);
-
-  // ── New metric cards (D2) ──
-  // DFT Completion: days where DFT was set AND completed / days where DFT was set
-  let dftSet = 0, dftDone = 0;
-  _enumerateDates(startDate, endDate).forEach(d => {
-    const v = dfts[d];
-    if (!v) return;
-    const status = (typeof v === 'string') ? 'pending' : (v.status || 'pending');
-    const text   = (typeof v === 'string') ? v : (v.text || '');
-    if (text) { dftSet++; if (status === 'done') dftDone++; }
-  });
-  const dftPct = dftSet ? Math.round((dftDone / dftSet) * 100) : null;
-
-  // Task Completion: completed tasks / total tasks across Daily Journal entries
-  const periodDailies = (dailyJournals || []).filter(dj => dj.date >= startDate && dj.date <= endDate);
-  let taskTotal = 0, taskDone = 0;
-  periodDailies.forEach(j => (j.tasks || []).forEach(t => { taskTotal++; if (t.completed) taskDone++; }));
-  const taskPct = taskTotal ? Math.round((taskDone / taskTotal) * 100) : null;
-
-  // Adherence: configurable rules engine (B1) — period-scoped
-  const adherenceRes = calculateAdherence(startDate, endDate);
-  const adhPct = adherenceRes.totalChecks ? adherenceRes.percentage : null;
-
-  // Previous comparison period (elapsed-matched for the current period) — feeds
-  // the delta chips on the Metrics grid and the Deep Work trend callout.
-  const prevRange = prevDashPeriodRange(period);
-  const prevM = periodMetrics(prevRange.start, prevRange.end);
-  const periodWord = period.mode;
-
-  // Visual cap (D3): 12 hours/day average — single-day spikes don't squash
-  // the rest of the bars. Bars exceeding the cap render at 100% with a small
-  // ▲ overflow indicator on the value label.
-  const capHrs = n * 12;
-  const renderCappedBar = (label, hrs, color) => {
-    const overflow = hrs > capHrs;
-    const pct = capHrs > 0 ? Math.min(hrs, capHrs) / capHrs * 100 : 0;
-    return `
-      <div class="bar-row">
-        <span class="bar-lbl">${label}</span>
-        <div class="bar-track">
-          <div class="bar-fill ${overflow ? 'bar-fill-over' : ''}" style="width:${pct}%;background:${color}"></div>
-        </div>
-        <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' + (overflow ? ' ▲' : '') : '—'}</span>
-      </div>`;
   };
-  const bars = [
-    ...CATS.map(c => renderCappedBar(`${c.icon} ${c.label}`, breakdown[c.id] || 0, c.color)),
-    renderCappedBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color),
-  ].join('');
-
-  // ── Time by Project (D4) ──
-  // Aggregate hours per project across the period via getProjectForBlock,
-  // sort desc, color from MR_PROJECT_PALETTE, same 12hr/day cap.
-  const projectHrs = {};
-  rangeBlocks.forEach(b => {
-    const p = getProjectForBlock(b);
-    if (!p) return;
-    projectHrs[p] = (projectHrs[p] || 0) + (b.duration_min || 0) / 60;
-  });
-  const projectKeys = Object.keys(projectHrs).sort((a, b) => projectHrs[b] - projectHrs[a]);
-  const projectBars = projectKeys
-    .map((p, i) => renderCappedBar(esc(p), projectHrs[p], MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length]))
-    .join('');
-
-  const leakClass = leakPct > 15 ? 'bad' : leakPct > 8 ? 'warn' : 'good';
-
-  // Deep Work trend callout — compares this period to the elapsed-matched previous one.
-  let trendCallout = '';
-  if (dashView === 'overtime') {
-    const diff = deepWorkHrs - (prevM.deepWorkHrs || 0);
-    if (Math.abs(diff) >= 0.1) {
-      const arrow = diff > 0 ? '↑' : '↓';
-      const cls = diff > 0 ? 'trend-up' : 'trend-down';
-      trendCallout = `<div class="trend-callout ${cls}">${arrow} Deep Work ${diff > 0 ? 'up' : 'down'} ${Math.abs(diff).toFixed(1)}h vs previous ${period.mode}</div>`;
-    }
-  }
-
-  // ── Star Metric Snapshot (D5) ──
-  // Reuses the Weekly Review's sparkline mounter via canvas IDs prefixed
-  // 'tr-spark-' so the two screens never collide.
-  const trendsStars = getTrendsStarMetrics(startDate, endDate, dashRange);
-  const starSnapshot = trendsStars.length
-    ? `<div class="section">
-        <div class="sec-hdr"><span class="sec-title">Star Metrics</span></div>
-        <div class="wr-stars">
-          ${trendsStars.map(m => `
-            <div class="wr-star-row">
-              <div class="wr-star-meta">
-                <span class="wr-star-label">${esc(m.label)}</span>
-                <span class="wr-star-avg">${m.avg > 0 ? m.avg.toFixed(1) : '—'}</span>
-              </div>
-              <canvas id="tr-spark-${esc(m.key)}" class="wr-spark" width="80" height="20"></canvas>
-            </div>`).join('')}
-        </div>
-      </div>`
+  const young = res.young && p.isCurrent && !opts.all
+    ? `<div class="tr-young">Early days for this ${word} — the read firms up as it fills in.
+         <button class="tr-link" onclick="shiftDashPeriod(-1)">See last ${word} →</button></div>`
     : '';
-
-  // Time by Project section — only renders in Totals view (Over Time has its
-  // own line-chart variant in D6).
-  const projectSection = dashView === 'totals'
-    ? `<div class="section">
-        <div class="sec-hdr">
-          <span class="sec-title">Time by Project</span>
-          <span class="sec-meta">${projectKeys.length} project${projectKeys.length === 1 ? '' : 's'}</span>
-          ${projectKeys.length ? `<button class="sec-zoom-btn" onclick="openChartZoom('project')" aria-label="Zoom" title="Zoom">↗</button>` : ''}
-        </div>
-        ${projectKeys.length
-          ? `<div class="bar-chart">${projectBars}</div>`
-          : `<div class="empty" style="padding:0.5rem 0;font-size:0.78rem;color:var(--text3)">No project hours logged for this period.</div>`}
-      </div>`
+  const more = !opts.all && res.items.length > limit
+    ? `<button class="tr-more" onclick="toggleTrendsReadAll()">${_trendsReadAll ? 'Show less' : `${res.items.length - limit} more observation${res.items.length - limit === 1 ? '' : 's'}`}</button>`
     : '';
-
-  // ── Over Time chart sections (D6) ──
-  // When dashView === 'overtime', the bar charts get replaced with two
-  // stacked line charts. X axis is days for Week, weekly buckets for Month.
-  // Y axis is hours, capped at the same 12hr/day rule.
-  const chartSection = dashView === 'overtime' ?
-    `<div class="section">
-      <div class="sec-hdr">
-        <span class="sec-title">Categories Over Time</span>
-        <button class="sec-zoom-btn" onclick="openChartZoom('overtime-cat')" aria-label="Zoom" title="Zoom">↗</button>
-      </div>
-      <div class="trend-chart-wrap"><canvas id="trends-cat-chart"></canvas></div>
-    </div>
-    <div class="section">
-      <div class="sec-hdr">
-        <span class="sec-title">Projects Over Time</span>
-        <button class="sec-zoom-btn" onclick="openChartZoom('overtime-proj')" aria-label="Zoom" title="Zoom">↗</button>
-      </div>
-      <div class="trend-chart-wrap"><canvas id="trends-proj-chart"></canvas></div>
-      ${trendCallout}
-    </div>` :
-    (() => {
-      // Slim ratio-bar snapshot of waking time by category (mirrors the Today
-      // page bar). Denominator is waking hours only — Skipped is excluded so
-      // the snapshot reads as "how my logged time split", not "how much I
-      // didn't log". Tap to expand into the full per-category bar chart below.
-      const catRatioSegs = CATS
-        .map(c => ({ c, hrs: breakdown[c.id] || 0 }))
-        .filter(x => x.hrs > 0)
-        .sort((a, b) => b.hrs - a.hrs)
-        .map(({ c, hrs }) => {
-          const pct = totalHrs > 0 ? (hrs / totalHrs) * 100 : 0;
-          return `<div class="db-seg" style="width:${pct}%;background:${c.color}" title="${esc(c.label)} · ${hrs.toFixed(1)}h · ${pct.toFixed(0)}%"></div>`;
-        }).join('');
-      const ratioBar = catRatioSegs
-        ? `<div class="day-ratio-bar" onclick="toggleTrendsCatExpanded()" title="${_trendsCatExpanded ? 'Tap to collapse' : 'Tap for breakdown'}">${catRatioSegs}</div>`
-        : `<div class="empty" style="padding:0.5rem 0;font-size:0.78rem;color:var(--text3)">No waking hours logged for this period.</div>`;
-      const hdr = `
-        <div class="sec-hdr">
-          <span class="sec-title" onclick="toggleTrendsCatExpanded()" style="cursor:pointer">Time by Category <span class="sec-expand-chev ${_trendsCatExpanded ? 'open' : ''}">→</span></span>
-          <span class="sec-meta">${totalHrs.toFixed(1)}h waking</span>
-          ${_trendsCatExpanded ? `<button class="sec-zoom-btn" onclick="event.stopPropagation();openChartZoom('category')" aria-label="Zoom" title="Zoom">↗</button>` : ''}
-        </div>`;
-      // Expanded view: each category bar is tappable to drill into the actual
-      // blocks feeding its total (date · time · label · duration), so an
-      // unexpected number can be traced to specific entries at a glance.
-      const drillBars = CATS.map(c => {
-        const hrs = breakdown[c.id] || 0;
-        const open = _trendsCatDrill === c.id;
-        const barRow = renderCappedBar(`${c.icon} ${c.label}`, hrs, c.color);
-        if (hrs <= 0) return `<div class="cat-drill-wrap">${barRow}</div>`;
-        const catBlocks = rangeBlocks
-          .filter(b => b.category === c.id)
-          .sort((a, b) => (b.date + (b.start_time || '')).localeCompare(a.date + (a.start_time || '')));
-        const panel = open
-          ? `<div class="cat-drill-panel">${catBlocks.map(b => `
-              <div class="cat-drill-item">
-                <span class="cdi-date">${esc(fmtDate(b.date))}</span>
-                <span class="cdi-time">${esc(b.start_time || '—')}</span>
-                <span class="cdi-label">${esc(b.label || c.label)}</span>
-                <span class="cdi-dur">${esc(fmtMins(b.duration_min || 0))}</span>
-              </div>`).join('') || `<div class="cat-drill-empty">No blocks.</div>`}</div>`
-          : '';
-        return `<div class="cat-drill-wrap ${open ? 'open' : ''}">
-          <div class="cat-drill-row" onclick="drillTrendsCat('${c.id}')" title="Tap to see contributing blocks">${barRow}</div>
-          ${panel}
-        </div>`;
-      }).join('');
-      const skippedRow = `<div class="cat-drill-wrap">${renderCappedBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color)}</div>`;
-      return `<div class="section">
-        ${hdr}
-        ${ratioBar}
-        ${_trendsCatExpanded ? `<div class="bar-chart" style="margin-top:0.6rem">${drillBars}${skippedRow}</div>` : ''}
-      </div>`;
-    })();
-
-  // First-run nudge: brand-new user with nothing logged anywhere yet.
-  const firstRunNudge = blocks.length === 0
-    ? `<div class="trends-nudge">📊 No activity logged yet. Log blocks on the <b>Today</b> tab and your trends, streaks and reviews fill in here automatically.</div>`
-    : '';
-
-  const html = `<div class="view">
-    ${topControls}
-    ${firstRunNudge}
-
-    ${chartSection}
-    ${projectSection}
-
-    <div class="section">
-      <div class="sec-hdr">
-        <span class="sec-title">Metrics</span>
-        ${jStreak > 0 ? `<span class="sec-meta">🔥 ${jStreak}-day journaling streak</span>` : ''}
-      </div>
-      <div class="metrics-grid metrics-grid-3">
-        <div class="metric-card">
-          <div class="metric-val">${deepWorkHrs.toFixed(1)}h</div>
-          <div class="metric-lbl">Deep Work</div>
-          ${metricDelta(deepWorkHrs, prevM.deepWorkHrs, { suffix: 'h', periodWord })}
-        </div>
-        <div class="metric-card">
-          <div class="metric-val">${dftPct != null ? dftPct + '%' : '—'}</div>
-          <div class="metric-lbl">DFT Completion</div>
-          ${metricDelta(dftPct, prevM.dftPct, { pct: true, periodWord })}
-        </div>
-        <div class="metric-card">
-          <div class="metric-val">${taskPct != null ? taskPct + '%' : '—'}</div>
-          <div class="metric-lbl">Task Completion</div>
-          ${metricDelta(taskPct, prevM.taskPct, { pct: true, periodWord })}
-        </div>
-        <div class="metric-card">
-          <div class="metric-val">${adhPct != null ? adhPct + '%' : '—'}</div>
-          <div class="metric-lbl">Adherence</div>
-          ${metricDelta(adhPct, prevM.adhPct, { pct: true, periodWord })}
-        </div>
-        <div class="metric-card">
-          <div class="metric-val ${leakClass}">${leakPct.toFixed(0)}%</div>
-          <div class="metric-lbl">Leak Rate</div>
-          ${metricDelta(Math.round(leakPct), Math.round(prevM.leakPct), { pct: true, inverse: true, periodWord })}
-        </div>
-        <div class="metric-card">
-          <div class="metric-val">${avgR ? avgR.toFixed(1) : '—'}</div>
-          <div class="metric-lbl">Avg Day Rating</div>
-          ${metricDelta(avgR || null, prevM.avgR || null, { suffix: '', periodWord })}
-        </div>
-      </div>
-    </div>
-    ${starSnapshot}
+  const body = items.length ? items.map(card).join('') : `<div class="tr-muted">Nothing stands out yet — the read needs a few days of logging.</div>`;
+  return `<div class="section tr-read">
+    ${opts.noHeader ? '' : `<div class="sec-hdr"><span class="sec-title">The read</span></div>`}
+    ${young}${body}${more}
   </div>`;
-
-  // Mount Over Time charts (D6) — two line charts for Categories + Projects.
-  if (dashView === 'overtime') {
-    setTimeout(() => buildTrendsOverTimeCharts(period, rangeBlocks), 0);
-  }
-  // Mount star metric sparklines if any
-  if (trendsStars.length) {
-    setTimeout(() => buildStarSparklines(trendsStars, 'tr-spark-'), 0);
-  }
-
-  return html;
 }
 
-// ── Trends Over Time chart mounter (D6) ────────────────────
-// Builds two line charts — one per category, one per project. Buckets are
-// per-day in Week mode and ~weekly in Month mode. Caps Y at 12hr/day to keep
-// the line scale readable when there are spikes.
-const _trendsOverTimeInstances = {};
-// Over Time x-axis buckets for a period. Week → one bucket per elapsed day
-// (Sun..today/Sat). Month → the SAME calendar-week buckets as the Monthly
-// Review, dropping any bucket that starts after today in the current month.
-function trendsOverTimeBuckets(period) {
-  if (period.mode === 'month') {
-    const kept = monthWeekBuckets(period.ym).filter(bk => bk.start <= period.endDate);
-    return {
-      buckets: kept.map(bk => ({ start: bk.start, end: bk.end })),
-      labels: kept.map(bk => bk.label),
-    };
+// ── Section: review call-to-action (the weekly/monthly ritual) ──
+function renderTrendsReviewCta(p) {
+  if (p.mode === 'week') {
+    const saved = weeklyReviews[p.start];
+    const prev  = weeklyReviews[addDays(p.start, -7)];
+    const intent = prev && (prev.nextWeekIntention || prev.intention);
+    const status = saved ? '✓ Review saved' : (p.isCurrent ? 'Close out the week' : 'Write this week\'s review');
+    return `<button class="tr-review" onclick="openWeeklyReviewAt(${p.offset})">
+      <span class="tr-review-main"><span class="tr-review-icon">📋</span>${status}</span>
+      ${intent ? `<span class="tr-review-sub">Intention: ${esc(intent)}</span>` : ''}
+      <span class="tr-review-go">→</span>
+    </button>`;
   }
-  const days = _enumerateDates(period.startDate, period.endDate);
-  return {
-    buckets: days.map(d => ({ start: d, end: d })),
-    labels: days.map(d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })),
-  };
+  // Monthly reviews are written looking back, so the current month points at
+  // last month's review.
+  const ym = p.isCurrent ? previousMonthYM(p.ym) : p.ym;
+  const saved = monthlyReviews[ym];
+  const name = monthLabel(ym).split(' ')[0];
+  const focusSrc = monthlyReviews[previousMonthYM(p.ym)];
+  const focus = p.isCurrent && focusSrc && focusSrc.oneFocus;
+  return `<button class="tr-review" onclick="openMonthlyReviewAt('${ym}')">
+    <span class="tr-review-main"><span class="tr-review-icon">📅</span>${saved ? `✓ ${name} review saved` : `Review ${name}`}</span>
+    ${focus ? `<span class="tr-review-sub">This month's focus: ${esc(focus)}</span>` : ''}
+    <span class="tr-review-go">→</span>
+  </button>`;
 }
 
-async function buildTrendsOverTimeCharts(period, rangeBlocks) {
-  try { await loadChartJs(); } catch { return; }
-  Object.keys(_trendsOverTimeInstances).forEach(k => {
-    try { _trendsOverTimeInstances[k].destroy(); } catch {}
-    delete _trendsOverTimeInstances[k];
-  });
+// ── Section: scorecard ──
+function renderTrendsScorecard(ctx, p) {
+  const kpis = teKpis(ctx, p, 8);
+  if (!kpis.length) return '';
+  const word = p.mode;
+  const tiles = kpis.map(k => {
+    const sub = k.kind === 'hours' && k.perDay != null ? `${teFmtH(k.perDay)} a day` : (k.sub || '');
+    return `<button class="tr-kpi ${_trendsKpiFocus === k.id ? 'on' : ''}" onclick="focusTrendsKpi('${k.id}')" aria-pressed="${_trendsKpiFocus === k.id}">
+      <span class="tr-kpi-lbl">${esc(k.label)}</span>
+      <span class="tr-kpi-row"><span class="tr-kpi-val">${trKpiFmt(k.kind, k.value)}</span>${trDeltaChip(k, word)}</span>
+      <span class="tr-kpi-sub">${esc(sub) || '&nbsp;'}</span>
+      ${trSparkSvg(k.spark)}
+    </button>`;
+  }).join('');
+  const focus = kpis.find(k => k.id === _trendsKpiFocus);
+  return `<div class="section">
+    <div class="sec-hdr"><span class="sec-title">Scorecard</span><span class="sec-meta">tap a tile for its trend</span></div>
+    <div class="tr-kpis">${tiles}</div>
+    ${focus ? renderTrendsKpiFocus(focus, p) : ''}
+    ${renderTrendsCheckin(ctx, p)}
+  </div>`;
+}
+// Expanded trend for one KPI: 8 periods as columns, "your usual" as a dashed
+// line. Tap a column to jump to that period.
+function renderTrendsKpiFocus(k, p) {
+  const vals = k.spark, periods = k.periods;
+  const max = Math.max(k.base || 0, ...vals.filter(v => v != null), 0.0001);
+  const W = 320, H = 118, top = 16, bot = 20, n = vals.length, gap = 6;
+  const bw = (W - gap * (n - 1)) / n;
+  const Y = v => top + (1 - v / max) * (H - top - bot);
+  const fmtV = v => k.kind === 'hours' ? teFmtH(v) + ' a day' : k.kind === 'count' ? v.toFixed(1) + ' a day' : trKpiFmt(k.kind, v);
+  const bars = vals.map((v, i) => {
+    const x = i * (bw + gap), cur = i === n - 1;
+    const lbl = periods[i].short;
+    const tip = `${periods[i].label}: ${v == null ? 'no data' : fmtV(v)}`;
+    const h = v == null ? 0 : Math.max(2, (H - top - bot) - (Y(v) - top));
+    const valLbl = cur && v != null ? `<text x="${(x + bw / 2).toFixed(1)}" y="${(Y(v) - 4).toFixed(1)}" class="tr-fc-val" text-anchor="middle">${esc(k.kind === 'hours' ? teFmtH(v) : k.kind === 'count' ? v.toFixed(1) : trKpiFmt(k.kind, v))}</text>` : '';
+    return `<g class="tr-fc-bar ${cur ? 'cur' : ''}" onclick="jumpTrendsPeriod(${periods[i].offset})" role="button">
+      <title>${esc(tip)}</title>
+      <rect x="${x.toFixed(1)}" y="${top}" width="${bw.toFixed(1)}" height="${H - top - bot}" class="tr-fc-hit"/>
+      ${v == null ? `<rect x="${x.toFixed(1)}" y="${H - bot - 2}" width="${bw.toFixed(1)}" height="2" rx="1" class="tr-fc-none"/>`
+                  : `<rect x="${x.toFixed(1)}" y="${(H - bot - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3" class="tr-fc-fill"/>`}
+      ${valLbl}
+      <text x="${(x + bw / 2).toFixed(1)}" y="${H - 5}" class="tr-fc-x" text-anchor="middle">${esc(lbl)}</text>
+    </g>`;
+  }).join('');
+  const baseLine = k.base != null
+    ? `<line x1="0" x2="${W}" y1="${Y(k.base).toFixed(1)}" y2="${Y(k.base).toFixed(1)}" class="tr-fc-base"/>
+       <text x="0" y="${(Y(k.base) - 4).toFixed(1)}" class="tr-fc-base-lbl">usual ${esc(fmtV(k.base))}</text>`
+    : '';
+  const what = k.kind === 'hours' ? 'Hours per waking day' : k.kind === 'count' ? 'Per waking day' : k.kind === 'stars' ? 'Average rating' : 'Percent';
+  return `<div class="tr-focus">
+    <div class="tr-focus-hdr"><span>${esc(k.label)} · last ${n} ${p.mode}s</span><span class="tr-muted">${what}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" class="tr-focus-svg" role="img" aria-label="${esc(k.label)} trend">${baseLine}${bars}</svg>
+  </div>`;
+}
+// Daily Check-in metrics as compact rows — same "usual" comparison.
+function renderTrendsCheckin(ctx, p) {
+  const ser = teSeries(ctx, p, 8);
+  const keys = new Set();
+  ser.forEach(s => Object.keys(s.r.life).forEach(k => keys.add(k)));
+  if (!keys.size) return '';
+  const cur = ser[ser.length - 1].r;
+  const rows = [...keys].map(k => {
+    const vals = ser.map(s => s.r.life[k] ? s.r.life[k].avg : null);
+    const prior = vals.slice(0, -1).filter(v => v != null).slice(-4);
+    const base = prior.length ? prior.reduce((a, b) => a + b, 0) / prior.length : null;
+    const v = cur.life[k] ? cur.life[k].avg : null;
+    const chip = trDeltaChip({ kind: 'stars', rate: v, base, better: 'up' }, p.mode).replace('tr-chip-good', 'tr-chip-info').replace('tr-chip-bad', 'tr-chip-info');
+    return `<div class="tr-ci-row">
+      <span class="tr-ci-lbl">${esc(trendsLifeLabel(k))}</span>
+      <span class="tr-ci-val">${v != null ? v.toFixed(1) : '—'}</span>
+      <span class="tr-ci-chip">${chip}</span>
+      ${trSparkSvg(vals)}
+    </div>`;
+  }).join('');
+  return `<div class="tr-ci"><div class="tr-ci-hdr">Daily Check-in <span class="tr-muted">avg /5</span></div>${rows}</div>`;
+}
 
-  // Build buckets and labels. Month buckets are the SAME calendar-week buckets
-  // the Monthly Review uses (monthWeekBuckets) so "W1..W4" means the same thing
-  // on both screens. Buckets past today (current month) are dropped.
-  const { buckets, labels } = trendsOverTimeBuckets(period);
-  // Soft caps only (suggestedMax) — a genuinely big day/week still draws to its
-  // true height instead of being clipped flat at the ceiling.
-  const yMaxCat  = period.mode === 'month' ? 56 : 8;
-  const yMaxProj = period.mode === 'month' ? 84 : 12;
+// ── Section: where the time went ──
+function renderTrendsTime(ctx, p) {
+  const r = tePeriodRange(ctx, p);
+  if (!r.loggedMin) return '';
+  const ser = teSeries(ctx, p, 5).slice(0, -1).map(s => s.r).filter(x => x.loggedMin > 0);
+  const bLogged = ser.reduce((s, x) => s + x.loggedMin, 0);
+  const unlogged = Math.max(0, r.availMin - r.loggedMin);
+  const denom = Math.max(r.availMin, r.loggedMin) || 1;
+  const segs = CATS.filter(c => r.cat[c.id] > 0)
+    .map(c => `<div class="tr-seg-fill" style="flex:${r.cat[c.id]};background:${c.color}" title="${esc(c.label)} · ${teFmtH(r.cat[c.id] / 60)}"></div>`).join('')
+    + (unlogged > 0 ? `<div class="tr-seg-fill tr-seg-unlogged" style="flex:${unlogged}" title="Unlogged · ${teFmtH(unlogged / 60)}"></div>` : '');
+  const rows = CATS.filter(c => r.cat[c.id] > 0 || (bLogged && ser.some(x => x.cat[c.id] > 0))).map(c => {
+    const min = r.cat[c.id] || 0;
+    const share = min / r.loggedMin * 100;
+    const usual = bLogged ? ser.reduce((s, x) => s + (x.cat[c.id] || 0), 0) / bLogged * 100 : null;
+    const open = _trendsCatDrill === c.id;
+    const list = open ? r.list.filter(b => b.category === c.id)
+      .sort((a, b) => (b.date + (b.start_time || '')).localeCompare(a.date + (a.start_time || ''))) : [];
+    const panel = open ? `<div class="cat-drill-panel">${list.map(b => `
+        <div class="cat-drill-item">
+          <span class="cdi-date">${esc(fmtDate(b.date))}</span>
+          <span class="cdi-time">${esc(b.start_time || '—')}</span>
+          <span class="cdi-label">${esc(b.label || c.label)}</span>
+          <span class="cdi-dur">${esc(fmtMins(b.duration_min || 0))}</span>
+        </div>`).join('') || '<div class="cat-drill-empty">No blocks.</div>'}</div>` : '';
+    return `<div class="tr-cat ${open ? 'open' : ''}" id="tr-cat-${c.id}">
+      <button class="tr-cat-row" onclick="drillTrendsCat('${c.id}')" ${min ? '' : 'disabled'}>
+        <span class="tr-dot" style="background:${c.color}"></span>
+        <span class="tr-cat-lbl">${esc(c.label)}</span>
+        <span class="tr-cat-usual">${usual != null ? `usual ${Math.round(usual)}%` : ''}</span>
+        <span class="tr-cat-pct">${min ? Math.round(share) + '%' : '—'}</span>
+        <span class="tr-cat-h">${min ? teFmtH(min / 60) : ''}</span>
+      </button>${panel}
+    </div>`;
+  }).join('');
+  const covPct = r.coverage != null ? Math.round(r.coverage * 100) : null;
+  return `<div class="section">
+    <div class="sec-hdr"><span class="sec-title">Where the time went</span>
+      <span class="sec-meta">${teFmtH(r.loggedMin / 60)} logged${covPct != null ? ` · ${covPct}% of waking hours` : ''}</span></div>
+    <div class="tr-seg-bar">${segs}</div>
+    <div class="tr-cats">${rows}</div>
+    ${unlogged > 0 ? `<div class="tr-unlogged-note"><span class="tr-dot tr-dot-unlogged"></span>Unlogged ${teFmtH(unlogged / 60)} · ${Math.round(unlogged / denom * 100)}% of waking time</div>` : ''}
+    ${renderTrendsProjects(r, ser, p)}
+  </div>`;
+}
+function renderTrendsProjects(r, prior, p) {
+  const names = Object.keys(r.proj).sort((a, b) => r.proj[b] - r.proj[a]);
+  if (!names.length) return '';
+  const bDays = prior.reduce((s, x) => s + x.dayEq, 0);
+  const fullDays = p.mode === 'month' ? _enumerateDates(p.start, p.fullEnd).length : 7;
+  const max = r.proj[names[0]];
+  const shown = _trendsProjAll ? names : names.slice(0, 5);
+  const rows = shown.map(nm => {
+    const usual = bDays > 0 ? prior.reduce((s, x) => s + (x.proj[nm] || 0), 0) / bDays * fullDays / 60 : null;
+    return `<div class="tr-proj">
+      <span class="tr-proj-name">${esc(nm)}</span>
+      <span class="tr-proj-track"><span class="tr-proj-fill" style="width:${(r.proj[nm] / max * 100).toFixed(1)}%"></span></span>
+      <span class="tr-proj-h">${teFmtH(r.proj[nm] / 60)}</span>
+      <span class="tr-proj-usual">${usual ? `~${teFmtH(usual)}` : 'new'}</span>
+    </div>`;
+  }).join('');
+  const more = names.length > 5 ? `<button class="tr-more" onclick="toggleTrendsProjAll()">${_trendsProjAll ? 'Show less' : `${names.length - 5} more`}</button>` : '';
+  return `<div class="tr-projs"><div class="tr-ci-hdr">Projects <span class="tr-muted">this ${p.mode} · usual ${p.mode}</span></div>${rows}${more}</div>`;
+}
 
-  // Aggregate per-category and per-project hours into buckets.
-  const catData = {};
-  CATS.forEach(c => { catData[c.id] = buckets.map(() => 0); });
-  const projData = {};
-  rangeBlocks.forEach(b => {
-    const i = buckets.findIndex(bk => b.date >= bk.start && b.date <= bk.end);
-    if (i < 0) return;
-    const hrs = (b.duration_min || 0) / 60;
-    if (catData[b.category]) catData[b.category][i] += hrs;
-    const p = getProjectForBlock(b);
-    if (p) {
-      if (!projData[p]) projData[p] = buckets.map(() => 0);
-      projData[p][i] += hrs;
-    }
-  });
-  // Drop projects with zero across the entire period (per spec).
-  Object.keys(projData).forEach(k => {
-    if (projData[k].every(v => v === 0)) delete projData[k];
-  });
+// ── Section: rhythm — every day as a 24h strip ──
+// Shows WHEN, which no total can. Tap a day to open it.
+function renderTrendsRhythm(ctx, p, win) {
+  const ix = teIx(ctx);
+  const days = _enumerateDates(p.start, p.mode === 'week' ? p.fullEnd : p.end);
+  if (!days.some(d => ix.byDate.has(d))) return '';
+  const sw = sleepWindow();
+  const band = (a, b, cls) => `<span class="${cls}" style="left:${(a / 1440 * 100).toFixed(2)}%;width:${((b - a) / 1440 * 100).toFixed(2)}%"></span>`;
+  const sleepBands = (() => {
+    const s = sw.startMin, e = sw.startMin + sw.durMin;
+    return e <= 1440 ? band(s, e, 'tr-rh-sleep') : band(s, 1440, 'tr-rh-sleep') + band(0, e - 1440, 'tr-rh-sleep');
+  })();
+  const winBand = win ? band(win[0] * 60, win[1] * 60, 'tr-rh-win') : '';
+  const dense = p.mode === 'month';
+  const rows = days.map(d => {
+    const e = ix.byDate.get(d);
+    const future = d > ctx.today;
+    const segs = (e ? e.list : []).map(b => {
+      if (!b.start_time) return '';
+      const s = hhmmToMin(b.start_time);
+      const dur = Math.min(+b.duration_min || 0, 1440 - s);
+      const cat = CATS.find(c => c.id === b.category);
+      return `<span class="tr-rh-blk" style="left:${(s / 1440 * 100).toFixed(2)}%;width:${Math.max(0.4, dur / 1440 * 100).toFixed(2)}%;background:${cat ? cat.color : 'var(--text3)'}" title="${esc(b.start_time)} · ${esc(cat ? cat.label : b.category)}${b.label ? ' · ' + esc(b.label) : ''} · ${esc(fmtMins(b.duration_min || 0))}"></span>`;
+    }).join('');
+    const dt = new Date(d + 'T00:00:00Z');
+    const wd = dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+    const lbl = dense ? `${wd.slice(0, 2)} ${dt.getUTCDate()}` : `${wd} ${dt.getUTCDate()}`;
+    const rt = ratings[d];
+    return `<button class="tr-rh-row ${d === ctx.today ? 'today' : ''} ${future ? 'future' : ''}" onclick="openTrendsDay('${d}')" ${future ? 'disabled' : ''}
+        title="${esc(fmtDate(d))}${e ? ' · ' + teFmtH(e.logged / 60) + ' logged' : ''}${rt ? ' · ' + rt + '★' : ''}">
+      <span class="tr-rh-lbl">${lbl}</span>
+      <span class="tr-rh-track">${sleepBands}${winBand}${segs}</span>
+      <span class="tr-rh-tot">${e ? teFmtH(e.logged / 60) : ''}</span>
+    </button>`;
+  }).join('');
+  const legend = CATS.map(c => `<span class="tr-lg"><span class="tr-dot" style="background:${c.color}"></span>${esc(c.label)}</span>`).join('');
+  return `<div class="section">
+    <div class="sec-hdr"><span class="sec-title">Rhythm</span><span class="sec-meta">tap a day to open it</span></div>
+    <div class="tr-rh ${dense ? 'dense' : ''}">
+      <div class="tr-rh-axis"><span></span><span class="tr-rh-ticks"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></span><span></span></div>
+      ${rows}
+    </div>
+    <div class="tr-legend">${legend}<span class="tr-lg"><span class="tr-dot tr-dot-sleep"></span>Sleep window</span>${win ? `<span class="tr-lg"><span class="tr-dot tr-dot-win"></span>Your focus window</span>` : ''}</div>
+  </div>`;
+}
 
-  const styles = getComputedStyle(document.documentElement);
-  const tickColor   = (styles.getPropertyValue('--chart-tick')   || '#666').trim();
-  const gridColor   = (styles.getPropertyValue('--chart-grid')   || '#2d2d2d').trim();
-  const legendColor = (styles.getPropertyValue('--chart-legend') || '#999').trim();
-  const baseOptions = {
-    responsive: true, maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    plugins: {
-      legend: { position: 'bottom', labels: { color: legendColor, font: { size: 11 }, boxWidth: 10, padding: 8 } },
-      tooltip: { intersect: false, mode: 'index' },
-    },
-    scales: {
-      x: { ticks: { color: tickColor, font: { size: 11 } }, grid: { color: gridColor } },
-      y: { beginAtZero: true, ticks: { color: tickColor, font: { size: 11 }, callback: v => v + 'h' }, grid: { color: gridColor } },
-    },
-  };
-  const optsWith = (yLimit, hardCap = false) => ({
-    ...baseOptions,
-    scales: {
-      x: baseOptions.scales.x,
-      y: { ...baseOptions.scales.y, ...(hardCap ? { max: yLimit } : { suggestedMax: yLimit }) },
-    },
-  });
-
-  // Categories chart — one line per CAT, color resolved from --c-<id> CSS var.
-  const catCanvas = document.getElementById('trends-cat-chart');
-  if (catCanvas) {
-    const datasets = CATS.map(c => {
-      const color = catColor(c);
-      return {
-        label: c.label,
-        data: catData[c.id],
-        borderColor: color,
-        backgroundColor: color,
-        borderWidth: 2,
-        pointRadius: 2,
-        tension: 0.25,
-      };
-    });
-    _trendsOverTimeInstances.cat = new Chart(catCanvas.getContext('2d'), {
-      type: 'line', data: { labels, datasets }, options: optsWith(yMaxCat),
-    });
+// ── Section: what drives a good day ──
+function renderTrendsDrivers(ctx) {
+  const targets = teDriverTargets(ctx, 90).filter(t => t.n >= TE_DRIVER_MIN_DAYS);
+  const ratedN = (teDriverTargets(ctx, 90)[0] || {}).n || 0;
+  if (!targets.length) {
+    if (!ratedN && !Object.keys(lifeRatings || {}).length) return '';
+    return `<div class="section">
+      <div class="sec-hdr"><span class="sec-title">What makes a good day</span></div>
+      <div class="tr-muted">Rate your day (★ on Today) — after ${TE_DRIVER_MIN_DAYS} rated days this shows which habits your best days share. ${ratedN} so far in the last 90 days.</div>
+    </div>`;
   }
-  // Projects chart — one line per active project, palette-cycled colour.
-  const projCanvas = document.getElementById('trends-proj-chart');
-  const projKeys = Object.keys(projData);
-  if (projCanvas && projKeys.length) {
-    const datasets = projKeys.map((p, i) => {
-      const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
-      return {
-        label: p,
-        data: projData[p],
-        borderColor: color,
-        backgroundColor: color,
-        borderWidth: 2,
-        pointRadius: 2,
-        tension: 0.25,
-      };
-    });
-    _trendsOverTimeInstances.proj = new Chart(projCanvas.getContext('2d'), {
-      type: 'line', data: { labels, datasets }, options: optsWith(yMaxProj),
-    });
-  } else if (projCanvas) {
-    // Render an empty-state message inside the canvas's parent.
-    const wrap = projCanvas.parentElement;
-    if (wrap) wrap.innerHTML = '<div class="empty" style="padding:1rem 0;font-size:0.78rem;color:var(--text3)">No project hours logged for this period.</div>';
+  const key = targets.some(t => t.key === _trendsDriverTarget) ? _trendsDriverTarget : targets[0].key;
+  const res = teDrivers(ctx, key, 90);
+  const unit = key === 'rating' ? '★' : '';
+  const pills = targets.length > 1 ? `<div class="tr-pills">${targets.map(t =>
+    `<button class="tr-pill ${t.key === key ? 'active' : ''}" onclick="setTrendsDriverTarget('${esc(t.key)}')">${esc(t.label)}</button>`).join('')}</div>` : '';
+  const maxD = Math.max(0.5, ...res.rows.map(r => Math.abs(r.diff)));
+  const rows = res.rows.length ? res.rows.map(r => {
+    const w = Math.min(50, Math.abs(r.diff) / maxD * 50);
+    const pos = r.diff > 0;
+    return `<div class="tr-drv" title="${r.nWith} days with · ${r.nWithout} days without">
+      <span class="tr-drv-lbl">${esc(r.label)}</span>
+      <span class="tr-drv-track"><span class="tr-drv-mid"></span><span class="tr-drv-fill ${pos ? 'pos' : 'neg'}" style="${pos ? 'left:50%' : `left:${50 - w}%`};width:${w}%"></span></span>
+      <span class="tr-drv-val">${pos ? '+' : '−'}${Math.abs(r.diff).toFixed(1)}${unit}</span>
+      <span class="tr-drv-sub">${r.withAvg.toFixed(1)} with · ${r.withoutAvg.toFixed(1)} without</span>
+    </div>`;
+  }).join('') : `<div class="tr-muted">Nothing separates your higher and lower days clearly yet.</div>`;
+  return `<div class="section">
+    <div class="sec-hdr"><span class="sec-title">What makes a good day</span><span class="sec-meta">last 90 days</span></div>
+    ${pills}
+    <div class="tr-drvs">${rows}</div>
+    <div class="tr-foot">Average score on days with vs without each habit · ${res.n} scored days · patterns, not proof.</div>
+  </div>`;
+}
+
+// ── Trends tab ──
+function renderDashboard() {
+  if (dashRange !== 'week' && dashRange !== 'month') dashRange = 'week';
+  const cal = dashSubTab === 'calendar';
+  const seg = `<div class="tr-mode" role="tablist">
+    <button role="tab" class="${!cal && dashRange === 'week' ? 'active' : ''}" onclick="setTrendsMode('week')">Week</button>
+    <button role="tab" class="${!cal && dashRange === 'month' ? 'active' : ''}" onclick="setTrendsMode('month')">Month</button>
+    <button role="tab" class="${cal ? 'active' : ''}" onclick="setTrendsMode('calendar')">Calendar</button>
+  </div>`;
+  if (cal) return `<div class="view">${seg}${renderCalendarView()}</div>`;
+
+  const ctx = trendsCtx();
+  const p = tePeriod(dashRange, dashPeriodOffset, ctx.today);
+  const nav = `<div class="tr-nav">
+    <button class="dash-period-btn" onclick="shiftDashPeriod(-1)" aria-label="Previous ${p.mode}">‹</button>
+    <span class="tr-nav-lbl">${esc(p.label)}${p.isCurrent ? `<span class="tr-nav-now">this ${p.mode}</span>` : ''}</span>
+    <button class="dash-period-btn" onclick="shiftDashPeriod(1)" ${dashPeriodOffset >= 0 ? 'disabled' : ''} aria-label="Next ${p.mode}">›</button>
+  </div>`;
+  if (!blocks.length && !Object.keys(ratings).length && !(dailyJournals || []).length) {
+    return `<div class="view">${seg}${nav}
+      <div class="trends-nudge">📊 Nothing logged yet. Log blocks on the <b>Today</b> tab and this page starts telling you what your weeks are made of.</div></div>`;
   }
+  const read = teInsights(ctx, p);
+  const win = (read.items.find(i => i.id === 'window') || {}).window || null;
+  return `<div class="view tr-view">
+    ${seg}${nav}
+    ${renderTrendsRead(ctx, p, { res: read })}
+    ${renderTrendsReviewCta(p)}
+    ${renderTrendsScorecard(ctx, p)}
+    ${renderTrendsTime(ctx, p)}
+    ${renderTrendsRhythm(ctx, p, win)}
+    ${renderTrendsDrivers(ctx)}
+  </div>`;
 }
 
 let _chartJsPromise = null;
@@ -11641,44 +11354,6 @@ function getStarMetricsForWeek(weekStart) {
       .filter(v => typeof v === 'number' && v > 0);
     const prevAvg = prevPresent.length ? prevPresent.reduce((a, b) => a + b, 0) / prevPresent.length : 0;
     return { key, label: _prettifyMetricKey(key), values, avg, prevAvg };
-  });
-}
-
-// Trends-tab star metrics — mode 'week' returns one value per day (7 pts);
-// mode 'month' splits the range into 4 buckets and returns each bucket's
-// average. Reuses the same shape as getStarMetricsForWeek so buildStarSparklines
-// can render either without changes.
-function getTrendsStarMetrics(startDate, endDate, mode) {
-  const days = _enumerateDates(startDate, endDate);
-  const keys = new Set();
-  days.forEach(d => {
-    const r = lifeRatings[d];
-    if (!r || typeof r !== 'object') return;
-    Object.keys(r).forEach(k => { if (typeof r[k] === 'number' && r[k] > 0) keys.add(k); });
-  });
-  return [...keys].sort().map(key => {
-    let values;
-    if (mode === 'month') {
-      const bucketSize = Math.ceil(days.length / 4);
-      values = [];
-      for (let i = 0; i < 4; i++) {
-        const a = i * bucketSize;
-        const b = Math.min(days.length, (i + 1) * bucketSize);
-        if (a >= days.length) { values.push(null); continue; }
-        const present = days.slice(a, b)
-          .map(d => (lifeRatings[d] || {})[key])
-          .filter(v => typeof v === 'number' && v > 0);
-        values.push(present.length ? present.reduce((s, v) => s + v, 0) / present.length : null);
-      }
-    } else {
-      values = days.map(d => {
-        const v = (lifeRatings[d] || {})[key];
-        return (typeof v === 'number' && v > 0) ? v : null;
-      });
-    }
-    const present = values.filter(v => v != null);
-    const avg = present.length ? present.reduce((s, v) => s + v, 0) / present.length : 0;
-    return { key, label: _prettifyMetricKey(key), values, avg };
   });
 }
 
@@ -15461,17 +15136,74 @@ window.closeJournalSearch = window.closeGlobalSearch;
 window.openHomeSearch  = window.openGlobalSearch;
 window.closeHomeSearch = window.closeGlobalSearch;
 window.setHomeSearch   = window.setGlobalSearch;
-window.setDashRange = function(r) { dashRange = r; dashPeriodOffset = 0; if (r === 'day') dashDay = todayStr(); renderMain(); };
-window.setDashView = function(v) { dashView = v; renderMain(); };
+// Week | Month | Calendar — the one control row on Trends. Switching between
+// Week and Month resets to the current period (week -3 and month -3 are not
+// the same place in time); Calendar keeps whatever period you were on.
+window.setTrendsMode = function(m) {
+  if (m === 'calendar') { dashSubTab = 'calendar'; }
+  else {
+    if (dashRange !== m) { dashPeriodOffset = 0; _trendsKpiFocus = null; }
+    dashRange = m; dashSubTab = 'charts';
+    noteUse('trends-' + m);
+  }
+  _trendsCatDrill = null; _trendsReadAll = false;
+  renderMain();
+};
 window.setDashSubTab = function(t) { dashSubTab = t; renderMain(); };
 // Walk the Charts period backward/forward. Never past the current period (0).
 window.shiftDashPeriod = function(dir) {
   const next = dashPeriodOffset + dir;
   if (next > 0) return;
   dashPeriodOffset = next;
+  _trendsCatDrill = null; _trendsReadAll = false;
+  noteUse('trends-period-nav', 8000);
   renderMain();
 };
-window.dashDayNav = function(dir) { dashDay = addDays(dashDay, dir); renderMain(); };
+// Tap a column in a KPI's trend → go to that period.
+window.jumpTrendsPeriod = function(offset) {
+  if (!(offset <= 0) || offset === dashPeriodOffset) return;
+  dashPeriodOffset = offset;
+  _trendsCatDrill = null; _trendsReadAll = false;
+  noteUse('trends-period-nav', 8000);
+  renderMain();
+};
+window.focusTrendsKpi = function(id) {
+  _trendsKpiFocus = _trendsKpiFocus === id ? null : id;
+  if (_trendsKpiFocus) noteUse('trends-kpi');
+  renderMain(true);
+};
+window.toggleTrendsReadAll = function() {
+  _trendsReadAll = !_trendsReadAll;
+  if (_trendsReadAll) noteUse('trends-read-more');
+  renderMain(true);
+};
+window.toggleTrendsProjAll = function() { _trendsProjAll = !_trendsProjAll; renderMain(true); };
+window.setTrendsDriverTarget = function(k) { _trendsDriverTarget = k; noteUse('trends-drivers'); renderMain(true); };
+// An insight about a category opens that category's blocks and scrolls to it.
+window.trendsInsightDrill = function(cat) {
+  _trendsCatDrill = cat;
+  noteUse('trends-insight-drill');
+  renderMain(true);
+  requestAnimationFrame(() => {
+    const el = document.getElementById('tr-cat-' + cat);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+};
+// Rhythm row → that day in the Calendar view (the day's blocks, journal,
+// notes, ratings). Same landing as the home-page date picker.
+window.openTrendsDay = function(d) {
+  noteUse('trends-rhythm-day');
+  histDate = d;
+  const [y, m] = d.split('-').map(Number);
+  histCalMonth = new Date(y, m - 1, 1);
+  dashSubTab = 'calendar';
+  renderMain();
+  requestAnimationFrame(() => {
+    const main = document.getElementById('main');
+    const hdr  = document.querySelector('.hist-day-hdr');
+    if (main && hdr) main.scrollTo({ top: Math.max(0, hdr.offsetTop - 140), behavior: 'smooth' });
+  });
+};
 window.openWeeklyReview = function() { noteUse('weekly-review'); showWeeklyReview = true; weeklyReviewOffset = 0; renderMain(); };
 window.closeWeeklyReview = function() { showWeeklyReview = false; renderMain(); };
 window.shiftWeeklyReview = function(dir) {
@@ -15508,164 +15240,6 @@ function initMonthlyDraft(ym) {
     learnTags: ((saved.learningFocusNext && saved.learningFocusNext.tags) || []).slice(),
     coherence: saved.weeklyIntentionsCoherence || null,
   };
-}
-
-// ── Trends-tab chart zoom modal (D3) ──
-// Re-renders the section's content into the zoom modal at a larger scale.
-// State is intentionally minimal — `chartZoomKey` identifies WHICH chart is
-// open so the modal body can be rebuilt on data refresh.
-let chartZoomKey = null;
-window.openChartZoom = function(key) {
-  chartZoomKey = key;
-  paintChartZoom();
-  const m = document.getElementById('zoom-modal');
-  if (m) m.classList.add('open');
-};
-window.closeChartZoom = function() {
-  chartZoomKey = null;
-  const m = document.getElementById('zoom-modal');
-  if (m) m.classList.remove('open');
-  // Tear down any chart instances mounted inside the modal body.
-  if (window._zoomChartInstance) {
-    try { window._zoomChartInstance.destroy(); } catch {}
-    window._zoomChartInstance = null;
-  }
-};
-function paintChartZoom() {
-  const titleEl = document.getElementById('zoom-modal-title');
-  const bodyEl  = document.getElementById('zoom-modal-body');
-  if (!titleEl || !bodyEl || !chartZoomKey) return;
-  // Same calendar period + waking-only filtering as renderDashboard.
-  const period = getDashPeriod();
-  const startDate = period.startDate;
-  const endDate   = period.endDate;
-  const rangeBlocks = blocks.filter(b => b.date >= startDate && b.date <= endDate && !isSleepBlock(b));
-  const breakdown = catBreakdown(rangeBlocks);
-  const wakingHrs = Object.entries(breakdown).filter(([k]) => k !== SLEEP_CAT.id).reduce((a, [, v]) => a + v, 0);
-  const elapsedWakingHrs = elapsedWakingHrsInRange(startDate, endDate);
-  const skippedHrs = Math.max(0, elapsedWakingHrs - wakingHrs);
-  // In zoom view we relax the cap to actual max so the user sees true scale.
-  const maxHrs = Math.max(...Object.values(breakdown).filter(v => v >= 0), skippedHrs, 0.1);
-  const renderBar = (label, hrs, color) => {
-    const pct = maxHrs > 0 ? Math.min(hrs, maxHrs) / maxHrs * 100 : 0;
-    return `
-      <div class="bar-row" style="margin-bottom:0.6rem">
-        <span class="bar-lbl">${label}</span>
-        <div class="bar-track" style="height:14px">
-          <div class="bar-fill" style="width:${pct}%;background:${color};height:100%"></div>
-        </div>
-        <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
-      </div>`;
-  };
-  if (chartZoomKey === 'category') {
-    titleEl.textContent = 'Time by Category — ' + period.label;
-    bodyEl.innerHTML = `<div class="bar-chart">
-      ${CATS.map(c => renderBar(`${c.icon} ${c.label}`, breakdown[c.id] || 0, c.color)).join('')}
-      ${renderBar(`${SKIPPED_CAT.icon} ${SKIPPED_CAT.label}`, skippedHrs, SKIPPED_CAT.color)}
-    </div>`;
-  } else if (chartZoomKey === 'project') {
-    const projectHrs = {};
-    rangeBlocks.forEach(b => {
-      const p = getProjectForBlock(b);
-      if (!p) return;
-      projectHrs[p] = (projectHrs[p] || 0) + (b.duration_min || 0) / 60;
-    });
-    const keys = Object.keys(projectHrs).sort((a, b) => projectHrs[b] - projectHrs[a]);
-    const projMax = Math.max(...keys.map(k => projectHrs[k]), 0.1);
-    const renderProjBar = (label, hrs, color) => {
-      const pct = projMax > 0 ? hrs / projMax * 100 : 0;
-      return `
-        <div class="bar-row" style="margin-bottom:0.6rem">
-          <span class="bar-lbl">${esc(label)}</span>
-          <div class="bar-track" style="height:14px">
-            <div class="bar-fill" style="width:${pct}%;background:${color};height:100%"></div>
-          </div>
-          <span class="bar-val">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</span>
-        </div>`;
-    };
-    titleEl.textContent = 'Time by Project — ' + period.label;
-    bodyEl.innerHTML = keys.length
-      ? `<div class="bar-chart">${keys.map((p, i) => renderProjBar(p, projectHrs[p], MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length])).join('')}</div>`
-      : `<div class="empty" style="padding:1rem 0;color:var(--text3)">No project hours logged.</div>`;
-  } else if (chartZoomKey === 'overtime-cat' || chartZoomKey === 'overtime-proj') {
-    // Mount a larger Chart.js line chart inside the modal. Tear down any
-    // prior modal instance first so we don't leak canvases.
-    if (window._zoomChartInstance) {
-      try { window._zoomChartInstance.destroy(); } catch {}
-      window._zoomChartInstance = null;
-    }
-    const isCat = chartZoomKey === 'overtime-cat';
-    titleEl.textContent = (isCat ? 'Categories Over Time' : 'Projects Over Time') + ' — ' + period.label;
-    bodyEl.innerHTML = `<div style="position:relative;height:60vh;min-height:280px"><canvas id="zoom-line-canvas"></canvas></div>`;
-
-    // Same bucket structure (and calendar-week month buckets) as buildTrendsOverTimeCharts.
-    const { buckets, labels } = trendsOverTimeBuckets(period);
-    const yMax = isCat ? (period.mode === 'month' ? 56 : 8) : (period.mode === 'month' ? 84 : 12);
-    const catData = {}; CATS.forEach(c => { catData[c.id] = buckets.map(() => 0); });
-    const projData = {};
-    rangeBlocks.forEach(b => {
-      const i = buckets.findIndex(bk => b.date >= bk.start && b.date <= bk.end);
-      if (i < 0) return;
-      const hrs = (b.duration_min || 0) / 60;
-      if (catData[b.category]) catData[b.category][i] += hrs;
-      const p = getProjectForBlock(b);
-      if (p) {
-        if (!projData[p]) projData[p] = buckets.map(() => 0);
-        projData[p][i] += hrs;
-      }
-    });
-    Object.keys(projData).forEach(k => { if (projData[k].every(v => v === 0)) delete projData[k]; });
-
-    loadChartJs().then(() => {
-      const canvas = document.getElementById('zoom-line-canvas');
-      if (!canvas) return;
-      const styles = getComputedStyle(document.documentElement);
-      const tickColor   = (styles.getPropertyValue('--chart-tick')   || '#666').trim();
-      const gridColor   = (styles.getPropertyValue('--chart-grid')   || '#2d2d2d').trim();
-      const legendColor = (styles.getPropertyValue('--chart-legend') || '#999').trim();
-      let datasets;
-      if (isCat) {
-        datasets = CATS.map(c => {
-          const color = catColor(c);
-          return {
-            label: c.label, data: catData[c.id],
-            borderColor: color, backgroundColor: color,
-            borderWidth: 2, pointRadius: 3, tension: 0.25,
-          };
-        });
-      } else {
-        const keys = Object.keys(projData);
-        if (!keys.length) {
-          bodyEl.innerHTML = `<div class="empty" style="padding:1rem 0;color:var(--text3)">No project hours logged for this period.</div>`;
-          return;
-        }
-        datasets = keys.map((p, i) => {
-          const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
-          return { label: p, data: projData[p], borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 3, tension: 0.25 };
-        });
-      }
-      window._zoomChartInstance = new Chart(canvas.getContext('2d'), {
-        type: 'line', data: { labels, datasets },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { position: 'bottom', labels: { color: legendColor, font: { size: 12 }, boxWidth: 12, padding: 10 } },
-            tooltip: { intersect: false, mode: 'index' },
-          },
-          scales: {
-            x: { ticks: { color: tickColor, font: { size: 12 } }, grid: { color: gridColor } },
-            y: {
-              beginAtZero: true,
-              suggestedMax: yMax,
-              ticks: { color: tickColor, font: { size: 12 }, callback: v => v + 'h' },
-              grid: { color: gridColor },
-            },
-          },
-        },
-      });
-    }).catch(() => { /* loadChartJs failed — leave the empty body */ });
-  }
 }
 
 window.openMonthlyReview = function() {
@@ -16372,6 +15946,17 @@ const USAGE_GROUPS = [
   { title: 'Daily Focus Task', ids: () => [
     { id: 'dft-strip',   label: 'Tapped the DFT strip' },
     { id: 'dft-resolve', label: 'Marked done or skipped' },
+  ] },
+  { title: 'Trends', ids: () => [
+    { id: 'trends-week',          label: 'Switched to Week' },
+    { id: 'trends-month',         label: 'Switched to Month' },
+    { id: 'trends-period-nav',    label: 'Walked to another period' },
+    { id: 'trends-read-more',     label: 'Opened more observations' },
+    { id: 'trends-insight-drill', label: 'Tapped an observation' },
+    { id: 'trends-kpi',           label: 'Opened a scorecard trend' },
+    { id: 'trends-cat-drill',     label: 'Opened a category\'s blocks' },
+    { id: 'trends-rhythm-day',    label: 'Opened a day from Rhythm' },
+    { id: 'trends-drivers',       label: 'Switched good-day target' },
   ] },
   { title: 'Reviews', ids: () => [
     { id: 'weekly-review',  label: 'Weekly Review' },
@@ -20557,12 +20142,6 @@ function applyTheme(pref) {
   if (meta) {
     const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
     if (bg) meta.setAttribute('content', bg);
-  }
-  // If the Trends tab is showing live charts, re-render it so Chart.js datasets
-  // and grid colors re-read the freshly-applied theme tokens.
-  if (activeTab === 'dashboard' && dashSubTab === 'charts' && dashView === 'overtime'
-      && !showWeeklyReview && !showMonthlyReview) {
-    setTimeout(() => renderMain(true), 0);
   }
 }
 
