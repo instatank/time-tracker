@@ -3673,6 +3673,15 @@ mark.hl {
 .tr-dot-sleep { background: repeating-linear-gradient(135deg, var(--surface2) 0 2px, var(--border2) 2px 3px); border: 1px solid var(--border2); }
 .tr-dot-win { background: var(--accent-soft); border: 1px dashed var(--accent); }
 
+/* Review "at a glance" strip — the scorecard without sparklines */
+.tr-glance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1rem; }
+@media (max-width: 480px) { .tr-glance { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tr-gl { background: var(--surface); padding: 0.5rem 0.6rem; display: flex; flex-direction: column; min-width: 0; }
+.tr-gl-lbl { font-size: 0.66rem; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; }
+.tr-gl-val { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tr-gl-sub { font-size: 0.68rem; color: var(--text3); display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.wr-view .tr-read, .mr-view .tr-read { margin-bottom: 1rem; }
+
 /* What makes a good day */
 .tr-pills { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.55rem; }
 .tr-pill {
@@ -3997,72 +4006,11 @@ mark.hl {
   margin-top: 0.25rem;
 }
 
-/* Monthly trend chart cards — compact (~180px tall) so three stack
-   without excessive scrolling. */
-.mr-chart-card {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem;
-  margin-top: 0.6rem;
-}
-.mr-chart-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text2);
-  margin-bottom: 0.3rem;
-}
-.mr-chart-wrap {
-  position: relative;
-  height: 180px;
-}
-.mr-chart-wrap canvas { width: 100% !important; height: 100% !important; }
 .wr-subline {
   font-size: 0.78rem;
   color: var(--text2);
   margin: -0.5rem 0 1rem;
 }
-.wr-tiles {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
-}
-.wr-tile {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0.7rem 0.8rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-.wr-tile-label {
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text3);
-  text-transform: uppercase;
-}
-.wr-tile-value {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-}
-.wr-tile-sub {
-  font-size: 0.7rem;
-  color: var(--text3);
-  margin-top: -0.05rem;
-}
-.wr-tile-delta {
-  font-size: 0.66rem;
-  margin-top: 0.15rem;
-  font-weight: 500;
-}
-.wr-delta-up   { color: var(--success); }
-.wr-delta-down { color: var(--danger); }
-.wr-delta-flat { color: var(--text3); }
 
 /* AI review summary (weekly + monthly reviews) */
 .ai-review-summary {
@@ -4133,43 +4081,6 @@ mark.hl {
 .ai-summary-actions .accept:hover { opacity: 0.9; }
 .ai-summary-actions .reject:hover { color: var(--danger); border-color: var(--danger); }
 .ai-summary-clear:hover { color: var(--danger); border-color: var(--danger); }
-
-/* Star metric trend rows + tiny Chart.js sparkline canvas */
-.wr-stars {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0.5rem 0.7rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-.wr-star-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.5rem;
-  align-items: center;
-}
-.wr-star-meta { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
-.wr-star-label {
-  font-size: 0.82rem;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.wr-star-avg {
-  font-size: 0.78rem;
-  color: var(--text2);
-  font-weight: 600;
-  margin-left: auto;
-}
-.wr-spark {
-  display: block;
-  width: 80px;
-  height: 20px;
-}
-.wr-patterns { display: flex; flex-direction: column; gap: 0.4rem; }
 
 /* Open Loops — render-time ledger of unfinished journal tasks / session
    pending items / today's DFT, shown on the current + just-ended week. */
@@ -4279,7 +4190,6 @@ mark.hl {
 }
 .dash-period-btn:disabled { color: var(--text3); cursor: default; }
 .dash-period-btn:not(:disabled):hover { background: var(--surface3); }
-
 
 /* ── Empty state ────────────────────────────────────────────── */
 .empty {
@@ -10692,20 +10602,10 @@ function teInsights(ctx, p) {
       : `${rise.nm} is new on your radar: ${teFmtH(rise.curMin / 60)} this ${word}.`);
   }
 
-  // 10. Adherence vs output, over 4 weeks (one week is too few days to split).
-  if (ctx.adherence) {
-    const ix = teIx(ctx), full = [], part = [];
-    teDates(teAdd(p.end, -27), p.end).forEach(d => {
-      if (d >= ctx.today) return;
-      const a = ctx.adherence(d), e = ix.byDate.get(d);
-      if (!a || !a.total || !e) return;
-      (a.passed === a.total ? full : part).push((e.cat.deep_work || 0) / 60);
-    });
-    if (full.length >= 3 && part.length >= 3) {
-      const af = teMean(full), ap = teMean(part);
-      if (Math.abs(af - ap) >= 0.5) add('adh', 'info', 32, `On full-adherence days you average ${teFmtH(af)} of deep work vs ${teFmtH(ap)} on the rest.`);
-    }
-  }
+  // (10 — "deep work on full-adherence days vs the rest" — was removed:
+  // adherence rules are themselves defined by logged time blocks, so the
+  // comparison restated the rule. Adherence vs your RATING is independent
+  // and lives in teDrivers.)
 
   // 11. Wins.
   if (recent.length) {
@@ -11107,6 +11007,18 @@ function renderTrendsDrivers(ctx) {
   </div>`;
 }
 
+// Compact numbers strip for the reviews: the scorecard without sparklines.
+function renderReviewGlance(ctx, p) {
+  const kpis = teKpis(ctx, p, 8);
+  const r = tePeriodRange(ctx, p);
+  const cells = kpis.map(k => `<div class="tr-gl">
+      <span class="tr-gl-lbl">${esc(k.label)}</span>
+      <span class="tr-gl-val">${trKpiFmt(k.kind, k.value)}</span>
+      <span class="tr-gl-sub">${k.sub ? esc(k.sub) : ''}${trDeltaChip(k, p.mode)}</span>
+    </div>`).join('') + `<div class="tr-gl"><span class="tr-gl-lbl">Wins</span><span class="tr-gl-val">${r.wins}</span><span class="tr-gl-sub">#win entries</span></div>`;
+  return `<div class="tr-glance">${cells}</div>`;
+}
+
 // ── Trends tab ──
 function renderDashboard() {
   if (dashRange !== 'week' && dashRange !== 'month') dashRange = 'week';
@@ -11140,51 +11052,6 @@ function renderDashboard() {
     ${renderTrendsRhythm(ctx, p, win)}
     ${renderTrendsDrivers(ctx)}
   </div>`;
-}
-
-let _chartJsPromise = null;
-function loadChartJs() {
-  if (window.Chart) return Promise.resolve();
-  if (_chartJsPromise) return _chartJsPromise;
-  _chartJsPromise = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
-    s.onload = resolve;
-    s.onerror = () => { _chartJsPromise = null; reject(); };
-    document.head.appendChild(s);
-  });
-  return _chartJsPromise;
-}
-
-// Resolve a CSS variable like --c-deep_work to its computed hex/rgb string.
-function cssVar(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-// Resolve a category to a real colour string. CATS[*].color uses
-// `var(--c-<id>)` so light/dark theming works for inline CSS, but Chart.js
-// needs an actual hex/rgb string in its JS dataset config.
-function catColor(c) {
-  if (!c) return '#666';
-  const v = cssVar('--c-' + c.id);
-  return v || (c.color || '#666');
-}
-
-// Derive an rgba() fill from a resolved category token (#rgb or #rrggbb).
-function hexToRgba(hex, alpha) {
-  const h = (hex || '').replace('#', '');
-  if (h.length === 3) {
-    const r = parseInt(h[0] + h[0], 16);
-    const g = parseInt(h[1] + h[1], 16);
-    const b = parseInt(h[2] + h[2], 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-  if (h.length === 6) {
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-  return hex || 'transparent';
 }
 
 // ── Weekly Review ─────────────────────────────────────────────
@@ -11512,344 +11379,6 @@ function monthlyStats(ym) {
   };
 }
 
-// ── Pattern engine ─────────────────────────────────────────
-// Returns up to 2 plain-English observations sorted by data significance.
-// Each candidate has a `score` (heuristic — bigger = more notable) and a
-// `text` field. `weekData` is the result of weeklyStats(weekStart).
-function surfacePatterns(weekData) {
-  const candidates = [];
-  const ws = weekData;
-  const { weekStart, weekEnd, days, dayDeepHrs, dayLeakHrs, breakdown, totalLoggedHrs } = ws;
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-  // How many days have ANY data — used to gate the engine
-  const daysWithData = days.filter(d =>
-    blocks.some(b => b.date === d) || ratings[d] || (lifeRatings[d] && Object.keys(lifeRatings[d]).length)
-  ).length;
-  if (daysWithData < 3) return { observations: [], notEnoughData: true };
-
-  // 1) Adherence correlation: deep-work hrs on full-adherence days vs others
-  const fullAdherenceMap = (() => {
-    const enabledRules = ((adherenceConfig && adherenceConfig.rules) || []).filter(r => r && r.enabled !== false);
-    if (!enabledRules.length) return null;
-    const m = {};
-    days.forEach(d => {
-      m[d] = enabledRules.every(r => evaluateAdherenceRuleForDay(r, d));
-    });
-    return m;
-  })();
-  if (fullAdherenceMap) {
-    const passing = [], failing = [];
-    days.forEach((d, i) => (fullAdherenceMap[d] ? passing : failing).push(dayDeepHrs[i]));
-    if (passing.length && failing.length) {
-      const avgP = passing.reduce((a, b) => a + b, 0) / passing.length;
-      const avgF = failing.reduce((a, b) => a + b, 0) / failing.length;
-      const diff = avgP - avgF;
-      if (Math.abs(diff) >= 0.5) {
-        candidates.push({
-          score: Math.abs(diff) * 10,
-          text: `Your deep work averaged ${avgP.toFixed(1)}h on days with full systems adherence vs ${avgF.toFixed(1)}h on others.`,
-        });
-      }
-    }
-  }
-
-  // 2) Day concentration of leaks
-  const totalLeak = dayLeakHrs.reduce((a, b) => a + b, 0);
-  if (totalLeak > 0) {
-    let maxIdx = 0, maxVal = 0;
-    dayLeakHrs.forEach((v, i) => { if (v > maxVal) { maxVal = v; maxIdx = i; } });
-    if (maxVal / totalLeak > 0.4 && maxVal >= 1) {
-      const dn = dayNames[new Date(days[maxIdx] + 'T00:00:00').getDay()];
-      candidates.push({
-        score: (maxVal / totalLeak) * 10,
-        text: `Most of your leaks (${maxVal.toFixed(1)}h) came from ${dn}.`,
-      });
-    }
-  }
-
-  // 3) Task completion trend vs previous week
-  if (ws.taskCompletionRate != null && ws.prevTaskCompletionRate != null) {
-    const cur  = Math.round(ws.taskCompletionRate * 100);
-    const prev = Math.round(ws.prevTaskCompletionRate * 100);
-    const delta = cur - prev;
-    if (delta <= -15) {
-      candidates.push({
-        score: Math.abs(delta),
-        text: `Task completion dropped from ${prev}% to ${cur}% this week — closing things out is slipping.`,
-      });
-    } else if (delta >= 15) {
-      candidates.push({
-        score: delta,
-        text: `Task completion improved from ${prev}% to ${cur}% — you're closing things out more reliably.`,
-      });
-    }
-  }
-
-  // 4) Category ratio anomalies vs running 4-week baseline (or prev week)
-  if (totalLoggedHrs > 0) {
-    const baselineBlocks = (catId) => {
-      // Try last 4 weeks ending at prev-week end
-      const fourStart = addDays(weekStart, -28);
-      const fourEnd   = addDays(weekStart, -1);
-      const slice = blocks.filter(b => b.date >= fourStart && b.date <= fourEnd && b.category === catId);
-      const sliceTotal = blocks.filter(b => b.date >= fourStart && b.date <= fourEnd && b.category !== SLEEP_CAT.id);
-      if (sliceTotal.length === 0) return null;
-      const catHrs   = slice.reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-      const totalHrs = sliceTotal.reduce((s, b) => s + (b.duration_min || 0), 0) / 60;
-      return totalHrs > 0 ? catHrs / totalHrs : null;
-    };
-    const checks = [
-      { id: 'routine',   label: 'Routine',   dir: 'high', threshold: 1.3 },
-      { id: 'learning',  label: 'Learning',  dir: 'low',  threshold: 0.7 },
-      { id: 'leisure',   label: 'Leisure',   dir: 'high', threshold: 1.3 },
-      { id: 'leaks',     label: 'Leaks',     dir: 'high', threshold: 1.3 },
-      { id: 'practice',  label: 'Practice',  dir: 'low',  threshold: 0.7 },
-      { id: 'deep_work', label: 'Deep Work', dir: 'low',  threshold: 0.7 },
-    ];
-    let mostExtreme = null;
-    checks.forEach(c => {
-      const ratio = (breakdown[c.id] || 0) / totalLoggedHrs;
-      const baseline = baselineBlocks(c.id);
-      if (baseline == null || baseline === 0) return;
-      const factor = ratio / baseline;
-      const triggered = (c.dir === 'high' && factor >= c.threshold) ||
-                        (c.dir === 'low'  && factor <= c.threshold);
-      if (!triggered) return;
-      const deviation = Math.abs(Math.log2(factor || 0.0001));
-      if (!mostExtreme || deviation > mostExtreme.deviation) {
-        mostExtreme = {
-          label: c.label,
-          curPct: Math.round(ratio * 100),
-          basePct: Math.round(baseline * 100),
-          dir: c.dir,
-          deviation,
-        };
-      }
-    });
-    if (mostExtreme) {
-      const dirText = mostExtreme.dir === 'high' ? 'unusually high' : 'unusually low';
-      candidates.push({
-        score: mostExtreme.deviation * 8,
-        text: `${mostExtreme.label} was ${mostExtreme.curPct}% of your week — ${dirText} vs your typical ${mostExtreme.basePct}%.`,
-      });
-    }
-  }
-
-  // 5) Unlogged hours
-  if (totalLoggedHrs < 67 && totalLoggedHrs > 0) {
-    const unlogged = Math.max(0, 112 - totalLoggedHrs);
-    candidates.push({
-      score: (67 - totalLoggedHrs) * 0.3,
-      text: `You logged ${totalLoggedHrs.toFixed(0)} hours this week — ${unlogged.toFixed(0)} hours unaccounted for. Worth checking where time is going.`,
-    });
-  }
-
-  // 6) Star-metric movement
-  const starMetrics = getStarMetricsForWeek(weekStart);
-  starMetrics.forEach(m => {
-    if (m.prevAvg <= 0) return;
-    const diff = m.avg - m.prevAvg;
-    if (Math.abs(diff) < 0.5) return;
-    candidates.push({
-      score: Math.abs(diff) * 6,
-      text: `${m.label} ${diff > 0 ? 'improved' : 'dropped'} from ${m.prevAvg.toFixed(1)} to ${m.avg.toFixed(1)} this week.`,
-    });
-  });
-
-  // 7) DFT execution gap — set 5+, completed < 50%
-  if (ws.dftSet >= 5 && ws.dftRate != null && ws.dftRate < 0.5) {
-    candidates.push({
-      score: (5 - ws.dftDone) * 2 + 5,
-      text: `You set DFTs but completed less than half — what's blocking follow-through?`,
-    });
-  }
-
-  candidates.sort((a, b) => b.score - a.score);
-  return { observations: candidates.slice(0, 2).map(c => c.text), notEnoughData: false };
-}
-
-// ── Sparkline mounter ─────────────────────────────────────
-// Lazy-load Chart.js (already used elsewhere) and mount one tiny line chart
-// per discovered star metric. Destroys old instances first so re-renders
-// don't leak.
-const _sparkChartInstances = {};
-async function buildStarSparklines(metrics, idPrefix = 'wr-spark-') {
-  if (!metrics || !metrics.length) return;
-  try { await loadChartJs(); } catch { return; }
-  Object.keys(_sparkChartInstances).forEach(k => {
-    try { _sparkChartInstances[k].destroy(); } catch {}
-    delete _sparkChartInstances[k];
-  });
-  const accent  = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#3b82f6').trim();
-  metrics.forEach(m => {
-    const canvas = document.getElementById(idPrefix + m.key);
-    if (!canvas) return;
-    _sparkChartInstances[m.key] = new Chart(canvas.getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: m.values.map(() => ''),
-        datasets: [{
-          data: m.values.map(v => (v == null ? null : v)),
-          borderColor: accent,
-          backgroundColor: 'transparent',
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.25,
-          spanGaps: true,
-        }],
-      },
-      options: {
-        responsive: false,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { enabled: false } },
-        scales: { x: { display: false }, y: { display: false, min: 0, max: 5 } },
-      },
-    });
-  });
-}
-
-// ── Monthly trend charts (C1.4) ───────────────────────────
-// Three line charts side-stacked vertically. Each is rebuilt on every render
-// so old instances must be destroyed first to avoid leaking canvases.
-const _monthlyChartInstances = {};
-const MR_PROJECT_PALETTE = ['#3b82f6', '#10b981', '#a855f7', '#f59e0b', '#ec4899', '#06b6d4', '#ef4444', '#6366f1'];
-async function buildMonthlyCharts(stats) {
-  if (!stats || !stats.buckets || !stats.buckets.length) return;
-  try { await loadChartJs(); } catch { return; }
-  // Tear down any prior instances before mounting fresh ones.
-  Object.keys(_monthlyChartInstances).forEach(k => {
-    try { _monthlyChartInstances[k].destroy(); } catch {}
-    delete _monthlyChartInstances[k];
-  });
-  const labels = stats.buckets.map(b => b.label);
-  const styles = getComputedStyle(document.documentElement);
-  const tickColor   = (styles.getPropertyValue('--chart-tick')   || '#666').trim();
-  const gridColor   = (styles.getPropertyValue('--chart-grid')   || '#2d2d2d').trim();
-  const legendColor = (styles.getPropertyValue('--chart-legend') || '#999').trim();
-
-  const baseOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: { color: legendColor, font: { size: 11 }, boxWidth: 10, padding: 8 },
-      },
-      tooltip: { intersect: false, mode: 'index' },
-    },
-    scales: {
-      x: { ticks: { color: tickColor, font: { size: 11 } }, grid: { color: gridColor } },
-      y: { beginAtZero: true, ticks: { color: tickColor, font: { size: 11 } }, grid: { color: gridColor } },
-    },
-  };
-
-  // Chart 1: Categories — one line per CAT id present in CATS, color from CAT.
-  const catCanvas = document.getElementById('mr-chart-categories');
-  if (catCanvas) {
-    const datasets = CATS.map(c => {
-      const color = catColor(c);
-      return {
-        label: c.label,
-        data: stats.categoryByWeek[c.id] || labels.map(() => 0),
-        borderColor: color,
-        backgroundColor: color,
-        borderWidth: 2,
-        pointRadius: 2,
-        tension: 0.25,
-      };
-    });
-    _monthlyChartInstances.categories = new Chart(catCanvas.getContext('2d'), {
-      type: 'line',
-      data: { labels, datasets },
-      options: {
-        ...baseOptions,
-        // Hard-cap categories at 56h/bucket (8 hr/day average × 7 days) so
-        // single-day spikes don't visually compress the rest of the lines.
-        scales: { ...baseOptions.scales, y: { ...baseOptions.scales.y, max: 56, ticks: { ...baseOptions.scales.y.ticks, callback: v => v + 'h' } } },
-      },
-    });
-  }
-
-  // Chart 2: Projects — one line per discovered project; cycle the palette.
-  const projCanvas = document.getElementById('mr-chart-projects');
-  const projectKeys = Object.keys(stats.projectByWeek || {});
-  if (projCanvas && projectKeys.length) {
-    const datasets = projectKeys.map((p, i) => {
-      const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
-      return {
-        label: p,
-        data: stats.projectByWeek[p] || labels.map(() => 0),
-        borderColor: color,
-        backgroundColor: color,
-        borderWidth: 2,
-        pointRadius: 2,
-        tension: 0.25,
-      };
-    });
-    _monthlyChartInstances.projects = new Chart(projCanvas.getContext('2d'), {
-      type: 'line',
-      data: { labels, datasets },
-      options: {
-        ...baseOptions,
-        scales: { ...baseOptions.scales, y: { ...baseOptions.scales.y, ticks: { ...baseOptions.scales.y.ticks, callback: v => v + 'h' } } },
-      },
-    });
-  }
-
-  // Chart 3: Star metrics — one line per discovered metric, y bounded 0–5.
-  const starCanvas = document.getElementById('mr-chart-stars');
-  const starsByWeek = stats.starsByWeek || [];
-  if (starCanvas && starsByWeek.length) {
-    const datasets = starsByWeek.map((m, i) => {
-      const color = MR_PROJECT_PALETTE[i % MR_PROJECT_PALETTE.length];
-      return {
-        label: m.label,
-        data: m.values, // null entries render as gaps when spanGaps=false
-        borderColor: color,
-        backgroundColor: color,
-        borderWidth: 2,
-        pointRadius: 2,
-        tension: 0.25,
-        spanGaps: true,
-      };
-    });
-    _monthlyChartInstances.stars = new Chart(starCanvas.getContext('2d'), {
-      type: 'line',
-      data: { labels, datasets },
-      options: {
-        ...baseOptions,
-        scales: {
-          x: baseOptions.scales.x,
-          y: { ...baseOptions.scales.y, min: 0, max: 5, ticks: { ...baseOptions.scales.y.ticks, stepSize: 1 } },
-        },
-      },
-    });
-  }
-}
-
-// Format a delta tile-line. `kind` controls colour: 'inverse' for metrics
-// where lower = better (none in this set today, but kept for future use).
-function fmtDelta(curr, prev, suffix, opts = {}) {
-  if (prev == null || isNaN(prev) || prev === 0 && curr === 0) {
-    return `<div class="wr-tile-delta wr-delta-flat">no prior data</div>`;
-  }
-  const diff = curr - prev;
-  if (Math.abs(diff) < 0.05) return `<div class="wr-tile-delta wr-delta-flat">— no change</div>`;
-  const arrow = diff > 0 ? '↑' : '↓';
-  const cls   = diff > 0 ? 'wr-delta-up' : 'wr-delta-down';
-  const text  = (opts.format ? opts.format(Math.abs(diff)) : Math.abs(diff).toFixed(1)) + (suffix || '');
-  return `<div class="wr-tile-delta ${cls}">${arrow} ${text} vs last week</div>`;
-}
-function fmtDeltaPct(currPct, prevPct) {
-  if (prevPct == null) return `<div class="wr-tile-delta wr-delta-flat">no prior data</div>`;
-  const diff = currPct - prevPct;
-  if (Math.abs(diff) < 1) return `<div class="wr-tile-delta wr-delta-flat">— no change</div>`;
-  const arrow = diff > 0 ? '↑' : '↓';
-  const cls   = diff > 0 ? 'wr-delta-up' : 'wr-delta-down';
-  return `<div class="wr-tile-delta ${cls}">${arrow} ${Math.abs(diff)}pp vs last week</div>`;
-}
 
 // ── Open Loops (render-time lens) ─────────────────────────────
 // "Everything I said I'd do that isn't done", computed fresh on every render
@@ -11946,8 +11475,6 @@ function renderWeeklyReview() {
   };
 
   const ws = weeklyStats(weekStart);
-  const starMetrics = getStarMetricsForWeek(weekStart);
-  const patterns = surfacePatterns(ws);
 
   // Header sub-line: "Days remaining: X" (current week) or "Week complete" (past)
   let subLine;
@@ -11960,83 +11487,11 @@ function renderWeeklyReview() {
     subLine = remaining === 0 ? 'Last day of the week' : `Days remaining: ${remaining}`;
   }
 
-  // ── Tile 1: Deep Work ──
-  const tileDeep = `
-    <div class="wr-tile">
-      <div class="wr-tile-label">DEEP WORK</div>
-      <div class="wr-tile-value">${ws.deepWorkHrs.toFixed(1)}h</div>
-      ${fmtDelta(ws.deepWorkHrs, ws.prevDeepWorkHrs, 'h')}
-    </div>`;
-
-  // ── Tile 2: DFT Completion ──
-  const tileDft = `
-    <div class="wr-tile">
-      <div class="wr-tile-label">DFT COMPLETION</div>
-      <div class="wr-tile-value">${ws.dftSet ? `${ws.dftDone} of ${ws.dftSet}` : '—'}</div>
-      ${fmtDeltaPct(ws.dftRate != null ? Math.round(ws.dftRate * 100) : null,
-                    ws.prevDftRate != null ? Math.round(ws.prevDftRate * 100) : null)}
-    </div>`;
-
-  // ── Tile 3: Task Completion (Daily Journal) ──
-  const tileTasks = `
-    <div class="wr-tile">
-      <div class="wr-tile-label">TASKS</div>
-      <div class="wr-tile-value">${ws.taskTotal ? `${ws.taskDone} of ${ws.taskTotal}` : '—'}</div>
-      ${ws.taskTotal ? `<div class="wr-tile-sub">(${Math.round((ws.taskCompletionRate||0)*100)}%)</div>` : ''}
-      ${fmtDeltaPct(ws.taskCompletionRate != null ? Math.round(ws.taskCompletionRate * 100) : null,
-                    ws.prevTaskCompletionRate != null ? Math.round(ws.prevTaskCompletionRate * 100) : null)}
-    </div>`;
-
-  // ── Tile 4: Adherence ──
-  const tileAdherence = `
-    <div class="wr-tile">
-      <div class="wr-tile-label">ADHERENCE</div>
-      <div class="wr-tile-value">${ws.adherence.totalChecks ? ws.adherence.percentage + '%' : '—'}</div>
-      ${ws.adherence.totalChecks ? `<div class="wr-tile-sub">${ws.adherence.passedChecks} of ${ws.adherence.totalChecks} checks passed</div>` : ''}
-      ${fmtDeltaPct(ws.adherence.totalChecks ? ws.adherence.percentage : null,
-                    ws.prevAdherence.totalChecks ? ws.prevAdherence.percentage : null)}
-    </div>`;
-
-  // ── Tile 5: Win Count ──
-  const tileWins = `
-    <div class="wr-tile">
-      <div class="wr-tile-label">WINS</div>
-      <div class="wr-tile-value">${ws.winCount} wins</div>
-      ${fmtDelta(ws.winCount, ws.prevWinCount, '', { format: n => Math.round(n).toString() })}
-    </div>`;
-
-  // ── Tile 6: Avg Day Rating ──
-  const tileRating = `
-    <div class="wr-tile">
-      <div class="wr-tile-label">AVG RATING</div>
-      <div class="wr-tile-value">${ws.dayRatingAvg > 0 ? ws.dayRatingAvg.toFixed(1) + ' ★' : '—'}</div>
-      ${fmtDelta(ws.dayRatingAvg, ws.prevDayRatingAvg, ' ★')}
-    </div>`;
-
-  // ── Star Metric Trends ──
-  const starSection = starMetrics.length ? `
-    <div class="wr-section-title">Star Metric Trends</div>
-    <div class="wr-stars">
-      ${starMetrics.map(m => `
-        <div class="wr-star-row">
-          <div class="wr-star-meta">
-            <span class="wr-star-label">${esc(m.label)}</span>
-            <span class="wr-star-avg">${m.avg > 0 ? m.avg.toFixed(1) : '—'}</span>
-          </div>
-          <canvas id="wr-spark-${esc(m.key)}" class="wr-spark" width="80" height="20"></canvas>
-        </div>`).join('')}
-    </div>` : '';
-
-  // ── Patterns ──
-  const patternsSection = `
-    <div class="wr-section-title">Patterns</div>
-    <div class="wr-patterns">
-      ${patterns.notEnoughData
-        ? `<div class="wr-observation">Not enough data yet.</div>`
-        : (patterns.observations.length
-            ? patterns.observations.map(o => `<div class="wr-observation">${esc(o)}</div>`).join('')
-            : `<div class="wr-observation">No standout patterns this week.</div>`)}
-    </div>`;
+  // Numbers + observations come from the same engine as the Trends tab, so
+  // the review and the tab can never disagree. (This screen used to carry
+  // its own six tiles, star sparklines and a separate pattern engine.)
+  const tctx = trendsCtx();
+  const tp = tePeriod('week', weeklyReviewOffset, td);
 
   // ── Open Loops ──
   // Only where the review is actionable (current week + the week just
@@ -12077,11 +11532,6 @@ function renderWeeklyReview() {
       value="${esc(currentIntention)}">
     <div class="wr-intention-help">${isPastWeek ? 'Past week — read-only' : 'Headline focus · max 120 characters'}</div>`;
 
-  // ── Sparklines mount after DOM is in place ──
-  if (starMetrics.length) {
-    setTimeout(() => buildStarSparklines(starMetrics), 0);
-  }
-
   return `<div class="view wr-view">
     <div class="wr-nav-row">
       <button class="wr-back" onclick="closeWeeklyReview()">← Back</button>
@@ -12093,14 +11543,11 @@ function renderWeeklyReview() {
     </div>
     <div class="wr-subline">${subLine}</div>
 
-    <div class="wr-section-title">The Week at a Glance</div>
-    <div class="wr-tiles">
-      ${tileDeep}${tileDft}${tileTasks}${tileAdherence}${tileWins}${tileRating}
-    </div>
+    <div class="wr-section-title">The week at a glance</div>
+    ${renderReviewGlance(tctx, tp)}
 
-    ${starSection}
-
-    ${patternsSection}
+    <div class="wr-section-title">The read</div>
+    ${renderTrendsRead(tctx, tp, { all: true, noHeader: true })}
 
     ${loopsSection}
 
@@ -12150,7 +11597,10 @@ function persistWeeklyReviewTasks(weekStart, tasks) {
 
 function buildWeeklyDigest(weekStart) {
   const ws = weeklyStats(weekStart);
-  const patterns = surfacePatterns(ws);
+  const td = todayStr();
+  let off = 0;
+  for (let w = getWeekStart(td); w > weekStart && off > -520; w = addDays(w, -7)) off--;
+  const patterns = { notEnoughData: false, observations: teInsights(trendsCtx(), tePeriod('week', off, td)).items.map(i => i.text) };
   const stars = getStarMetricsForWeek(weekStart);
   const pct = r => r == null ? 'n/a' : Math.round(r * 100) + '%';
   const L = [];
@@ -12198,6 +11648,13 @@ function buildMonthlyDigest(ym) {
   }
   const prev = monthlyReviews[previousMonthYM(ym)];
   if (prev && prev.oneFocus) L.push(`Last month's stated focus was: "${prev.oneFocus}"`);
+  let off = 0;
+  for (let y = currentYM(); y > ym && off > -240; y = previousMonthYM(y)) off--;
+  const obs = teInsights(trendsCtx(), tePeriod('month', off, todayStr())).items;
+  if (obs.length) {
+    L.push('Detected patterns:');
+    obs.forEach(o => L.push('- ' + o.text));
+  }
   return L.join('\n');
 }
 
@@ -15477,38 +14934,19 @@ function renderMonthlyReview() {
         value="${esc((saved && saved.oneExperiment) || '')}">
     </div>`;
 
-  // ── Section 3: Trend Charts ──
-  // Canvases mount empty here; buildMonthlyCharts(...) populates them after
-  // render() flushes the HTML to the DOM (setTimeout below).
-  const projectKeys   = Object.keys(stats.projectByWeek || {});
-  const hasStars      = (stats.starsByWeek || []).length > 0;
-  const fewWeeksNote  = (stats.buckets || []).length < 4
-    ? `<div class="mr-help">Showing ${stats.buckets.length} week${stats.buckets.length === 1 ? '' : 's'} of data.</div>`
-    : '';
+  // ── Section 3: the month's numbers + read ──
+  // Same engine as the Trends tab (was three Chart.js charts duplicating it).
+  const tctx = trendsCtx();
+  let tOff = 0;
+  for (let y = currentYM(); y > ym && tOff > -240; y = previousMonthYM(y)) tOff--;
+  const tp = tePeriod('month', tOff, tctx.today);
   const sectionCharts = `
     <div class="mr-section">
-      <div class="mr-section-title">Trend Charts</div>
-      ${fewWeeksNote}
-      <div class="mr-chart-card">
-        <div class="mr-chart-label">Categories — hours per week</div>
-        <div class="mr-chart-wrap"><canvas id="mr-chart-categories"></canvas></div>
-      </div>
-      <div class="mr-chart-card">
-        <div class="mr-chart-label">Projects — hours per week</div>
-        ${projectKeys.length
-          ? `<div class="mr-chart-wrap"><canvas id="mr-chart-projects"></canvas></div>`
-          : `<div class="mr-help">No project hours logged this month.</div>`}
-      </div>
-      ${hasStars ? `
-      <div class="mr-chart-card">
-        <div class="mr-chart-label">Star Metrics — weekly average</div>
-        <div class="mr-chart-wrap"><canvas id="mr-chart-stars"></canvas></div>
-      </div>` : ''}
+      <div class="mr-section-title">The month at a glance</div>
+      ${renderReviewGlance(tctx, tp)}
+      <div class="mr-section-title" style="margin-top:0.9rem">The read</div>
+      ${renderTrendsRead(tctx, tp, { all: true, noHeader: true })}
     </div>`;
-
-  // Mount charts after the HTML lands in the DOM. setTimeout(0) defers past
-  // the current microtask so document.getElementById finds the canvases.
-  setTimeout(() => buildMonthlyCharts(stats), 0);
 
   // ── Section 4: Project Portfolio Audit ──
   // Iterate the canonical project list. Sort by monthly hours descending so
@@ -15780,7 +15218,7 @@ window.saveWeeklyReview = function() {
   const weekEnd   = addDays(weekStart, 6);
   const ws        = weeklyStats(weekStart);
   const starMetrics = getStarMetricsForWeek(weekStart);
-  const patterns    = surfacePatterns(ws);
+  const patterns    = { observations: teInsights(trendsCtx(), tePeriod('week', weeklyReviewOffset, todayStr())).items.map(i => i.text) };
 
   const starAverages = {};
   starMetrics.forEach(m => { starAverages[m.key] = +m.avg.toFixed(2); });
