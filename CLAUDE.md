@@ -13,7 +13,7 @@ Before or after running any terminal command, always give a single plain-English
 **DayOS** — a personal time intelligence and journaling PWA. Single-page app (`index.html`) deployed on Vercel at `https://time-tracker-7a7l.vercel.app`. No build step, no package manager, no framework for the app itself.
 
 - **Git repo:** `git@github.com:instatank/time-tracker.git`
-- **Stack:** Vanilla JS (ES modules), Firebase (Auth + Firestore + **Storage** + **Cloud Messaging**), Chart.js (CDN), Service Worker.
+- **Stack:** Vanilla JS (ES modules), Firebase (Auth + Firestore + **Storage** + **Cloud Messaging**), Service Worker. (Chart.js was removed 2026-09-24 — every chart is inline HTML/SVG on theme tokens.)
 - **Serverless functions:** `api/*.mjs` — Vercel serverless routes (cron reminders + AI proxy). These DO use ES module syntax and run on Node, separate from the no-build front end.
 - **Timezone:** All times are IST (`Asia/Kolkata`) — always use `nowIST()`, `nowISTIso()`, `todayStr()`, `capDateIST()`, `addDays()` helpers, never `new Date()` directly.
 
@@ -329,12 +329,26 @@ Auth: `CRON_SECRET` for the scheduler, a Firebase ID token for the browser — v
 `verifyFirebaseToken` **imported from `api/ai/claude.mjs`**, one verifier in this codebase,
 not two. Full design record + the one-time browser setup steps: **`docs/backup.md`**.
 
-### Trends / Dashboard
+### Trends / Dashboard (rebuilt 2026-09-24)
 
-- **Calendar sub-tab**: pick a date → see that day's blocks + Daily Journal entry + captures + EOD + life ratings. The numbered grid doubles as a consistency heatmap — each day-with-data gets a `cal-dot-l0`–`l4` marker (neutral = data but no logged hours; red→orange→yellow→green by waking hours logged, via `hoursLevel()`), with a Less→More legend.
-- **Charts sub-tab**: `view-toggle-prominent` switches Totals (bar chart) vs Over Time (line chart); both read a **calendar week/month period** from `getDashPeriod()`, walked backwards with `‹ / ›` (`shiftDashPeriod`, state in `dashPeriodOffset`) so the numbers line up exactly with Weekly/Monthly Review. Metric cards show a `metric-delta` chip vs the prior period.
-- **Weekly/Monthly Review**: structured review screens with an **AI Summary** section (`renderReviewAiSummary` / `draftReviewSummary`) — see AI features.
-- `SKIPPED_CAT` computed at render. Over Time chart uses Chart.js lazy-loaded from CDN; instance in `_chartInstance`, destroyed before rebuild.
+One control row: **Week | Month | Calendar** (`setTrendsMode`) + `‹ ›` (`dashPeriodOffset`,
+`shiftDashPeriod`). Week/Month is one insight-first screen, top to bottom:
+
+1. **The read** — ranked one-line observations (top 3 + "N more"); category ones tap through to that category's blocks.
+2. **Review card** — opens that period's Weekly/Monthly Review; shows last week's intention / this month's focus.
+3. **Scorecard** — deep work, leak rate, focus task, day rating, tasks, adherence. Each vs **"your usual"** (mean of the previous 4 periods) + 8-period SVG sparkline; tap → column chart, tap a column → that period. Tiles with no data are hidden, never shown as 0. Daily Check-in rows underneath.
+4. **Where the time went** — stacked bar *including unlogged time*, per-category share vs usual (tap → blocks), projects vs usual.
+5. **Rhythm** — each day as a 24h strip, sleep window + detected focus window shaded; tap a day → Calendar day view.
+6. **What makes a good day** — 90-day with/without comparison for the day rating or any Check-in metric.
+
+**The engine** is a pure fenced block, `// ── BEGIN trends-engine ──` (`tePeriod`, `teRange`,
+`teKpis`, `teInsights`, `teDrivers`), fed by `trendsCtx()`. It is the **single source** for
+Trends, both reviews (their "at a glance" + "the read") and both AI review digests — don't
+compute review numbers anywhere else. Two rules it must keep: hours are compared as a
+**per-waking-day rate** (today counts as the fraction already awake), and a day with nothing
+logged is **unknown, not zero**. `tests/trends-engine.mjs` plants patterns in synthetic data
+and runs the real source. **Calendar mode** is unchanged (`renderCalendarView`, `hoursLevel`
+heat dots). What was cut and why: `docs/experiments.md` → Removed → "Trends revamp".
 
 ### Anchored preview snippets
 

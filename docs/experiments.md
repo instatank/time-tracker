@@ -202,6 +202,7 @@ numbers instead of recall.
 | Search | `search` (a typed query) · `search-tagpill` |
 | Daily Focus Task | `dft-strip` · `dft-resolve` |
 | Reviews | `weekly-review` · `monthly-review` |
+| Trends (2026-09-24) | `trends-week` · `trends-month` · `trends-period-nav` · `trends-read-more` · `trends-insight-drill` · `trends-kpi` · `trends-cat-drill` · `trends-rhythm-day` · `trends-drivers` |
 | AI | `ai-extract-blocks` · `ai-organize` · `ai-extract-tasks` · `ai-summarize-review` |
 | Settings rows | `settings-<id>` for all 15 rows in `SETTINGS_SECTIONS` |
 
@@ -252,6 +253,28 @@ rejected, or hunt for a symbol that moved.
   `renderTodayTimeline` / `tlBlockHeight` / `toggleTimeline` / `_timelineExpanded` / `TL_*`
   are unconditional; rows reuse the shared card-swipe mechanism and the
   `tlBlockDown`/`Move`/`Up`/`Cancel` long-press-to-edit handlers.
+
+### Trends revamp — 2026-09-24 (not toggles; recorded here so nobody rebuilds them)
+
+Argument used for every cut below: **cost** (duplicates a choice or a number another
+surface already shows). Not non-use — the Trends counters only started today. Nothing was
+made unreachable; each line says where it went. No data was orphaned: none of these owned a
+localStorage key, Firestore field or collection.
+
+- **Totals | Over Time toggle + the two Chart.js line charts + the zoom modal** → replaced
+  by the Scorecard (tap a tile → 8-period trend) and Rhythm. Chart.js is no longer loaded
+  anywhere (`loadChartJs`, `catColor`, `cssVar`, `hexToRgba`, `MR_PROJECT_PALETTE` deleted).
+- **Charts | Calendar row + Weekly/Monthly Review buttons** → one `Week | Month | Calendar`
+  control; the reviews open from the review card under "The read".
+- **Weekly Review's six tiles, star sparklines and `surfacePatterns`** → "at a glance" +
+  "the read" from the shared engine (`// ── BEGIN trends-engine ──`). Saved `patterns[]`
+  keeps its shape (now the engine's sentences).
+- **Monthly Review's three trend charts** (`buildMonthlyCharts`) → same glance + read.
+- **Wins tile** → still in the review glance and the read ("N wins — ahead of your usual
+  pace"); cut from the Trends scorecard because at 0–5 a week "−100%" is noise.
+- **Detector "deep work on full-adherence days vs the rest"** (was in `surfacePatterns`) →
+  deleted, not moved: adherence rules are defined by logged blocks, so it restated the rule.
+  Adherence vs *rating* lives in "What makes a good day".
 
 ---
 

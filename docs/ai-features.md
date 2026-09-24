@@ -114,7 +114,7 @@ All three prompts live in the `TASKS` object near the top of `api/ai/claude.mjs`
 
 **Input:** `{ text: "<digest>" }`. **`ctx`:** `{ periodType: 'week' | 'month' }`.
 
-The client builds the digest (NOT free text) — `buildWeeklyDigest(weekStart)` / `buildMonthlyDigest(ym)` in `index.html` assemble a plain-text block of the period's own metrics + deltas + `surfacePatterns` observations + a few EOD/reflection snippets (week) or category/project/intention rollups (month). The model turns that into a recap.
+The client builds the digest (NOT free text) — `buildWeeklyDigest(weekStart)` / `buildMonthlyDigest(ym)` in `index.html` assemble a plain-text block of the period's own metrics + deltas + the Trends engine's observations (`teInsights`, both week and month since 2026-09-24) + a few EOD/reflection snippets (week) or category/project/intention rollups (month). The model turns that into a recap.
 
 **Critical prompt rules:**
 - Ground EVERY statement in the digest — never invent numbers, projects, or events. This is the load-bearing rule (a review summary that hallucinates is worse than none).
