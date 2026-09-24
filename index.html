@@ -10315,6 +10315,538 @@ function renderDayBlocks(date) {
   ].join('');
 }
 
+// ── BEGIN trends-engine ──
+// Pure analytics behind the Trends tab AND both reviews (one engine, three
+// readers — the reviews used to carry their own copies of the same six
+// numbers). No DOM, no module globals: every input arrives on `ctx`, which
+// the app builds in trendsCtx() and tests/trends-engine.mjs builds by hand.
+//
+//   ctx = {
+//     today,                      'YYYY-MM-DD' (IST)
+//     blocks, isSleep(b), projectOf(b),
+//     ratings   { date: 1–5 },    day star rating
+//     life      { date: { key: 1–5 } }, lifeLabel(key)   Daily Check-in
+//     dfts      { date: {text,status} | string },
+//     journals  [{ date, tasks[] }],  journalDates Set  (non-empty entries)
+//     winDates  [date, …]         one per #win-tagged entry
+//     adherence(date) → { passed, total } | null
+//     wakingDayMin, wakingMinToday   (from the sleep window in Settings)
+//   }
+//
+// Two rules the whole block follows, because both were real mistakes in the
+// screens it replaces:
+//   1. Hours are compared as a PER-WAKING-DAY rate, never as raw totals. A
+//      Tuesday-morning "3h this week" against last week's full 20h is not a
+//      drop, it's arithmetic. Today counts as the fraction of it already awake.
+//   2. A day with nothing logged is UNKNOWN, not zero. It never counts as a
+//      "no deep work" day in a comparison, only as missing coverage.
+//
+// Date helpers are private copies (UTC math, same as addDays/getWeekStart)
+// so the block runs standalone in the test with no app scaffolding.
+const TE_WORDS = { week: 'week', month: 'month' };
+const TE_DAYNAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function teAdd(d, n) {
+  const [y, m, dd] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
+}
+function teDow(d) {
+  const [y, m, dd] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, dd)).getUTCDay();
+}
+function teWeekStart(d) { return teAdd(d, -teDow(d)); }
+function tePrevYM(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+function teMonthLast(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+}
+function teDates(a, b) { const out = []; for (let d = a; d <= b; d = teAdd(d, 1)) out.push(d); return out; }
+function teMD(d) {
+  const [y, m, dd] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, dd)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+function teFmtH(h) {
+  if (!(h > 0)) return '0h';
+  if (h < 1) return Math.round(h * 60) + 'm';
+  return (h >= 10 ? String(Math.round(h)) : h.toFixed(1).replace(/\.0$/, '')) + 'h';
+}
+function teHourLbl(h) {
+  h = ((h % 24) + 24) % 24;
+  return h === 0 ? '12am' : h === 12 ? '12pm' : h < 12 ? h + 'am' : (h - 12) + 'pm';
+}
+function teMean(xs) { const v = xs.filter(x => x != null && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }
+function teHhmm(t) { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+
+// A calendar week (Sun–Sat) or calendar month, `offset` periods back from the
+// one containing ctx.today. `end` is clamped to today so the current period
+// never counts future days.
+function tePeriod(mode, offset, today) {
+  if (mode === 'month') {
+    let ym = today.slice(0, 7);
+    for (let i = 0; i < -offset; i++) ym = tePrevYM(ym);
+    const [y, m] = ym.split('-').map(Number);
+    const start = ym + '-01', fullEnd = teMonthLast(ym), isCurrent = ym === today.slice(0, 7);
+    const name = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const short = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+    return { mode, offset, ym, start, fullEnd, end: isCurrent ? today : fullEnd, isCurrent, label: name, short };
+  }
+  const start = teAdd(teWeekStart(today), offset * 7), fullEnd = teAdd(start, 6);
+  const isCurrent = offset === 0;
+  return { mode: 'week', offset, start, fullEnd, end: isCurrent ? today : fullEnd, isCurrent,
+           label: `${teMD(start)} – ${teMD(fullEnd)}`, short: teMD(start) };
+}
+
+// One pass over blocks, grouped by date. Cached on ctx.
+function teIx(ctx) {
+  if (ctx._ix) return ctx._ix;
+  const byDate = new Map();
+  (ctx.blocks || []).forEach(b => {
+    if (!b || !b.date || b.deletedAt || (ctx.isSleep && ctx.isSleep(b))) return;
+    const m = +b.duration_min || 0;
+    if (m <= 0) return;
+    let e = byDate.get(b.date);
+    if (!e) { e = { cat: {}, logged: 0, list: [] }; byDate.set(b.date, e); }
+    e.cat[b.category] = (e.cat[b.category] || 0) + m;
+    e.logged += m;
+    e.list.push(b);
+  });
+  const wins = {};
+  (ctx.winDates || []).forEach(d => { wins[d] = (wins[d] || 0) + 1; });
+  ctx._ix = { byDate, wins, ranges: new Map() };
+  return ctx._ix;
+}
+function teAvail(ctx, d) {
+  return d < ctx.today ? ctx.wakingDayMin : d === ctx.today ? Math.max(0, ctx.wakingMinToday || 0) : 0;
+}
+function teDft(v) {
+  if (!v) return null;
+  const text = typeof v === 'string' ? v : (v.text || '');
+  if (!String(text).trim()) return null;
+  return typeof v === 'string' ? 'pending' : (v.status || 'pending');
+}
+
+// Everything the screens need about a date range, in one pass. Memoised.
+function teRange(ctx, start, end) {
+  const ix = teIx(ctx);
+  if (end > ctx.today) end = ctx.today;
+  const key = start + '|' + end;
+  if (ix.ranges.has(key)) return ix.ranges.get(key);
+  const r = { start, end, days: 0, dayEq: 0, cat: {}, loggedMin: 0, availMin: 0, daysLogged: 0,
+              dftSet: 0, dftDone: 0, taskT: 0, taskD: 0, adhT: 0, adhP: 0, rSum: 0, rN: 0,
+              wins: 0, life: {}, proj: {}, list: [] };
+  const jByDate = {};
+  (ctx.journals || []).forEach(j => { if (j && j.date >= start && j.date <= end) (jByDate[j.date] ||= []).push(j); });
+  if (start <= end) teDates(start, end).forEach(d => {
+    r.days++;
+    const av = teAvail(ctx, d);
+    r.availMin += av;
+    r.dayEq += ctx.wakingDayMin > 0 ? av / ctx.wakingDayMin : 1;
+    const e = ix.byDate.get(d);
+    if (e) {
+      r.daysLogged++;
+      r.loggedMin += e.logged;
+      Object.entries(e.cat).forEach(([k, v]) => { r.cat[k] = (r.cat[k] || 0) + v; });
+      e.list.forEach(b => {
+        r.list.push(b);
+        const p = ctx.projectOf ? ctx.projectOf(b) : null;
+        if (p) r.proj[p] = (r.proj[p] || 0) + (+b.duration_min || 0);
+      });
+    }
+    const st = teDft((ctx.dfts || {})[d]);
+    if (st) { r.dftSet++; if (st === 'done') r.dftDone++; }
+    (jByDate[d] || []).forEach(j => (j.tasks || []).forEach(t => { r.taskT++; if (t && t.completed) r.taskD++; }));
+    const a = ctx.adherence ? ctx.adherence(d) : null;
+    if (a && a.total) { r.adhT += a.total; r.adhP += a.passed; }
+    const rt = (ctx.ratings || {})[d];
+    if (rt > 0) { r.rSum += rt; r.rN++; }
+    const lr = (ctx.life || {})[d];
+    if (lr && typeof lr === 'object') Object.entries(lr).forEach(([k, v]) => {
+      if (typeof v !== 'number' || !(v > 0)) return;
+      const o = (r.life[k] ||= { sum: 0, n: 0 });
+      o.sum += v; o.n++;
+    });
+    r.wins += ix.wins[d] || 0;
+  });
+  r.deepMin   = r.cat.deep_work || 0;
+  r.leakPct   = r.loggedMin > 0 ? (r.cat.leaks || 0) / r.loggedMin * 100 : null;
+  r.coverage  = r.availMin > 0 ? Math.min(1, r.loggedMin / r.availMin) : null;
+  r.dftPct    = r.dftSet ? r.dftDone / r.dftSet * 100 : null;
+  r.taskPct   = r.taskT ? r.taskD / r.taskT * 100 : null;
+  r.adhPct    = r.adhT ? r.adhP / r.adhT * 100 : null;
+  r.rating    = r.rN ? r.rSum / r.rN : null;
+  Object.values(r.life).forEach(o => { o.avg = o.sum / o.n; });
+  r.hasAny    = r.loggedMin > 0 || r.rN > 0 || r.dftSet > 0 || r.taskT > 0 || r.wins > 0 || Object.keys(r.life).length > 0;
+  ix.ranges.set(key, r);
+  return r;
+}
+function tePeriodRange(ctx, p) { return teRange(ctx, p.start, p.end); }
+
+// The scorecard. `rate` is what gets compared (per waking day for hours and
+// counts, the value itself for percentages/stars); `value` is what's shown.
+const TE_KPIS = [
+  { id: 'deep',   label: 'Deep work',  kind: 'hours', better: 'up',
+    rate: r => r.loggedMin > 0 && r.dayEq > 0 ? r.deepMin / 60 / r.dayEq : null,
+    value: r => r.loggedMin > 0 ? r.deepMin / 60 : null },
+  { id: 'leak',   label: 'Leak rate',  kind: 'pct',   better: 'down', rate: r => r.leakPct, value: r => r.leakPct },
+  { id: 'focus',  label: 'Focus task', kind: 'pct',   better: 'up',   rate: r => r.dftPct,  value: r => r.dftPct,
+    sub: r => r.dftSet ? `${r.dftDone} of ${r.dftSet} days` : '' },
+  { id: 'rating', label: 'Day rating', kind: 'stars', better: 'up',   rate: r => r.rating,  value: r => r.rating,
+    sub: r => r.rN ? `${r.rN} day${r.rN === 1 ? '' : 's'} rated` : '' },
+  { id: 'tasks',  label: 'Tasks done', kind: 'pct',   better: 'up',   rate: r => r.taskPct, value: r => r.taskPct,
+    sub: r => r.taskT ? `${r.taskD} of ${r.taskT}` : '' },
+  { id: 'adh',    label: 'Adherence',  kind: 'pct',   better: 'up',   rate: r => r.adhPct,  value: r => r.adhPct },
+  { id: 'wins',   label: 'Wins',       kind: 'count', better: 'up',
+    rate: r => r.hasAny && r.dayEq > 0 ? r.wins / r.dayEq : null, value: r => r.hasAny ? r.wins : null },
+];
+
+// n periods ending at p (oldest first). Past periods are whole; the last one
+// is p itself (possibly partial).
+function teSeries(ctx, p, n) {
+  const out = [];
+  for (let k = n - 1; k >= 0; k--) {
+    const q = tePeriod(p.mode, p.offset - k, ctx.today);
+    out.push({ p: q, r: tePeriodRange(ctx, q) });
+  }
+  return out;
+}
+
+// Baseline = mean of up to 4 prior periods that have a value. "Your usual".
+function teKpis(ctx, p, n = 8) {
+  const ser = teSeries(ctx, p, Math.max(n, 5));
+  const cur = ser[ser.length - 1].r;
+  return TE_KPIS.map(k => {
+    const rates = ser.map(s => k.rate(s.r));
+    const prior = rates.slice(0, -1).filter(v => v != null).slice(-4);
+    const base = prior.length ? teMean(prior) : null;
+    const rate = rates[rates.length - 1];
+    const value = k.value(cur);
+    return {
+      id: k.id, label: k.label, kind: k.kind, better: k.better,
+      value, rate, base, sub: k.sub ? k.sub(cur) : '',
+      perDay: k.kind === 'hours' && rate != null ? rate : null,
+      spark: rates.slice(-n), periods: ser.slice(-n).map(s => s.p),
+      visible: rates.some(v => v != null),
+    };
+  }).filter(k => k.visible);
+}
+
+// Minutes per clock hour for a list of blocks (optionally one category).
+// A block that runs past midnight is cut at 24:00 — it's the start that says
+// when you chose to do something.
+function teHourProfile(list, cat) {
+  const h = new Array(24).fill(0);
+  (list || []).forEach(b => {
+    if (cat && b.category !== cat) return;
+    let s = teHhmm(b.start_time), rem = +b.duration_min || 0;
+    if (s == null) return;
+    while (rem > 0 && s < 1440) {
+      const hr = Math.floor(s / 60), take = Math.min(rem, (hr + 1) * 60 - s);
+      h[hr] += take; s += take; rem -= take;
+    }
+  });
+  return h;
+}
+
+// What moves the day rating (or a Check-in metric). Compares the average
+// score on days WITH a behaviour vs days WITHOUT it, over a trailing window.
+// Associations, not causes — the screen says so.
+const TE_DRIVER_MIN_DAYS = 8;   // rated days before anything is shown
+const TE_DRIVER_MIN_SIDE = 3;   // each side of a comparison
+function teDriverTargets(ctx, days = 90) {
+  const start = teAdd(ctx.today, -(days - 1));
+  const r = teRange(ctx, start, ctx.today);
+  const out = [];
+  out.push({ key: 'rating', label: 'Day rating', n: r.rN });
+  Object.entries(r.life).sort((a, b) => b[1].n - a[1].n)
+    .forEach(([k, o]) => out.push({ key: k, label: ctx.lifeLabel ? ctx.lifeLabel(k) : k, n: o.n }));
+  return out;
+}
+function teDrivers(ctx, target = 'rating', days = 90) {
+  const ix = teIx(ctx);
+  const start = teAdd(ctx.today, -(days - 1));
+  const rows = [];
+  teDates(start, ctx.today).forEach(d => {
+    const v = target === 'rating' ? (ctx.ratings || {})[d] : ((ctx.life || {})[d] || {})[target];
+    if (!(typeof v === 'number' && v > 0)) return;
+    const e = ix.byDate.get(d);
+    const a = ctx.adherence ? ctx.adherence(d) : null;
+    const avail = teAvail(ctx, d);
+    rows.push({ d, v, e, a, avail, dft: teDft((ctx.dfts || {})[d]) });
+  });
+  if (rows.length < TE_DRIVER_MIN_DAYS) return { target, n: rows.length, need: TE_DRIVER_MIN_DAYS, rows: [] };
+  // Deep-work threshold: try every 30-min step between your own 25th and
+  // 75th percentile and keep the one that best separates the scores, so
+  // "deep-work days" means the line that actually matters for YOU, not a
+  // hardcoded 2h. Shrinkage (m/(m+2)) stops a 3-vs-40 split from winning.
+  const deeps = rows.filter(x => x.e).map(x => x.e.cat.deep_work || 0).sort((a, b) => a - b);
+  const q = f => deeps.length ? deeps[Math.min(deeps.length - 1, Math.floor(deeps.length * f))] : 60;
+  let t = Math.max(30, Math.round(q(0.5) / 30) * 30), tBest = -1;
+  for (let c = Math.max(30, Math.floor(q(0.25) / 30) * 30); c <= Math.max(30, Math.ceil(q(0.75) / 30) * 30); c += 30) {
+    const yes = rows.filter(x => x.e && (x.e.cat.deep_work || 0) >= c).map(x => x.v);
+    const no  = rows.filter(x => x.e && (x.e.cat.deep_work || 0) <  c).map(x => x.v);
+    if (yes.length < TE_DRIVER_MIN_SIDE || no.length < TE_DRIVER_MIN_SIDE) continue;
+    const m = Math.min(yes.length, no.length), w = Math.abs(teMean(yes) - teMean(no)) * m / (m + 2);
+    if (w > tBest) { tBest = w; t = c; }
+  }
+  const cat = (x, c) => x.e ? (x.e.cat[c] || 0) : undefined;
+  const feats = [
+    { id: 'deep',     label: `${teFmtH(t / 60)}+ deep work`,  test: x => x.e ? cat(x, 'deep_work') >= t : undefined },
+    { id: 'leaks',    label: '1h+ of leaks',                  test: x => x.e ? cat(x, 'leaks') >= 60 : undefined },
+    { id: 'learning', label: 'any learning',                  test: x => x.e ? cat(x, 'learning') > 0 : undefined },
+    { id: 'practice', label: 'any practice',                  test: x => x.e ? cat(x, 'practice') > 0 : undefined },
+    { id: 'leisure',  label: '2h+ leisure',                   test: x => x.e ? cat(x, 'leisure') >= 120 : undefined },
+    { id: 'dft',      label: 'focus task done',               test: x => x.dft ? x.dft === 'done' : undefined },
+    { id: 'adh',      label: 'full adherence',                test: x => x.a && x.a.total ? x.a.passed === x.a.total : undefined },
+    { id: 'journal',  label: 'a journal entry',               test: x => ctx.journalDates ? ctx.journalDates.has(x.d) : undefined },
+    { id: 'logged',   label: '70%+ of the day logged',        test: x => x.avail > 0 ? ((x.e ? x.e.logged : 0) / x.avail) >= 0.7 : undefined },
+  ];
+  const out = [];
+  feats.forEach(f => {
+    const yes = [], no = [];
+    rows.forEach(x => { const r = f.test(x); if (r === true) yes.push(x.v); else if (r === false) no.push(x.v); });
+    if (yes.length < TE_DRIVER_MIN_SIDE || no.length < TE_DRIVER_MIN_SIDE) return;
+    const aw = teMean(yes), ao = teMean(no), diff = aw - ao;
+    if (Math.abs(diff) < 0.2) return;
+    const m = Math.min(yes.length, no.length);
+    out.push({ id: f.id, label: f.label, withAvg: aw, withoutAvg: ao, nWith: yes.length, nWithout: no.length,
+               diff, weight: Math.abs(diff) * m / (m + 2) });
+  });
+  out.sort((a, b) => b.weight - a.weight);
+  return { target, n: rows.length, need: TE_DRIVER_MIN_DAYS, rows: out.slice(0, 5) };
+}
+
+// ── The read: ranked one-line observations for a period ──
+// Each detector returns 0..n candidates { id, tone, text, score }. tone is
+// 'good' | 'watch' | 'info'. One per id survives; highest score first.
+const TE_CAT_TONE = { learning: 'up', practice: 'up', leaks: 'down', leisure: null, routine: null };
+const TE_CAT_LABEL = { deep_work: 'Deep work', learning: 'Learning', practice: 'Practice', routine: 'Routine', leisure: 'Leisure', leaks: 'Leaks' };
+function teInsights(ctx, p) {
+  const word = TE_WORDS[p.mode];
+  const r = tePeriodRange(ctx, p);
+  const out = [];
+  const add = (id, tone, score, text, extra) => out.push({ id, tone, score, text, ...(extra || {}) });
+
+  if (r.availMin <= 0) return { items: [], young: true };
+  if (r.loggedMin === 0) {
+    if (r.hasAny) {
+      add('empty', 'watch', 100, `No time blocks logged this ${word} — only ratings and notes, so time patterns can't be read.`);
+    } else {
+      return { items: [{ id: 'empty', tone: 'watch', score: 100, text: `Nothing logged this ${word} yet.` }], young: p.isCurrent };
+    }
+  }
+  // Too early in the current period for rates to mean anything.
+  const young = p.isCurrent && r.dayEq < (p.mode === 'month' ? 4 : 1.5);
+
+  // 1. Coverage — how much of the story the numbers can tell.
+  if (r.coverage != null && r.loggedMin > 0) {
+    const pct = Math.round(r.coverage * 100);
+    const fullDays = teDates(p.start, p.end).filter(d => d < ctx.today).length;
+    const missing = Math.max(0, fullDays - teDates(p.start, p.end).filter(d => d < ctx.today && teIx(ctx).byDate.has(d)).length);
+    if (r.coverage < 0.5) {
+      add('coverage', 'watch', 90, `You logged ${pct}% of your waking hours${missing ? `, and nothing at all on ${missing} day${missing === 1 ? '' : 's'}` : ''} — read the numbers below as partial.`);
+    } else if (r.coverage >= 0.85 && !young) {
+      add('coverage', 'good', 12, `${pct}% of your waking hours are accounted for — this is a high-fidelity read.`);
+    }
+  }
+
+  const ser = teSeries(ctx, p, p.mode === 'month' ? 7 : 13);
+  const prior = ser.slice(0, -1).map(s => s.r);
+  const recent = prior.slice(-4).filter(x => x.loggedMin > 0);
+
+  // 2. Deep work vs your own history.
+  if (!young && r.loggedMin > 0) {
+    const rate = r.deepMin / 60 / r.dayEq;
+    const hist = prior.filter(x => x.loggedMin > 0 && x.dayEq > 0).map(x => x.deepMin / 60 / x.dayEq);
+    const base = teMean(recent.filter(x => x.dayEq > 0).map(x => x.deepMin / 60 / x.dayEq));
+    const tot = teFmtH(r.deepMin / 60);
+    if (hist.length >= 4 && rate > Math.max(...hist) && rate > 0) {
+      add('deep', 'good', 80, `Best deep-work ${word} in ${hist.length + 1}: ${tot} (${teFmtH(rate)} a day, against your usual ${teFmtH(base)}).`);
+    } else if (hist.length >= 4 && rate < Math.min(...hist) && base >= 0.5) {
+      add('deep', 'watch', 70, `Lightest deep-work ${word} in ${hist.length + 1}: ${teFmtH(rate)} a day, against your usual ${teFmtH(base)}.`);
+    } else if (base != null && base > 0) {
+      const rel = (rate - base) / base;
+      if (Math.abs(rel) >= 0.25 && Math.abs(rate - base) >= 0.3) {
+        add('deep', rel > 0 ? 'good' : 'watch', 45 + Math.min(25, Math.abs(rel) * 20),
+          `Deep work is ${rel > 0 ? 'up' : 'down'} ${Math.round(Math.abs(rel) * 100)}% on your usual — ${teFmtH(rate)} a day vs ${teFmtH(base)}.`);
+      }
+    } else if (base == null && rate > 0 && hist.length === 0) {
+      add('deep', 'info', 10, `${tot} of deep work this ${word}. Your trends sharpen once there are a few ${word}s to compare.`);
+    }
+  }
+
+  // 3. Biggest shift in how logged time was split.
+  if (!young && r.loggedMin >= 300 && recent.length) {
+    const bLogged = recent.reduce((s, x) => s + x.loggedMin, 0);
+    let best = null;
+    Object.keys(TE_CAT_TONE).forEach(c => {
+      const cur = (r.cat[c] || 0) / r.loggedMin * 100;
+      const base = recent.reduce((s, x) => s + (x.cat[c] || 0), 0) / bLogged * 100;
+      const dpp = cur - base;
+      if (Math.abs(dpp) >= 6 && (!best || Math.abs(dpp) > Math.abs(best.dpp))) best = { c, cur, base, dpp };
+    });
+    if (best) {
+      const dir = TE_CAT_TONE[best.c];
+      const tone = dir == null ? 'info' : ((best.dpp > 0) === (dir === 'up') ? 'good' : 'watch');
+      add('mix', tone, 30 + Math.abs(best.dpp), `${TE_CAT_LABEL[best.c]} took ${Math.round(best.cur)}% of your logged time — usually ${Math.round(best.base)}%.`,
+        { drill: { cat: best.c } });
+    }
+  }
+
+  // 4. When the leaks happen.
+  const leakMin = r.cat.leaks || 0;
+  if (leakMin >= 90) {
+    const h = teHourProfile(r.list, 'leaks');
+    const slots = [
+      { name: 'in the morning',   hrs: [5, 6, 7, 8, 9, 10, 11] },
+      { name: 'in the afternoon', hrs: [12, 13, 14, 15, 16] },
+      { name: 'in the evening',   hrs: [17, 18, 19, 20] },
+      { name: 'late at night',    hrs: [21, 22, 23, 0, 1, 2, 3, 4] },
+    ].map(s => ({ ...s, min: s.hrs.reduce((a, x) => a + h[x], 0) }));
+    const tot = h.reduce((a, b) => a + b, 0) || 1;
+    const top = slots.sort((a, b) => b.min - a.min)[0];
+    const share = top.min / tot;
+    if (share >= 0.5) {
+      add('leaks', 'watch', 40 + share * 20, `${Math.round(share * 100)}% of your leak time (${teFmtH(top.min / 60)}) lands ${top.name}.`, { drill: { cat: 'leaks' } });
+    } else if (p.mode === 'week') {
+      const byDay = {};
+      r.list.forEach(b => { if (b.category === 'leaks') byDay[b.date] = (byDay[b.date] || 0) + (+b.duration_min || 0); });
+      const [dd, mm] = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0] || [];
+      if (dd && mm / leakMin >= 0.45 && mm >= 60) {
+        add('leaks', 'watch', 35, `${TE_DAYNAMES[teDow(dd)]} alone produced ${Math.round(mm / leakMin * 100)}% of this week's leaks (${teFmtH(mm / 60)}).`, { drill: { cat: 'leaks' } });
+      }
+    }
+  }
+
+  // 5 + 6. Your focus rhythm over the last 8 weeks.
+  const lbStart = teAdd(p.end, -55);
+  const lb = teRange(ctx, lbStart, p.end);
+  const deepH = teHourProfile(lb.list, 'deep_work');
+  const deepTot = deepH.reduce((a, b) => a + b, 0);
+  if (deepTot >= 360) {
+    let bi = 0, bs = 0;
+    for (let i = 0; i <= 21; i++) { const s = deepH[i] + deepH[i + 1] + deepH[i + 2]; if (s > bs) { bs = s; bi = i; } }
+    const share = bs / deepTot;
+    if (share >= 0.4) {
+      add('window', 'info', 28, `Your deep work clusters ${teHourLbl(bi)}–${teHourLbl(bi + 3)}: ${Math.round(share * 100)}% of the last 8 weeks' happens there. Guard that window.`,
+        { window: [bi, bi + 3] });
+    }
+    const ix = teIx(ctx);
+    const per = [0, 0, 0, 0, 0, 0, 0].map(() => ({ sum: 0, n: 0 }));
+    teDates(lbStart, p.end).forEach(d => {
+      const e = ix.byDate.get(d);
+      if (!e || d > ctx.today) return;
+      const o = per[teDow(d)]; o.sum += e.cat.deep_work || 0; o.n++;
+    });
+    const avgs = per.map(o => o.n >= 3 ? o.sum / o.n : null);
+    const valid = avgs.map((v, i) => ({ v, i })).filter(x => x.v != null);
+    if (valid.length >= 5) {
+      const top = valid.slice().sort((a, b) => b.v - a.v)[0];
+      const others = teMean(valid.filter(x => x.i !== top.i).map(x => x.v));
+      if (top.v >= 60 && others != null && top.v >= 1.5 * Math.max(others, 1)) {
+        add('weekday', 'info', 24, `${TE_DAYNAMES[top.i]}s are your strongest deep-work day — ${teFmtH(top.v / 60)} on average vs ${teFmtH(others / 60)} on other days.`);
+      }
+    }
+  }
+
+  // 7. The strongest thing your good days have in common.
+  const drv = teDrivers(ctx, 'rating', 90);
+  const top = drv.rows[0];
+  if (top && Math.abs(top.diff) >= 0.5 && top.nWith >= 4 && top.nWithout >= 4) {
+    add('driver', 'info', 50, `You rate your day ${top.withAvg.toFixed(1)}★ with ${top.label} and ${top.withoutAvg.toFixed(1)}★ without (last ${drv.n} rated days).`);
+  }
+
+  // 8. Focus task follow-through.
+  if (r.dftSet >= 3) {
+    const base = teMean(recent.filter(x => x.dftSet).map(x => x.dftPct));
+    if (r.dftDone === r.dftSet && r.dftSet >= 4) {
+      add('focus', 'good', 35, `Focus task done every day you set one (${r.dftDone} of ${r.dftSet}).`);
+    } else if (base != null && Math.abs(r.dftPct - base) >= 20) {
+      add('focus', r.dftPct > base ? 'good' : 'watch', 32, `Focus task done on ${r.dftDone} of ${r.dftSet} days (${Math.round(r.dftPct)}%) — your usual is ${Math.round(base)}%.`);
+    }
+  }
+
+  // 9. Projects that went quiet, or took off. Compared as per-day pace.
+  if (!young && recent.length) {
+    const bDays = recent.reduce((s, x) => s + x.dayEq, 0);
+    const names = new Set([...Object.keys(r.proj), ...recent.flatMap(x => Object.keys(x.proj))]);
+    const fullDays = p.mode === 'month' ? teDates(p.start, p.fullEnd).length : 7;
+    let stall = null, rise = null;
+    names.forEach(nm => {
+      const baseRate = bDays > 0 ? recent.reduce((s, x) => s + (x.proj[nm] || 0), 0) / bDays : 0;   // min / day
+      const curMin = r.proj[nm] || 0, curRate = r.dayEq > 0 ? curMin / r.dayEq : 0;
+      const expected = baseRate * fullDays;
+      if (curMin === 0 && expected >= 120 && r.dayEq >= Math.min(3, fullDays / 2)) {
+        if (!stall || expected > stall.expected) stall = { nm, expected };
+      } else if (curMin >= 180 && baseRate > 0 && curRate >= 2 * baseRate) {
+        if (!rise || curRate / baseRate > rise.x) rise = { nm, curMin, x: curRate / baseRate };
+      } else if (curMin >= 180 && baseRate === 0) {
+        if (!rise) rise = { nm, curMin, x: null };
+      }
+    });
+    if (stall) add('stall', 'watch', 38, `Nothing logged on ${stall.nm} this ${word} — you usually put in about ${teFmtH(stall.expected / 60)}.`);
+    if (rise) add('rise', 'info', 22, rise.x
+      ? `${rise.nm} got ${teFmtH(rise.curMin / 60)} — ${rise.x.toFixed(1)}× its usual pace.`
+      : `${rise.nm} is new on your radar: ${teFmtH(rise.curMin / 60)} this ${word}.`);
+  }
+
+  // 10. Adherence vs output, over 4 weeks (one week is too few days to split).
+  if (ctx.adherence) {
+    const ix = teIx(ctx), full = [], part = [];
+    teDates(teAdd(p.end, -27), p.end).forEach(d => {
+      if (d >= ctx.today) return;
+      const a = ctx.adherence(d), e = ix.byDate.get(d);
+      if (!a || !a.total || !e) return;
+      (a.passed === a.total ? full : part).push((e.cat.deep_work || 0) / 60);
+    });
+    if (full.length >= 3 && part.length >= 3) {
+      const af = teMean(full), ap = teMean(part);
+      if (Math.abs(af - ap) >= 0.5) add('adh', 'info', 32, `On full-adherence days you average ${teFmtH(af)} of deep work vs ${teFmtH(ap)} on the rest.`);
+    }
+  }
+
+  // 11. Wins.
+  if (recent.length) {
+    const baseRate = teMean(recent.filter(x => x.dayEq > 0).map(x => x.wins / x.dayEq));
+    const rate = r.dayEq > 0 ? r.wins / r.dayEq : 0;
+    const fullDays = p.mode === 'month' ? teDates(p.start, p.fullEnd).length : 7;
+    if (r.wins >= 3 && baseRate != null && rate >= 1.5 * baseRate) {
+      add('wins', 'good', 20, `${r.wins} wins logged — ahead of your usual pace of ~${Math.round(baseRate * fullDays)} a ${word}.`);
+    } else if (r.wins === 0 && baseRate != null && baseRate * fullDays >= 2 && !young && r.dayEq >= fullDays / 2) {
+      add('wins', 'watch', 15, `No #win logged yet this ${word} — you usually log about ${Math.round(baseRate * fullDays)}.`);
+    }
+  }
+
+  // 12. Task completion.
+  if (r.taskT >= 5) {
+    const base = teMean(recent.filter(x => x.taskT >= 3).map(x => x.taskPct));
+    if (base != null && Math.abs(r.taskPct - base) >= 15) {
+      add('tasks', r.taskPct > base ? 'good' : 'watch', 30, `You closed ${r.taskD} of ${r.taskT} tasks (${Math.round(r.taskPct)}%) — usually ${Math.round(base)}%.`);
+    }
+  }
+
+  // 13. Daily Check-in: the one metric that moved most.
+  let lifeBest = null;
+  Object.entries(r.life).forEach(([k, o]) => {
+    if (o.n < 3) return;
+    const pr = recent.map(x => x.life[k]).filter(Boolean);
+    const n = pr.reduce((s, x) => s + x.n, 0);
+    if (n < 3) return;
+    const base = pr.reduce((s, x) => s + x.sum, 0) / n;
+    const d = o.avg - base;
+    if (Math.abs(d) >= 0.6 && (!lifeBest || Math.abs(d) > Math.abs(lifeBest.d))) lifeBest = { k, avg: o.avg, base, d };
+  });
+  if (lifeBest) {
+    add('life', 'info', 30, `${ctx.lifeLabel ? ctx.lifeLabel(lifeBest.k) : lifeBest.k} averaged ${lifeBest.avg.toFixed(1)} — ${lifeBest.d > 0 ? 'up' : 'down'} from your usual ${lifeBest.base.toFixed(1)}.`);
+  }
+
+  const seen = new Set();
+  const items = out.sort((a, b) => b.score - a.score).filter(x => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+  return { items, young };
+}
+// ── END trends-engine ──
+
 // ── Dashboard ─────────────────────────────────────────────────
 
 // Single source of truth for the Trends "Charts" period. Returns a CALENDAR
