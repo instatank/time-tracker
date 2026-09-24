@@ -203,3 +203,30 @@ Weekly synthesis promotes cards into `playbook/PLAYBOOK.md` — as instances of 
 - Where else: (pending — answer at next wrap)
 - Quiz question: "A display rule has worked fine for months and its code hasn't been touched. Someone ships an unrelated feature and the display starts showing the wrong thing. Where do you look first — the display code, or the new feature? Why?"
 - Internalized: no
+
+---
+
+### 2026-09-24 — A dashboard earns a place by answering "so what", not by showing more (decision card)
+- The choice: the founder handed over the Trends tab and both reviews on autopilot, and set the test himself: not more charts, but a "strong balance between insightful data without information overload", so that he'd actually open it weekly. The live alternative — the usual response to an unused dashboard — is to add the missing chart. The session went the other way: fewer numbers, each one compared to *his own usual*, and a ranked list of one-line observations on top ("Best deep-work week in 9", "62% of your leak time lands late at night"). Charts went from Chart.js line graphs to sparklines and one-tap trends; three screens now share one engine instead of computing the same six numbers three ways.
+- Why (his words): "this healthy balance between minimalism and deep data analytics is key in ensuring i actually use it on a regular basis with little friction, yet derive useful insights regularly too!"
+- The principle: **a number without a comparison is trivia; a comparison without a sentence is homework.** "11h deep work" means nothing until it's "your usual is 8h", and even that asks you to do the interpretation — the read does it for you and ranks what matters most. The depth didn't disappear, it moved one tap down (tap a tile → 8-week trend, tap a day → the day), which is the same "move the choice inside the thing" move as the 2026-08-30 add-picker card.
+- Status: **watching** — the Trends usage counters shipped with it. Re-check at the 2026-10-06 census: are `trends-*` counts non-zero, and does he open it on a weekly rhythm?
+- **Wrap question asked 2026-09-24:** "Why compare to 'your usual' (previous 4 weeks) instead of last week?" He chose **"it looks better — averages smooth out the bad weeks"** (the distractor). Marked **watching**, no penalty. Re-taught: a single week can be a holiday or a sprint, so comparing against it makes every wobble look like a trend; the 4-week average is what *normal* looks like for you, so it only moves when something real changes. It doesn't soften bad news — a bad week shows red against your usual just as clearly (the test week's "Focus task −24 pts" chip). Resurfaces as a scenario quiz in a different form.
+
+---
+
+### 2026-09-24 — Unknown is not zero (friction card — founder: not present)
+- What happened: on an empty test week the new scorecard showed **Adherence 0%**. The default adherence rules are measured from logged time blocks, so a day with nothing logged was scored as every rule failed — "didn't log" reported as "didn't do it". The old Adherence tile had the same flaw for months; it just never looked wrong because real weeks mostly have *some* logging. Fixed in the engine: a day with nothing logged is skipped for adherence (and was already skipped for deep-work comparisons). A test pins it and was run against the old code to prove it fails there.
+- Concept: **missing data and a zero are different facts, and a metric that can't tell them apart lies quietly.** Averages, completion rates and "you did X% of days" are all exposed to it. The tell is a metric that reads *worse* the less you use the app — which punishes exactly the weeks when you most need an honest read.
+- Where else: the day-rating average (already skips unrated days — correct), streaks, the calendar heat dots (level 0 = "data but no hours" is already distinguished — correct), any future habit tracker.
+- Quiz question: "A 'workouts completed' tile shows 40% for a week you were travelling and didn't open the app on 4 days. Is 40% right? What should it show?"
+- Internalized: no
+
+---
+
+### 2026-09-24 — The insight that restated its own definition (friction card — founder: not present)
+- What happened: the old weekly pattern engine had a detector "your deep work averaged Xh on full-adherence days vs Yh on others". Ported into the new engine, it printed "4.6h vs 0h" on realistic data — striking, and meaningless: the adherence rules are themselves "logged ≥ N minutes of deep work", so of course full-adherence days have more deep work. Caught by reading the rendered screen, not by any test. Deleted; adherence vs the *day rating* (an independent measure) stays in "What makes a good day".
+- Concept: **correlating a measure with something defined by it produces a perfect, useless result.** The more dramatic the gap, the more suspicious you should be — real relationships in a life are rarely 4.6 vs 0.
+- Where else: "people who finish onboarding retain better" (finishing onboarding requires still being around), "days with a journal entry are rated higher" (only if the rating isn't set inside the journal), any "X predicts Y" where X and Y are computed from the same rows.
+- Quiz question: "An app says 'On days you hit your step goal, you walked 3× more.' What's wrong with that sentence as an insight?"
+- Internalized: no
