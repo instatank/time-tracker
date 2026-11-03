@@ -1597,15 +1597,17 @@ mark.hl {
   margin-bottom: 0.35rem;
 }
 .dj-section-hdr .dj-section-label { margin-bottom: 0; }
+/* Textarea full-width, ✨ Organize button sits BELOW it, right-aligned.
+   It used to float inside the textarea's bottom-right corner, where it
+   covered text while typing (moved out 2026-11-03). JS toggles the
+   learn-notes wrap with style.display = '' / 'none', so flex here holds. */
 .organize-field-wrap {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
 }
 .organize-field-wrap > textarea { width: 100%; box-sizing: border-box; }
-.organize-field-wrap > .dj-organize-btn {
-  position: absolute;
-  bottom: 0.7rem;
-  right: 0.7rem;
-}
 .dj-organize-btn {
   background: var(--surface2);
   border: 1px solid var(--accent);
